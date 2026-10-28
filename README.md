@@ -6,6 +6,14 @@
 
 **Defensive server hardening & patch automation for Ubuntu.**
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/report-light.png" alt="kevward HTML report" width="800">
+</p>
+
+<sub>One `kevward report` — patch posture, actively-exploited (CISA KEV) matches,
+and attacker IPs — in a single self-contained HTML page (light & dark themes).
+Demo data shown.</sub>
+
 kevward runs *on a server* and answers three questions a sysadmin asks every
 morning:
 
@@ -34,10 +42,35 @@ patches and **schedule a reboot** inside a maintenance window.
 
 ## Install
 
+**Recommended — pipx** (handles the virtualenv for you):
+
+```bash
+sudo apt install -y pipx       # if you don't have it
+pipx install kevward
+```
+
+`report` and `apply` need root. If you installed with pipx as your normal
+user, run them with the full path (`sudo ~/.local/bin/kevward report ...`), or
+install system-wide into a venv so `sudo kevward` just works:
+
+```bash
+sudo python3 -m venv /opt/kevward
+sudo /opt/kevward/bin/pip install kevward
+sudo ln -sf /opt/kevward/bin/kevward /usr/local/bin/kevward
+```
+
+> **Note:** on Ubuntu 24.04 / Debian a plain `pip install kevward` is blocked
+> by [PEP 668](https://peps.python.org/pep-0668/) (`externally-managed-environment`).
+> Use pipx or a venv as above — don't use `--break-system-packages` on a
+> server.
+
+**From source** (for development), inside a virtualenv:
+
 ```bash
 git clone https://github.com/ForexRobotics/kevward
 cd kevward
-pip install .            # or: pipx install .
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e .
 ```
 
 **Requires Python 3.10+** (Ubuntu 22.04 and newer). The only dependency is
@@ -45,15 +78,6 @@ pip install .            # or: pipx install .
 is used and kevward has no dependencies at all. Optional host tools are
 detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 `logwatch`.
-
-To make `kevward` available to root (needed for `report`/`apply`) when
-installed in a virtualenv, symlink it onto the system path:
-
-```bash
-sudo python3 -m venv /opt/kevward
-sudo /opt/kevward/bin/pip install .
-sudo ln -sf /opt/kevward/bin/kevward /usr/local/bin/kevward
-```
 
 ### Supported services
 

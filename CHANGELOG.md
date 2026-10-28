@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- **Fixed the install instructions.** `pip install .` fails on Ubuntu 24.04 /
+  Debian with `externally-managed-environment` (PEP 668). The README now leads
+  with `pipx install kevward`, documents the system-wide venv install for
+  `sudo kevward`, and shows the from-source dev install inside a venv.
+- Added a screenshot of the HTML report to the README (`docs/img/`).
+
 ## 0.2.0
 
 - **Renamed the project from `patchward` to `kevward`** ahead of its first PyPI
