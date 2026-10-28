@@ -25,6 +25,7 @@ class PhpPlugin(AptServicePlugin):
     name = "php"
     packages = ["php", "php-fpm", "php-cli", "php-common"]
     service_unit = "php-fpm.service"
+    kev_terms = ["php"]
 
     def check(self) -> list[Finding]:
         findings = super().check()

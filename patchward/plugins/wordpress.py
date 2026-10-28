@@ -51,6 +51,7 @@ def _wp(path: Path, *args: str) -> list | dict | None:
 class WordPressPlugin(ServicePlugin):
     name = "wordpress"
     supports_apply = False
+    kev_terms = ["wordpress"]
     roots: list[str] = _DEFAULT_ROOTS
 
     def detect(self) -> bool:

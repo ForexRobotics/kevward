@@ -43,6 +43,7 @@ def _find_laravel_apps(roots: list[str]) -> list[Path]:
 class LaravelPlugin(ServicePlugin):
     name = "laravel"
     supports_apply = False  # report-only by design
+    kev_terms = ["laravel"]
 
     #: Overridable at runtime by the engine via config (see module docstring).
     roots: list[str] = _DEFAULT_ROOTS

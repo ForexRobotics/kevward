@@ -32,6 +32,12 @@ class ServicePlugin(abc.ABC):
     #: changes are too risky to make unattended.
     supports_apply: bool = True
 
+    #: Substrings used to match this service's upstream in threat-intel feeds
+    #: (e.g. CISA KEV). Only consulted when the service is detected on the host,
+    #: which keeps trend matches relevant instead of flooding them with
+    #: appliances/products this host doesn't run. Empty = not matched by name.
+    kev_terms: list[str] = []
+
     @abc.abstractmethod
     def detect(self) -> bool:
         """Is this service installed / relevant on this host?"""
@@ -91,3 +97,20 @@ def load(only: Iterable[str] | None = None) -> list[ServicePlugin]:
     registry = discover()
     names = list(registry) if only is None else [n for n in only if n in registry]
     return [registry[n]() for n in names]
+
+
+def detected_kev_terms(only: Iterable[str] | None = None) -> list[str]:
+    """Threat-intel search terms for software actually present on this host.
+
+    Always includes the OS itself ("linux"/"ubuntu"); adds each detected
+    plugin's ``kev_terms``. Used to scope KEV/trend matching to what the host
+    really runs. ``detect()`` is cheap, so calling this is inexpensive.
+    """
+    terms: set[str] = {"linux", "ubuntu"}
+    for p in load(only):
+        try:
+            if p.detect():
+                terms.update(p.kev_terms)
+        except Exception:  # pragma: no cover - defensive
+            continue
+    return sorted(terms)

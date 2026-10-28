@@ -56,6 +56,7 @@ def _find_node_projects(roots: list[str]) -> list[Path]:
 class NodejsPlugin(ServicePlugin):
     name = "nodejs"
     supports_apply = False
+    kev_terms = ["node.js", "nodejs"]
     roots: list[str] = _DEFAULT_ROOTS
 
     def detect(self) -> bool:

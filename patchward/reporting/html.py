@@ -95,6 +95,9 @@ def render(result: RunResult) -> str:
           matches: <b>{trends.get('match_count',0)}</b> ·
           ransomware-linked: <b>{trends.get('ransomware_linked',0)}</b>
           {'· (cached snapshot)' if not trends.get('cache_fresh') else ''}</p>
+          <p class="muted" style="font-size:12px">Matched by product name against
+          software detected on this host. This flags <em>possible</em> exposure —
+          confirm version-level applicability for each CVE before acting.</p>
           <table><thead><tr><th>CVE</th><th>Vendor/Product</th>
           <th>Name</th><th>Added</th></tr></thead>
           <tbody>{trend_rows or "<tr><td colspan=4 class='muted'>No matches.</td></tr>"}</tbody></table>

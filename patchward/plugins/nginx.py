@@ -13,6 +13,7 @@ class NginxPlugin(AptServicePlugin):
     name = "nginx"
     packages = ["nginx", "nginx-core", "nginx-full", "nginx-light"]
     service_unit = "nginx.service"
+    kev_terms = ["nginx"]
 
     def check(self) -> list[Finding]:
         findings = super().check()
