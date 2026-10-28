@@ -13,6 +13,7 @@ class SshdPlugin(AptServicePlugin):
     name = "sshd"
     packages = ["openssh-server"]
     service_unit = "ssh.service"
+    kev_terms = ["openssh"]
 
     def check(self) -> list[Finding]:
         findings = super().check()

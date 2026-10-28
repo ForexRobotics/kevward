@@ -24,7 +24,7 @@ from .config import Config
 from .engine import run as run_engine
 from .integrations import fail2ban, logwatch
 from .model import Severity
-from .plugin import discover
+from .plugin import detected_kev_terms, discover
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -110,7 +110,8 @@ def cmd_apply(args) -> int:
 def cmd_report(args) -> int:
     cfg = _mkconfig(args)
     result = run_engine(cfg, do_apply=False, dry_run=True)
-    result.attackers = _collect_attackers(args.trends)
+    host_terms = detected_kev_terms(cfg.policy.services or None)
+    result.attackers = _collect_attackers(args.trends, host_terms)
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -122,16 +123,19 @@ def cmd_report(args) -> int:
 
 
 def cmd_trends(args) -> int:
+    cfg = _mkconfig(args)
     from .integrations import trends as trends_mod
-    data = trends_mod.matching_trends()
+    host_terms = detected_kev_terms(cfg.policy.services or None)
+    data = trends_mod.matching_trends(host_terms)
     if args.json:
         import json
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return 0
     print(f"CISA KEV catalog: {data['catalog_size']} CVEs "
           f"({'fresh' if data['cache_fresh'] else 'cached'})")
-    print(f"relevant to this host: {data['match_count']} "
-          f"({data['ransomware_linked']} ransomware-linked)\n")
+    print(f"matched to detected software ({', '.join(host_terms)}): "
+          f"{data['match_count']} ({data['ransomware_linked']} ransomware-linked)")
+    print("note: name-level match — confirm version applicability per CVE.\n")
     for m in data["matches"][:25]:
         rw = " [ransomware]" if m["ransomware"] else ""
         print(f"  {m['cve']:18} {m['vendor']}/{m['product']}  (added {m['date_added']}){rw}")

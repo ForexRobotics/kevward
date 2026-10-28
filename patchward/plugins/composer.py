@@ -35,6 +35,7 @@ def _find_composer_projects(roots: list[str]) -> list[Path]:
 class ComposerPlugin(ServicePlugin):
     name = "composer"
     supports_apply = False
+    kev_terms = ["php"]
     roots: list[str] = _DEFAULT_ROOTS
 
     def detect(self) -> bool:
