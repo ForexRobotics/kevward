@@ -11,8 +11,7 @@ Preferred: use GitHub's private vulnerability reporting —
 **Security → Report a vulnerability** on
 <https://github.com/ForexRobotics/patchward/security/advisories>.
 
-Alternatively, email **security@forexrobotics.example** (replace with the real
-address before publishing) with:
+Alternatively, email **security@forexrobotics.jp** with:
 
 - a description of the issue and its impact,
 - steps to reproduce (a minimal PoC if possible),
