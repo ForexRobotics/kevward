@@ -1,0 +1,10 @@
+[Unit]
+Description=Run patchward posture report daily
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patchward"
+version = "0.1.0"
+description = "Defensive server hardening & patch automation for Ubuntu (plugin-based)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Forex Robotics Co., Ltd." }]
+keywords = ["security", "patch-management", "ubuntu", "hardening", "cisa-kev", "fail2ban"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Security",
+]
+# Core tool uses only the standard library. Everything else is optional and
+# detected at runtime (apt, composer, npm, wp-cli, fail2ban, logwatch).
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/ForexRobotics/patchward"
+Issues = "https://github.com/ForexRobotics/patchward/issues"
+
+[project.scripts]
+patchward = "patchward.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["patchward*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
