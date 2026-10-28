@@ -2,7 +2,7 @@
 
 Adding support for a new service is intentionally a one-file job: subclass
 ``ServicePlugin`` (or ``AptServicePlugin`` for apt-managed packages), drop the
-module into ``patchward/plugins/``, and it is auto-discovered at runtime. No
+module into ``kevward/plugins/``, and it is auto-discovered at runtime. No
 central list to edit.
 """
 
@@ -84,7 +84,7 @@ def register(cls: type[ServicePlugin]) -> type[ServicePlugin]:
 
 
 def discover() -> dict[str, type[ServicePlugin]]:
-    """Import every module under patchward.plugins so decorators run."""
+    """Import every module under kevward.plugins so decorators run."""
     from . import plugins  # local import to avoid cycles
 
     for mod in pkgutil.iter_modules(plugins.__path__):

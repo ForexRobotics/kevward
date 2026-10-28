@@ -11,7 +11,7 @@ class _StrEnum(str, Enum):
     """A str-valued enum that stringifies to its value.
 
     Equivalent to ``enum.StrEnum`` (3.11+) for our needs, but works on
-    Python 3.10 too, which patchward supports (Ubuntu 22.04 ships 3.10).
+    Python 3.10 too, which kevward supports (Ubuntu 22.04 ships 3.10).
     """
 
     def __str__(self) -> str:

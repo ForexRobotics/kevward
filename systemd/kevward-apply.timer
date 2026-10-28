@@ -1,5 +1,5 @@
 [Unit]
-Description=Apply security updates via patchward (weekly, opt-in)
+Description=Apply security updates via kevward (weekly, opt-in)
 
 [Timer]
 # Weekly, inside a quiet window. Pair with policy.reboot_window_start.

@@ -1,7 +1,7 @@
 """Shared helper for composer-based projects.
 
 Runs ``composer audit`` (which queries the packagist/OSV advisory database) in
-a project directory and turns advisories into findings. Report-only: patchward
+a project directory and turns advisories into findings. Report-only: kevward
 never runs ``composer update`` for you, because a dependency bump can break an
 application in ways only its maintainer can judge.
 """

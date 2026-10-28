@@ -1,6 +1,6 @@
-# patchward Contributor License Agreement
+# kevward Contributor License Agreement
 
-Thank you for contributing to patchward. This agreement clarifies the rights
+Thank you for contributing to kevward. This agreement clarifies the rights
 you grant so the project can be maintained and, if ever necessary, relicensed.
 You keep ownership of your work — this is a licence, not an assignment.
 

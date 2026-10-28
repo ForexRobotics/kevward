@@ -1,13 +1,13 @@
 [Unit]
-Description=patchward apply security updates (opt-in)
-Documentation=https://github.com/ForexRobotics/patchward
+Description=kevward apply security updates (opt-in)
+Documentation=https://github.com/ForexRobotics/kevward
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 # CHANGES THE SYSTEM. Enable the paired timer only once you have reviewed a few
-# `patchward check` runs and are comfortable with automatic security patching.
+# `kevward check` runs and are comfortable with automatic security patching.
 # --reboot only takes effect if policy.allow_reboot = true in config.
-ExecStart=/usr/bin/patchward apply --yes --reboot
+ExecStart=/usr/bin/kevward apply --yes --reboot
 NoNewPrivileges=true

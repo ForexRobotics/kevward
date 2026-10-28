@@ -1,4 +1,4 @@
-"""patchward command-line interface.
+"""kevward command-line interface.
 
 Subcommands:
   check            Report findings (no changes). Default if none given.
@@ -160,8 +160,8 @@ def cmd_list_plugins(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="patchward", description=__doc__.split("\n")[0])
-    p.add_argument("--version", action="version", version=f"patchward {__version__}")
+    p = argparse.ArgumentParser(prog="kevward", description=__doc__.split("\n")[0])
+    p.add_argument("--version", action="version", version=f"kevward {__version__}")
     sub = p.add_subparsers(dest="cmd")
 
     c = sub.add_parser("check", help="report findings (no changes)")

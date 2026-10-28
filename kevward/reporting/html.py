@@ -109,7 +109,7 @@ def render(result: RunResult) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>patchward report — {_esc(result.host)}</title>
+<title>kevward report — {_esc(result.host)}</title>
 <style>
   :root {{
     --bg:#f6f7f9; --card:#fff; --fg:#1c2330; --muted:#657086; --line:#e2e6ec;
@@ -149,7 +149,7 @@ def render(result: RunResult) -> str:
 </style></head>
 <body><div class="wrap">
   <header>
-    <h1>patchward — {_esc(result.host)}</h1>
+    <h1>kevward — {_esc(result.host)}</h1>
     <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b></p>
     <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
   </header>
@@ -179,8 +179,8 @@ def render(result: RunResult) -> str:
   </section>
 
   <footer class="muted" style="text-align:center;font-size:12px">
-    patchward · defensive posture report · {datetime.now().year} ·
+    kevward · defensive posture report · {datetime.now().year} ·
     AGPL-3.0 ·
-    <a href="https://github.com/ForexRobotics/patchward" style="color:inherit">source</a>
+    <a href="https://github.com/ForexRobotics/kevward" style="color:inherit">source</a>
   </footer>
 </div></body></html>"""

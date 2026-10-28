@@ -3,7 +3,7 @@
 Two layers:
   * the Node.js runtime itself (is this major line still in LTS/supported?)
   * each project's dependencies via `npm audit --json` (OSV-backed).
-Report-only: patchward does not run `npm audit fix` for you.
+Report-only: kevward does not run `npm audit fix` for you.
 """
 
 from __future__ import annotations

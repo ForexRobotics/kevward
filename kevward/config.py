@@ -15,21 +15,21 @@ except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
 DEFAULT_PATHS = [
-    Path("/etc/patchward/config.toml"),
-    Path.home() / ".config" / "patchward" / "config.toml",
-    Path("patchward.toml"),
+    Path("/etc/kevward/config.toml"),
+    Path.home() / ".config" / "kevward" / "config.toml",
+    Path("kevward.toml"),
 ]
 
 
 @dataclass
 class Policy:
-    """What patchward is permitted to do. Defaults are conservative."""
+    """What kevward is permitted to do. Defaults are conservative."""
 
     # Apply security updates when running `apply`.
     apply_security: bool = True
     # Apply non-security minor version upgrades. Off by default.
     apply_minor: bool = False
-    # Allow patchward to reboot the host itself. Off by default: by default it
+    # Allow kevward to reboot the host itself. Off by default: by default it
     # only *reports* that a reboot is required, or schedules one in a window.
     allow_reboot: bool = False
     # Maintenance window for scheduled reboots, local time "HH:MM".
@@ -51,7 +51,7 @@ class Policy:
 @dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
-    report_dir: Path = Path("/var/log/patchward")
+    report_dir: Path = Path("/var/log/kevward")
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:

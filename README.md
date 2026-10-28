@@ -1,12 +1,12 @@
-# patchward
+# kevward
 
-[![CI](https://github.com/ForexRobotics/patchward/actions/workflows/ci.yml/badge.svg)](https://github.com/ForexRobotics/patchward/actions/workflows/ci.yml)
+[![CI](https://github.com/ForexRobotics/kevward/actions/workflows/ci.yml/badge.svg)](https://github.com/ForexRobotics/kevward/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
 **Defensive server hardening & patch automation for Ubuntu.**
 
-patchward runs *on a server* and answers three questions a sysadmin asks every
+kevward runs *on a server* and answers three questions a sysadmin asks every
 morning:
 
 1. **What on this box is vulnerable or out of date?** — pending security
@@ -35,24 +35,24 @@ patches and **schedule a reboot** inside a maintenance window.
 ## Install
 
 ```bash
-git clone https://github.com/ForexRobotics/patchward
-cd patchward
+git clone https://github.com/ForexRobotics/kevward
+cd kevward
 pip install .            # or: pipx install .
 ```
 
 **Requires Python 3.10+** (Ubuntu 22.04 and newer). The only dependency is
 `tomli`, and only on Python 3.10 — on 3.11+ the standard library's `tomllib`
-is used and patchward has no dependencies at all. Optional host tools are
+is used and kevward has no dependencies at all. Optional host tools are
 detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 `logwatch`.
 
-To make `patchward` available to root (needed for `report`/`apply`) when
+To make `kevward` available to root (needed for `report`/`apply`) when
 installed in a virtualenv, symlink it onto the system path:
 
 ```bash
-sudo python3 -m venv /opt/patchward
-sudo /opt/patchward/bin/pip install .
-sudo ln -sf /opt/patchward/bin/patchward /usr/local/bin/patchward
+sudo python3 -m venv /opt/kevward
+sudo /opt/kevward/bin/pip install .
+sudo ln -sf /opt/kevward/bin/kevward /usr/local/bin/kevward
 ```
 
 ### Supported services
@@ -72,15 +72,15 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Usage
 
 ```bash
-patchward check                 # report findings, change nothing (default)
-patchward check -s nginx -s php # limit to specific services
-patchward trends                # actively-exploited CVEs relevant to this host
-patchward report --trends       # write an HTML posture + attacker-IP report
-patchward apply                 # DRY RUN: show what would be patched
-sudo patchward apply --yes      # actually apply security updates
-sudo patchward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot
-sudo patchward schedule-reboot --window 04:00
-patchward list-plugins
+kevward check                 # report findings, change nothing (default)
+kevward check -s nginx -s php # limit to specific services
+kevward trends                # actively-exploited CVEs relevant to this host
+kevward report --trends       # write an HTML posture + attacker-IP report
+kevward apply                 # DRY RUN: show what would be patched
+sudo kevward apply --yes      # actually apply security updates
+sudo kevward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot
+sudo kevward schedule-reboot --window 04:00
+kevward list-plugins
 ```
 
 ### Safety model
@@ -96,7 +96,7 @@ patchward list-plugins
 
 ## Configuration
 
-Copy `config.example.toml` to `/etc/patchward/config.toml`. All defaults are
+Copy `config.example.toml` to `/etc/kevward/config.toml`. All defaults are
 conservative; see that file for every option, including where to point the
 Composer/Laravel/Node/WordPress scanners.
 
@@ -105,21 +105,21 @@ Composer/Laravel/Node/WordPress scanners.
 Install the units in `systemd/`:
 
 ```bash
-sudo cp systemd/patchward-report.* /etc/systemd/system/
-sudo systemctl enable --now patchward-report.timer    # daily read-only report
+sudo cp systemd/kevward-report.* /etc/systemd/system/
+sudo systemctl enable --now kevward-report.timer    # daily read-only report
 # Only after you trust it:
-sudo cp systemd/patchward-apply.* /etc/systemd/system/
-sudo systemctl enable --now patchward-apply.timer      # weekly security patching
+sudo cp systemd/kevward-apply.* /etc/systemd/system/
+sudo systemctl enable --now kevward-apply.timer      # weekly security patching
 ```
 
 ## Adding a service
 
-Drop one file in `patchward/plugins/` — it is auto-discovered. See
+Drop one file in `kevward/plugins/` — it is auto-discovered. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the 5-minute guide.
 
 ## Security
 
-Found a vulnerability in patchward? Please report it privately — see
+Found a vulnerability in kevward? Please report it privately — see
 [SECURITY.md](SECURITY.md). Don't open a public issue for security problems.
 
 ## Acknowledgments
@@ -133,7 +133,7 @@ responsibility for the code rest with the maintainer.
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
 
-patchward is strong copyleft, including over a network: if you run a modified
+kevward is strong copyleft, including over a network: if you run a modified
 version as a service, you must offer its source to that service's users
 (AGPL §13). Copyright © 2026 Forex Robotics Co., Ltd. (Forex Robotics 株式会社);
 contributions are accepted under a CLA so the project can be relicensed in

@@ -1,14 +1,14 @@
-# patchward configuration (TOML). Copy to /etc/patchward/config.toml.
+# kevward configuration (TOML). Copy to /etc/kevward/config.toml.
 # Every value shown is the built-in default unless noted. All defaults are safe:
 # nothing changes the system until you run `apply --yes`, and reboots never
 # happen unless allow_reboot is true AND a reboot is requested.
 
-report_dir = "/var/log/patchward"
+report_dir = "/var/log/kevward"
 
 [policy]
 apply_security = true      # apply security updates when running `apply`
 apply_minor    = false     # also apply non-security minor upgrades
-allow_reboot   = false     # permit patchward to reboot the host at all
+allow_reboot   = false     # permit kevward to reboot the host at all
 reboot_window_start = "04:00"   # local HH:MM for scheduled reboots
 
 # Limit to specific services (empty = all discovered plugins):

@@ -19,7 +19,7 @@ def _next_window(now: datetime, hhmm: str) -> datetime:
     return target
 
 
-def schedule_reboot(window_start: str, message: str = "patchward maintenance") -> str:
+def schedule_reboot(window_start: str, message: str = "kevward maintenance") -> str:
     """Schedule a reboot at the next occurrence of ``window_start`` (HH:MM).
 
     Returns a human-readable description of what was scheduled. Requires root.
@@ -44,7 +44,7 @@ def cancel_reboot() -> str:
     return "pending reboot cancelled" if res.ok else f"nothing to cancel: {res.err.strip()}"
 
 
-def reboot_now(message: str = "patchward immediate reboot") -> str:
+def reboot_now(message: str = "kevward immediate reboot") -> str:
     if not is_root():
         return "skipped: requires root"
     res = run(["shutdown", "-r", "+1", message])

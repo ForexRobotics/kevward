@@ -34,9 +34,9 @@ jobs:
 
       - name: Smoke test
         run: |
-          patchward --version
-          patchward list-plugins
+          kevward --version
+          kevward list-plugins
           # read-only run; must exit cleanly even on a bare CI runner
-          patchward check
-          patchward report -o /tmp/patchward-report.html
-          test -s /tmp/patchward-report.html
+          kevward check
+          kevward report -o /tmp/kevward-report.html
+          test -s /tmp/kevward-report.html

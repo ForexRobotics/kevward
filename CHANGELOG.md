@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+- **Renamed the project from `patchward` to `kevward`** ahead of its first PyPI
+  release (the name `patchward` was already taken on PyPI by an unrelated
+  project). The command, Python package, config paths (`/etc/kevward`,
+  `/var/log/kevward`, `/var/cache/kevward`) and systemd units
+  (`kevward-report.*`, `kevward-apply.*`) are all renamed. Existing
+  installations should reinstall under the new name.
+- Added a GitHub Actions workflow to publish to PyPI via Trusted Publishing on
+  tagged releases.
+
 ## 0.1.3
 
 - **Python 3.10 support** (Ubuntu 22.04 LTS). The 3.11-only `StrEnum`,

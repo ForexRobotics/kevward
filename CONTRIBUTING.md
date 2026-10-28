@@ -2,7 +2,7 @@
 
 ## Add support for a service in ~5 minutes
 
-patchward auto-discovers any plugin dropped into `patchward/plugins/`. There is
+kevward auto-discovers any plugin dropped into `kevward/plugins/`. There is
 no central registry to edit.
 
 ### Case 1 — it's just apt packages
@@ -10,7 +10,7 @@ no central registry to edit.
 Most services are. Subclass `AptServicePlugin`, declare the package names, done:
 
 ```python
-# patchward/plugins/redis.py
+# kevward/plugins/redis.py
 from ._apt import AptServicePlugin
 from ..plugin import register
 
@@ -48,7 +48,7 @@ Finding(
 
 ## Licensing of contributions
 
-patchward is released under **AGPL-3.0-or-later**. To keep the option open to
+kevward is released under **AGPL-3.0-or-later**. To keep the option open to
 relicense the project in future (e.g. to a more permissive license), the
 maintainer must hold a clear grant over every contribution.
 
@@ -73,12 +73,12 @@ merged.
 - **No new runtime dependencies** without discussion — the core is stdlib-only
   so it installs anywhere.
 - **`check()` must never mutate the system.** Side effects belong in `apply()`.
-- Shell out via `patchward.util.run` (argv lists, never shell strings).
+- Shell out via `kevward.util.run` (argv lists, never shell strings).
 
 ## Dev
 
 ```bash
 pip install -e .
-python -m patchward.cli list-plugins
+python -m kevward.cli list-plugins
 ruff check .
 ```

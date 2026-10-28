@@ -1,5 +1,5 @@
 [Unit]
-Description=Run patchward posture report daily
+Description=Run kevward posture report daily
 
 [Timer]
 OnCalendar=*-*-* 07:00:00

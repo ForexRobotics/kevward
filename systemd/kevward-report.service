@@ -1,16 +1,16 @@
 [Unit]
-Description=patchward defensive posture report
-Documentation=https://github.com/ForexRobotics/patchward
+Description=kevward defensive posture report
+Documentation=https://github.com/ForexRobotics/kevward
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 # Read-only: reports findings + attacker IPs + CISA KEV trends. Makes no changes.
-ExecStart=/usr/bin/patchward report --trends -o /var/log/patchward/report.html
+ExecStart=/usr/bin/kevward report --trends -o /var/log/kevward/report.html
 # Hardening for the unit itself.
 ProtectSystem=strict
-ReadWritePaths=/var/log/patchward /var/cache/patchward
+ReadWritePaths=/var/log/kevward /var/cache/kevward
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true

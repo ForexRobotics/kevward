@@ -6,7 +6,7 @@ against software detected on this host. The point is to answer the operator's
 real question: "of everything being actively attacked right now, does any of it
 apply to me?"
 
-Network access is required and entirely opt-in (``patchward trends`` or
+Network access is required and entirely opt-in (``kevward trends`` or
 ``report --trends``). The feed URL is configurable; results are cached so an
 offline/locked-down host can still use the last snapshot.
 
@@ -25,7 +25,7 @@ KEV_URL = (
     "https://www.cisa.gov/sites/default/files/feeds/"
     "known_exploited_vulnerabilities.json"
 )
-CACHE = Path("/var/cache/patchward/kev.json")
+CACHE = Path("/var/cache/kevward/kev.json")
 CACHE_TTL = 6 * 3600  # seconds
 
 
@@ -56,7 +56,7 @@ def _load_catalog(url: str = KEV_URL, timeout: int = 30) -> list[KevEntry]:
     """Fetch the KEV catalog, falling back to cache on any network error."""
     raw: dict | None = None
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "patchward"})
+        req = urllib.request.Request(url, headers={"User-Agent": "kevward"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             raw = json.loads(resp.read().decode("utf-8"))
         try:
