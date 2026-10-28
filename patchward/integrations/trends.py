@@ -40,7 +40,7 @@ class KevEntry:
     ransomware: bool
 
     @classmethod
-    def from_raw(cls, d: dict) -> "KevEntry":
+    def from_raw(cls, d: dict) -> KevEntry:
         return cls(
             cve=d.get("cveID", ""),
             vendor=(d.get("vendorProject") or "").lower(),

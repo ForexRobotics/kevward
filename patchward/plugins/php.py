@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-from ._apt import AptServicePlugin
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
 from ..util import run
+from ._apt import AptServicePlugin
 
 # Approximate PHP security-support end dates (YYYY-MM). Update as upstream moves.
 _PHP_EOL = {

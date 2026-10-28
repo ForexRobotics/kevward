@@ -6,10 +6,10 @@ libraries, base system) so nothing security-relevant is missed.
 
 from __future__ import annotations
 
-from ._apt import AptServicePlugin, _simulate_upgrade
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
 from ..util import have, reboot_pending
+from ._apt import AptServicePlugin, _simulate_upgrade
 
 
 @register

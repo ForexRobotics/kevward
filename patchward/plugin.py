@@ -11,7 +11,7 @@ from __future__ import annotations
 import abc
 import importlib
 import pkgutil
-from typing import Iterable
+from collections.abc import Iterable
 
 from .model import ActionResult, Finding, ServiceReport
 

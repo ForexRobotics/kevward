@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from typing import Any
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Severity of a finding, roughly aligned to CVSS buckets."""
 
     CRITICAL = "critical"
@@ -28,7 +28,7 @@ class Severity(str, Enum):
         return order[self]
 
 
-class FindingKind(str, Enum):
+class FindingKind(StrEnum):
     VULNERABILITY = "vulnerability"       # a known CVE / advisory
     SECURITY_UPDATE = "security_update"   # a pending security package update
     MINOR_UPGRADE = "minor_upgrade"       # a non-security minor version bump

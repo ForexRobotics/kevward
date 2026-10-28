@@ -13,7 +13,7 @@ from pathlib import Path
 from ..util import have, is_root, run
 
 _BAN_LINE = re.compile(
-    r"(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?\bBan\b\s+(?P<ip>\d{1,3}(?:\.\d{1,3}){3}|[0-9a-fA-F:]+)"
+    r"(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?\bBan\b\s+(?P<ip>\d{1,3}(?:\.\d{1,3}){3}|[0-9a-fA-F:]+)"  # noqa: E501
 )
 
 
@@ -45,8 +45,8 @@ def currently_banned() -> dict[str, list[str]]:
 def historical_bans(log_glob: str = "/var/log/fail2ban.log*") -> Counter:
     """Count Ban events per IP across (possibly rotated) fail2ban logs."""
     counts: Counter = Counter()
-    from glob import glob
     import gzip
+    from glob import glob
 
     for path in sorted(glob(log_glob)):
         p = Path(path)

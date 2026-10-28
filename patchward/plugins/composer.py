@@ -9,9 +9,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ._composer import composer_audit
 from ..model import Finding
-from ..plugin import register, ServicePlugin
+from ..plugin import ServicePlugin, register
+from ._composer import composer_audit
 
 _DEFAULT_ROOTS = ["/var/www", "/srv", str(Path.home() / "website")]
 
@@ -22,7 +22,7 @@ def _find_composer_projects(roots: list[str]) -> list[Path]:
         r = Path(root)
         if not r.is_dir():
             continue
-        for dirpath, dirnames, filenames in os.walk(r):
+        for dirpath, dirnames, _filenames in os.walk(r):
             dirnames[:] = [d for d in dirnames if d not in {"vendor", "node_modules", ".git"}]
             p = Path(dirpath)
             if (p / "composer.lock").is_file() and not (p / "artisan").is_file():

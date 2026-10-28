@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 from ..model import Finding, FindingKind, Severity
-from ..plugin import register, ServicePlugin
+from ..plugin import ServicePlugin, register
 from ..util import have, run
 
 _DEFAULT_ROOTS = ["/var/www", "/srv", str(Path.home() / "website")]
@@ -43,7 +43,7 @@ def _find_node_projects(roots: list[str]) -> list[Path]:
         r = Path(root)
         if not r.is_dir():
             continue
-        for dirpath, dirnames, filenames in os.walk(r):
+        for dirpath, dirnames, _filenames in os.walk(r):
             dirnames[:] = [d for d in dirnames if d not in {"node_modules", "vendor", ".git"}]
             p = Path(dirpath)
             if (p / "package.json").is_file():

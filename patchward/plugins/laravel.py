@@ -15,10 +15,9 @@ import json
 import os
 from pathlib import Path
 
-from ._composer import composer_audit
 from ..model import Finding, FindingKind, Severity
-from ..plugin import register, ServicePlugin
-from ..util import run
+from ..plugin import ServicePlugin, register
+from ._composer import composer_audit
 
 # Default scan roots; override via config.
 _DEFAULT_ROOTS = ["/var/www", "/srv", str(Path.home() / "website")]
@@ -30,7 +29,7 @@ def _find_laravel_apps(roots: list[str]) -> list[Path]:
         r = Path(root)
         if not r.is_dir():
             continue
-        for dirpath, dirnames, filenames in os.walk(r):
+        for dirpath, dirnames, _filenames in os.walk(r):
             # Don't descend into vendor/node_modules.
             dirnames[:] = [d for d in dirnames if d not in {"vendor", "node_modules", ".git"}]
             p = Path(dirpath)

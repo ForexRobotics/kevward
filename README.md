@@ -1,5 +1,9 @@
 # patchward
 
+[![CI](https://github.com/ForexRobotics/patchward/actions/workflows/ci.yml/badge.svg)](https://github.com/ForexRobotics/patchward/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+
 **Defensive server hardening & patch automation for Ubuntu.**
 
 patchward runs *on a server* and answers three questions a sysadmin asks every
@@ -85,6 +89,18 @@ sudo systemctl enable --now patchward-apply.timer      # weekly security patchin
 
 Drop one file in `patchward/plugins/` — it is auto-discovered. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the 5-minute guide.
+
+## Security
+
+Found a vulnerability in patchward? Please report it privately — see
+[SECURITY.md](SECURITY.md). Don't open a public issue for security problems.
+
+## Acknowledgments
+
+The initial release was designed and written in pair-programming sessions with
+**Claude** (Anthropic's AI assistant). This is not an endorsement or an official
+Anthropic project — just a thank-you for the help. All design decisions and
+responsibility for the code rest with the maintainer.
 
 ## License
 

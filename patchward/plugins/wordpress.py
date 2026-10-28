@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 from ..model import Finding, FindingKind, Severity
-from ..plugin import register, ServicePlugin
+from ..plugin import ServicePlugin, register
 from ..util import have, run
 
 _DEFAULT_ROOTS = ["/var/www", "/srv"]

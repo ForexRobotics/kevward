@@ -161,10 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd")
 
     c = sub.add_parser("check", help="report findings (no changes)")
-    _add_common(c); c.set_defaults(func=cmd_check)
+    _add_common(c)
+    c.set_defaults(func=cmd_check)
 
     pl = sub.add_parser("plan", help="alias of check")
-    _add_common(pl); pl.set_defaults(func=cmd_check)
+    _add_common(pl)
+    pl.set_defaults(func=cmd_check)
 
     a = sub.add_parser("apply", help="apply security updates")
     _add_common(a)
@@ -180,7 +182,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.set_defaults(func=cmd_report)
 
     t = sub.add_parser("trends", help="actively-exploited CVEs relevant to host")
-    _add_common(t); t.set_defaults(func=cmd_trends)
+    _add_common(t)
+    t.set_defaults(func=cmd_trends)
 
     sr = sub.add_parser("schedule-reboot", help="schedule a maintenance-window reboot")
     _add_common(sr)
@@ -188,7 +191,8 @@ def build_parser() -> argparse.ArgumentParser:
     sr.set_defaults(func=cmd_schedule_reboot)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
-    _add_common(lp); lp.set_defaults(func=cmd_list_plugins)
+    _add_common(lp)
+    lp.set_defaults(func=cmd_list_plugins)
     return p
 
 

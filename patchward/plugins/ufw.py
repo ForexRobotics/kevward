@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from ._apt import AptServicePlugin
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
 from ..util import is_root, run
+from ._apt import AptServicePlugin
 
 
 @register

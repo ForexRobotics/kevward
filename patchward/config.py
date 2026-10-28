@@ -6,14 +6,9 @@ Format is TOML (stdlib ``tomllib`` on 3.11+).
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover
-    tomllib = None  # type: ignore
 
 DEFAULT_PATHS = [
     Path("/etc/patchward/config.toml"),
@@ -40,7 +35,7 @@ class Policy:
     # Per-service overrides, e.g. {"nginx": {"apply_minor": true}}.
     overrides: dict[str, dict] = field(default_factory=dict)
 
-    def for_service(self, name: str) -> "Policy":
+    def for_service(self, name: str) -> Policy:
         ov = self.overrides.get(name)
         if not ov:
             return self
@@ -55,7 +50,7 @@ class Config:
     report_dir: Path = Path("/var/log/patchward")
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "Config":
+    def load(cls, path: str | Path | None = None) -> Config:
         candidates = [Path(path)] if path else DEFAULT_PATHS
         for p in candidates:
             if p.is_file():
@@ -63,14 +58,10 @@ class Config:
         return cls()
 
     @classmethod
-    def _from_file(cls, p: Path) -> "Config":
-        if tomllib is None:  # pragma: no cover
-            raise RuntimeError("Python 3.11+ required to read a config file")
+    def _from_file(cls, p: Path) -> Config:
         data = tomllib.loads(p.read_text())
         pol = data.get("policy", {})
-        policy = Policy(
-            **{k: v for k, v in pol.items() if k in Policy.__annotations__}
-        )
+        policy = Policy(**{k: v for k, v in pol.items() if k in Policy.__annotations__})
         cfg = cls(policy=policy)
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])
