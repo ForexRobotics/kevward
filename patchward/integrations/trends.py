@@ -102,7 +102,10 @@ def matching_trends(
     terms = [t.lower() for t in (host_terms or _HOST_KEYWORDS)]
     hits: list[KevEntry] = []
     for e in catalog:
-        hay = f"{e.vendor} {e.product} {e.name}".lower()
+        # Match only on vendor/product, never the free-text vulnerability name:
+        # a name like "...PHP Remote File Inclusion" for a Zimbra/Juniper CVE
+        # would otherwise false-match a host that merely runs PHP.
+        hay = f"{e.vendor} {e.product}".lower()
         if any(t in hay for t in terms):
             hits.append(e)
     hits.sort(key=lambda e: e.date_added, reverse=True)

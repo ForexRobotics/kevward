@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- **KEV matching no longer uses the free-text vulnerability name**, only the
+  vendor and product. A CVE whose description happens to mention a technology
+  (e.g. a Zimbra or Juniper advisory with "PHP" in its name) no longer
+  false-matches a host that merely runs that technology.
+
 ## 0.1.1
 
 - **KEV trends scoped to detected software.** CISA KEV matching now uses the
