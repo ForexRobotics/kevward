@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.3
+
+- **Python 3.10 support** (Ubuntu 22.04 LTS). The 3.11-only `StrEnum`,
+  `tomllib` and `datetime.UTC` are replaced with 3.10-compatible equivalents;
+  `tomli` is pulled in automatically on 3.10 only. Tested on 3.10–3.13.
+- **New service plugins**: Apache HTTP Server, MySQL, MariaDB, PostgreSQL and
+  Redis — apt-managed, with CISA KEV term mapping. Apache also gets a
+  ServerTokens hardening check.
+- README: documented supported services, the Python requirement and the
+  virtualenv/system-path install.
+
 ## 0.1.2
 
 - **KEV matching no longer uses the free-text vulnerability name**, only the

@@ -8,4 +8,4 @@ This is a *defensive* tool. It never touches remote hosts and contains
 no offensive capability.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"

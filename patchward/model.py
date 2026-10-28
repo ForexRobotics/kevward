@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 
 
-class Severity(StrEnum):
+class _StrEnum(str, Enum):
+    """A str-valued enum that stringifies to its value.
+
+    Equivalent to ``enum.StrEnum`` (3.11+) for our needs, but works on
+    Python 3.10 too, which patchward supports (Ubuntu 22.04 ships 3.10).
+    """
+
+    def __str__(self) -> str:
+        return self.value
+
+
+class Severity(_StrEnum):
     """Severity of a finding, roughly aligned to CVSS buckets."""
 
     CRITICAL = "critical"
@@ -28,7 +39,7 @@ class Severity(StrEnum):
         return order[self]
 
 
-class FindingKind(StrEnum):
+class FindingKind(_StrEnum):
     VULNERABILITY = "vulnerability"       # a known CVE / advisory
     SECURITY_UPDATE = "security_update"   # a pending security package update
     MINOR_UPGRADE = "minor_upgrade"       # a non-security minor version bump

@@ -6,7 +6,7 @@ import json
 import platform
 import socket
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .config import Config
@@ -45,7 +45,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
     plugins = load(only)
     result = RunResult(
         host=socket.gethostname(),
-        generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
+        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         os=f"{platform.system()} {platform.release()}",
     )
     for p in plugins:

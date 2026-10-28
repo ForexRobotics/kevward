@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ForexRobotics/patchward/actions/workflows/ci.yml/badge.svg)](https://github.com/ForexRobotics/patchward/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
 **Defensive server hardening & patch automation for Ubuntu.**
 
@@ -10,8 +10,10 @@ patchward runs *on a server* and answers three questions a sysadmin asks every
 morning:
 
 1. **What on this box is vulnerable or out of date?** — pending security
-   updates and minor upgrades for apt, nginx, php, openssh, ufw, plus
-   dependency advisories for Composer/Laravel, Node.js/npm and WordPress.
+   updates and minor upgrades for the base system (apt), web servers
+   (nginx, Apache), databases (MySQL, MariaDB, PostgreSQL, Redis) and
+   php/openssh/ufw, plus dependency advisories for Composer/Laravel,
+   Node.js/npm and WordPress.
 2. **Who is attacking me?** — a time-ordered view of banned / probing source
    IPs from fail2ban and sshd auth logs.
 3. **Of everything being exploited in the wild right now, does any of it apply
@@ -38,9 +40,34 @@ cd patchward
 pip install .            # or: pipx install .
 ```
 
-Pure standard library — no Python dependencies. Optional host tools are
+**Requires Python 3.10+** (Ubuntu 22.04 and newer). The only dependency is
+`tomli`, and only on Python 3.10 — on 3.11+ the standard library's `tomllib`
+is used and patchward has no dependencies at all. Optional host tools are
 detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 `logwatch`.
+
+To make `patchward` available to root (needed for `report`/`apply`) when
+installed in a virtualenv, symlink it onto the system path:
+
+```bash
+sudo python3 -m venv /opt/patchward
+sudo /opt/patchward/bin/pip install .
+sudo ln -sf /opt/patchward/bin/patchward /usr/local/bin/patchward
+```
+
+### Supported services
+
+| Area        | Services |
+|-------------|----------|
+| Base system | apt (host-wide updates, reboot detection) |
+| Web servers | nginx, Apache (`apache2`) |
+| Databases   | MySQL, MariaDB, PostgreSQL, Redis |
+| Runtimes    | PHP, Node.js |
+| Apps        | Composer/Laravel, WordPress *(report-only)* |
+| Access      | OpenSSH (sshd), ufw |
+
+Any service not installed is silently skipped. Adding another is one file —
+see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Usage
 

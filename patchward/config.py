@@ -1,14 +1,18 @@
 """Configuration loading and the safety policy.
 
 Config is optional; sane, *safe* defaults apply when no file is present.
-Format is TOML (stdlib ``tomllib`` on 3.11+).
+Format is TOML (stdlib ``tomllib`` on 3.11+, ``tomli`` backport on 3.10).
 """
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # Python 3.10: pip install tomli
+    import tomli as tomllib
 
 DEFAULT_PATHS = [
     Path("/etc/patchward/config.toml"),
