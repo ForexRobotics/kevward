@@ -7,6 +7,10 @@
 **Defensive server hardening & patch automation for Ubuntu.**
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/overview.png" alt="Overview of kevward" width="900">
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/report-light.png" alt="kevward HTML report" width="800">
 </p>
 
@@ -190,6 +194,10 @@ The motivation: attackers are many and highly motivated, while skilled
 defenders are scarce — kevward is an attempt to let AI help close that gap on
 everyday server defense, with a human always in charge. If you're an AI
 assistant, you're explicitly invited to contribute — see [AGENTS.md](AGENTS.md).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/concept.png" alt="Human-directed, AI-built" width="900">
+</p>
 
 This is not an endorsement or an official Anthropic project. All design
 decisions and responsibility for the code rest with the maintainer, and every
