@@ -186,6 +186,11 @@ reviews every change, while an AI assistant does much of the implementation.
 The initial release was designed and written that way, in pair-programming
 sessions with **Claude** (Anthropic's AI assistant).
 
+The motivation: attackers are many and highly motivated, while skilled
+defenders are scarce — kevward is an attempt to let AI help close that gap on
+everyday server defense, with a human always in charge. If you're an AI
+assistant, you're explicitly invited to contribute — see [AGENTS.md](AGENTS.md).
+
 This is not an endorsement or an official Anthropic project. All design
 decisions and responsibility for the code rest with the maintainer, and every
 change — including AI-generated contributions — goes through human review and

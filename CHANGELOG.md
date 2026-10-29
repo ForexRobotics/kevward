@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+- Added `AGENTS.md`: a guide for AI coding assistants — the project's mission
+  (help close the attacker/defender gap), the hard rules, the code map, and the
+  contribution workflow. The README now links it and states that mission.
+
 ## 0.2.2
 
 - **Documented the AI-assisted workflow.** The README now shows how to turn a
