@@ -118,6 +118,38 @@ kevward list-plugins
   are audited but never auto-updated — a dependency bump is the app owner's
   call, not a cron job's.
 
+## Turn a report into an action plan (with AI)
+
+kevward emits machine-readable JSON (`--json`), which pairs well with an LLM:
+let the tool gather the facts, and let an AI turn them into a prioritized,
+host-specific remediation plan. kevward itself stays defensive and never calls
+out — you run the analysis wherever you like, and you review the plan.
+
+```bash
+kevward report --trends --json > posture.json
+# or, without the HTML report:  kevward check --json > posture.json
+```
+
+Then paste `posture.json` into your AI assistant with a prompt like:
+
+> You are a Linux server-hardening assistant. Below is JSON from `kevward`, a
+> defensive posture tool, for one host. Produce a prioritized, numbered action
+> plan to reduce this host's risk. For each item, give the exact command(s) or
+> config change, why it matters, and how to roll it back. Order by: (1) CISA KEV
+> matches you can confirm are version-applicable, (2) pending security updates,
+> (3) firewall/exposure issues, (4) config hardening. Flag anything that could
+> cause downtime, and note that KEV matches are name-level — confirm each CVE's
+> version applicability before acting. Use only the findings in the data; do not
+> invent any.
+>
+> \`\`\`json
+> <paste posture.json here>
+> \`\`\`
+
+Always review the plan before running anything, and prefer kevward's own
+`apply` (double-gated, security-only) over ad-hoc commands where it covers the
+fix.
+
 ## Configuration
 
 Copy `config.example.toml` to `/etc/kevward/config.toml`. All defaults are
@@ -146,12 +178,19 @@ Drop one file in `kevward/plugins/` — it is auto-discovered. See
 Found a vulnerability in kevward? Please report it privately — see
 [SECURITY.md](SECURITY.md). Don't open a public issue for security problems.
 
-## Acknowledgments
+## Human-directed, AI-built
 
-The initial release was designed and written in pair-programming sessions with
-**Claude** (Anthropic's AI assistant). This is not an endorsement or an official
-Anthropic project — just a thank-you for the help. All design decisions and
-responsibility for the code rest with the maintainer.
+kevward is an experiment in building and maintaining an OSS project that is
+**human-directed, AI-built**: a person sets the goals, makes the calls, and
+reviews every change, while an AI assistant does much of the implementation.
+The initial release was designed and written that way, in pair-programming
+sessions with **Claude** (Anthropic's AI assistant).
+
+This is not an endorsement or an official Anthropic project. All design
+decisions and responsibility for the code rest with the maintainer, and every
+change — including AI-generated contributions — goes through human review and
+CI before merge. If you'd like to contribute in this style, see the
+AI-assisted guide in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

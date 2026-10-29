@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+- **Documented the AI-assisted workflow.** The README now shows how to turn a
+  `--json` report into a prioritized remediation plan with an LLM, and frames
+  the project as *human-directed, AI-built*. CONTRIBUTING adds
+  AI-assisted contribution prompts for adding a service plugin, a new distro
+  backend, and version-level KEV matching. No code changes.
+
 ## 0.2.1
 
 - **Fixed the install instructions.** `pip install .` fails on Ubuntu 24.04 /
