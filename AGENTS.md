@@ -64,8 +64,11 @@ be.
 - `kevward/integrations/` — `trends.py` (CISA KEV matching), `fail2ban.py`,
   `logwatch.py`.
 - `kevward/reporting/html.py` — the single-file HTML report.
+- `kevward/firewall.py` — active-defense blocklist (`kevward firewall`): a
+  kevward-owned nftables set of high-confidence attacker IPs, allowlist, TTL.
+  Local host only.
 - `kevward/cli.py` — subcommands (`check`, `trends`, `report`, `apply`,
-  `schedule-reboot`, `list-plugins`).
+  `schedule-reboot`, `firewall`, `list-plugins`).
 
 ## The two most common contributions
 

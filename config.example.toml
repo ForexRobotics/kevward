@@ -26,3 +26,13 @@ reboot_window_start = "04:00"   # local HH:MM for scheduled reboots
 [policy.overrides.nginx]
 # e.g. allow minor nginx upgrades even though the global default is off
 # apply_minor = true
+
+# --- active-defense blocklist (`kevward firewall`) -------------------------
+# Builds a kevward-owned nftables set of high-confidence attacker IPs from this
+# host's own fail2ban/sshd evidence. Local host only; dry-run by default.
+[firewall]
+ttl_days = 14              # blocklist entries age out after this many days
+min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
+# Extra CIDRs/IPs that must NEVER be blocked. Loopback, RFC1918, CGNAT and the
+# current SSH/admin source are always allowlisted automatically; add your own:
+# allow = ["203.0.113.0/24", "198.51.100.10"]

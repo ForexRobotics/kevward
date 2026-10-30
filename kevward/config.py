@@ -49,8 +49,21 @@ class Policy:
 
 
 @dataclass
+class FirewallConfig:
+    """Active-defense blocklist settings (see `kevward firewall`)."""
+
+    # TTL for blocklist elements; they age out automatically.
+    ttl_days: float = 14.0
+    # Minimum sshd auth failures for an IP to qualify (fail2ban bans always do).
+    min_sshd_failures: int = 20
+    # Extra CIDRs/IPs that must never be blocked (added to the built-in floor).
+    allow: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
+    firewall: FirewallConfig = field(default_factory=FirewallConfig)
     report_dir: Path = Path("/var/log/kevward")
 
     @classmethod
@@ -67,6 +80,10 @@ class Config:
         pol = data.get("policy", {})
         policy = Policy(**{k: v for k, v in pol.items() if k in Policy.__annotations__})
         cfg = cls(policy=policy)
+        fw = data.get("firewall", {})
+        cfg.firewall = FirewallConfig(
+            **{k: v for k, v in fw.items() if k in FirewallConfig.__annotations__}
+        )
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])
         return cfg
