@@ -122,6 +122,31 @@ kevward list-plugins
   are audited but never auto-updated — a dependency bump is the app owner's
   call, not a cron job's.
 
+## Active defense: attacker-IP blocklist
+
+kevward already knows who is hitting your box (fail2ban bans + sshd auth
+failures). `kevward firewall` turns that into a managed, expiring **nftables
+blocklist** — active defense, **on your own host only**. It never contacts,
+scans, or acts on any remote system.
+
+```bash
+kevward firewall plan                 # DRY RUN: what would be blocked, and why
+sudo kevward firewall apply --yes     # commit to the kevward-owned nft set
+sudo kevward firewall list            # current set (ip, reason, expires)
+sudo kevward firewall flush --yes     # remove kevward's set (reverts the change)
+```
+
+- **Dry-run by default**; `apply` needs `--yes`.
+- **A mandatory allowlist always wins** — loopback, RFC1918, CGNAT, the current
+  SSH/admin source, and any `allow` CIDRs are never blocked, so you can't lock
+  yourself out via the default flow.
+- **Every entry has a TTL** (default 14 days) and ages out automatically.
+- Uses an **nftables named set** (O(1) lookup), which scales to thousands of IPs
+  where a per-rule firewall does not. kevward only ever touches its own table.
+
+Tune it in `[firewall]` (`ttl_days`, `min_sshd_failures`, `allow`) — see
+`config.example.toml`.
+
 ## Turn a report into an action plan (with AI)
 
 kevward emits machine-readable JSON (`--json`), which pairs well with an LLM:

@@ -1,17 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
-- **`kevward firewall` (prototype, active defense — local host only).** Builds a
-  kevward-owned nftables set of high-confidence attacker IPs from the host's own
-  fail2ban/sshd evidence, so the attacker IPs in the report can be turned into a
-  managed, expiring ingress blocklist. `plan` is a dry run (default); `apply`
-  commits; `list` / `flush` manage kevward's own set. Every entry has a TTL, and
-  a mandatory allowlist (loopback, RFC1918, CGNAT, the current SSH/admin source,
-  and any configured CIDRs) makes self-block impossible by default. nftables set
-  (O(1) lookup) scales to thousands of IPs where per-rule UFW does not. Still
-  strictly defensive: it only filters ingress on the host it runs on and never
-  touches any remote system. See issue #4.
+- **`kevward firewall` — active-defense blocklist (local host only).** Turns the
+  attacker IPs kevward already collects for the report (fail2ban bans + sshd auth
+  failures) into a managed, expiring nftables blocklist. `plan` is a dry run
+  (default); `apply --yes` commits; `list` / `flush` manage kevward's own set.
+  Every entry carries a TTL, and a mandatory allowlist (loopback, RFC1918, CGNAT,
+  the current SSH/admin source, and any configured CIDRs) makes self-block
+  impossible by default. An nftables named set (O(1) lookup) scales to thousands
+  of IPs where per-rule UFW does not. Configurable via a `[firewall]` section.
+  Still strictly defensive: it only filters ingress on the host it runs on and
+  never touches any remote system. (#4)
+- This release also carries the 0.2.3 changes below (which were not published to
+  PyPI): `AGENTS.md` and the project mission in the README.
 
 ## 0.2.3
 
