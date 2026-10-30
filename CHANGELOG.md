@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **`kevward firewall` (prototype, active defense — local host only).** Builds a
+  kevward-owned nftables set of high-confidence attacker IPs from the host's own
+  fail2ban/sshd evidence, so the attacker IPs in the report can be turned into a
+  managed, expiring ingress blocklist. `plan` is a dry run (default); `apply`
+  commits; `list` / `flush` manage kevward's own set. Every entry has a TTL, and
+  a mandatory allowlist (loopback, RFC1918, CGNAT, the current SSH/admin source,
+  and any configured CIDRs) makes self-block impossible by default. nftables set
+  (O(1) lookup) scales to thousands of IPs where per-rule UFW does not. Still
+  strictly defensive: it only filters ingress on the host it runs on and never
+  touches any remote system. See issue #4.
+
 ## 0.2.3
 
 - Added `AGENTS.md`: a guide for AI coding assistants — the project's mission

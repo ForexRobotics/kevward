@@ -7,6 +7,7 @@ Subcommands:
   report           Write an HTML posture report (+ attacker IPs, + trends).
   trends           Show actively-exploited CVEs (CISA KEV) relevant to this host.
   schedule-reboot  Schedule a reboot in the maintenance window.
+  firewall         Manage an nftables blocklist of attacker IPs (local host).
   list-plugins     Show discovered service plugins.
 
 Safety: `apply` changes the system and is never implied. Everything else is
@@ -152,6 +153,23 @@ def cmd_schedule_reboot(args) -> int:
     return 0
 
 
+def cmd_firewall(args) -> int:
+    cfg = _mkconfig(args)
+    from . import firewall as fw
+    ttl_days = cfg.firewall.ttl_days
+    if args.ttl:
+        try:
+            ttl_days = fw.parse_duration_days(args.ttl)
+        except ValueError as e:
+            print(f"error: {e}")
+            return 2
+    min_sshd = (args.min_sshd if args.min_sshd is not None
+                else cfg.firewall.min_sshd_failures)
+    extra_allow = list(cfg.firewall.allow) + (args.allow or [])
+    return fw.run_cli(args.action, ttl_days=ttl_days, min_sshd=min_sshd,
+                      extra_allow=extra_allow, yes=args.yes, use_json=args.json)
+
+
 def cmd_list_plugins(args) -> int:
     for name, cls in sorted(discover().items()):
         mode = "report-only" if not cls.supports_apply else "apply-capable"
@@ -193,6 +211,22 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(sr)
     sr.add_argument("--window", help="HH:MM local time")
     sr.set_defaults(func=cmd_schedule_reboot)
+
+    fw = sub.add_parser(
+        "firewall",
+        help="manage the active-defense blocklist (nftables, local host only)",
+    )
+    _add_common(fw)
+    fw.add_argument("action", choices=["plan", "apply", "list", "flush"],
+                    help="plan (dry run) / apply / list / flush kevward's set")
+    fw.add_argument("--yes", action="store_true",
+                    help="actually change the firewall (apply/flush)")
+    fw.add_argument("--ttl", help="element TTL, e.g. 14d, 72h (default from config)")
+    fw.add_argument("--min-sshd-failures", type=int, dest="min_sshd",
+                    help="sshd-failure threshold to qualify an IP")
+    fw.add_argument("--allow", action="append", dest="allow",
+                    help="extra allowlisted CIDR/IP, never blocked (repeatable)")
+    fw.set_defaults(func=cmd_firewall)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
     _add_common(lp)
