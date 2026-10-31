@@ -58,6 +58,16 @@ class FirewallConfig:
     min_sshd_failures: int = 20
     # Extra CIDRs/IPs that must never be blocked (added to the built-in floor).
     allow: list[str] = field(default_factory=list)
+    # Optional DNSBL cross-check (off by default -> no network call).
+    check_dnsbl: bool = False
+    # DNSBL zone to query (e.g. a Spamhaus DQS zone "<key>.zen.dq.spamhaus.net").
+    dnsbl_zone: str = "zen.spamhaus.org"
+    # Resolver to query directly (DNSBLs rate-limit per resolver; public ones are
+    # blocked by Spamhaus). None = system resolver from /etc/resolv.conf.
+    dnsbl_resolver: str | None = None
+    # Only look up the top-N block candidates; cache results this many days.
+    dnsbl_top_n: int = 10
+    dnsbl_cache_days: float = 7.0
 
 
 @dataclass

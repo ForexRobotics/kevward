@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`kevward firewall` optional DNSBL cross-check (opt-in).** `--check-dnsbl`
+  looks up only the top-N block candidates against a DNS blocklist to reduce
+  false positives. `enrich` (default) annotates the plan with each IP's verdict;
+  `--require-reputation` (confirm) blocks only IPs the DNSBL flags as malicious.
+  Off by default, so kevward still makes no network call unless asked. A minimal
+  stdlib UDP DNS query to a configurable resolver (`--dnsbl-resolver`, since
+  DNSBLs rate-limit per resolver and public ones are blocked by Spamhaus), with
+  a Spamhaus-DQS-capable `--dnsbl-zone`, a TTL cache, and strict **fail-soft**
+  (blocked-resolver codes / timeouts are "unknown" and never block). The
+  allowlist still always wins. (#4)
 - **`kevward harden` (prototype) — host hardening checks + reversible interim
   mitigations, local host only.** `harden check` reports posture (running vs
   newest-installed kernel + reboot-required, key security sysctls, Ubuntu

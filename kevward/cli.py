@@ -167,8 +167,16 @@ def cmd_firewall(args) -> int:
     min_sshd = (args.min_sshd if args.min_sshd is not None
                 else cfg.firewall.min_sshd_failures)
     extra_allow = list(cfg.firewall.allow) + (args.allow or [])
-    return fw.run_cli(args.action, ttl_days=ttl_days, min_sshd=min_sshd,
-                      extra_allow=extra_allow, yes=args.yes, use_json=args.json)
+    top_n = args.dnsbl_top_n if args.dnsbl_top_n is not None else cfg.firewall.dnsbl_top_n
+    return fw.run_cli(
+        args.action, ttl_days=ttl_days, min_sshd=min_sshd,
+        extra_allow=extra_allow, yes=args.yes, use_json=args.json,
+        check_dnsbl=args.check_dnsbl or cfg.firewall.check_dnsbl,
+        require_reputation=args.require_reputation,
+        dnsbl_zone=args.dnsbl_zone or cfg.firewall.dnsbl_zone,
+        dnsbl_resolver=args.dnsbl_resolver or cfg.firewall.dnsbl_resolver,
+        dnsbl_top_n=top_n, dnsbl_cache_days=cfg.firewall.dnsbl_cache_days,
+    )
 
 
 def cmd_harden(args) -> int:
@@ -239,6 +247,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help="sshd-failure threshold to qualify an IP")
     fw.add_argument("--allow", action="append", dest="allow",
                     help="extra allowlisted CIDR/IP, never blocked (repeatable)")
+    fw.add_argument("--check-dnsbl", action="store_true", dest="check_dnsbl",
+                    help="cross-check top candidates against a DNSBL (opt-in, network)")
+    fw.add_argument("--require-reputation", action="store_true",
+                    dest="require_reputation",
+                    help="confirm mode: block only IPs the DNSBL flags as malicious")
+    fw.add_argument("--dnsbl-zone", dest="dnsbl_zone",
+                    help="DNSBL zone (e.g. a Spamhaus DQS zone)")
+    fw.add_argument("--dnsbl-resolver", dest="dnsbl_resolver",
+                    help="resolver IP to query directly (avoids public-resolver blocks)")
+    fw.add_argument("--dnsbl-top-n", type=int, dest="dnsbl_top_n",
+                    help="how many top candidates to look up (default 10)")
     fw.set_defaults(func=cmd_firewall)
 
     hd = sub.add_parser(
