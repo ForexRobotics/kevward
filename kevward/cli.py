@@ -8,6 +8,7 @@ Subcommands:
   trends           Show actively-exploited CVEs (CISA KEV) relevant to this host.
   schedule-reboot  Schedule a reboot in the maintenance window.
   firewall         Manage an nftables blocklist of attacker IPs (local host).
+  harden           Host hardening checks + reversible interim mitigations.
   list-plugins     Show discovered service plugins.
 
 Safety: `apply` changes the system and is never implied. Everything else is
@@ -170,6 +171,18 @@ def cmd_firewall(args) -> int:
                       extra_allow=extra_allow, yes=args.yes, use_json=args.json)
 
 
+def cmd_harden(args) -> int:
+    from . import harden as hd
+    return hd.run_cli(
+        args.action,
+        mptcp_off=args.mptcp_off,
+        drop_ip_options=args.drop_ip_options,
+        persist=not args.no_persist,
+        yes=args.yes,
+        use_json=args.json,
+    )
+
+
 def cmd_list_plugins(args) -> int:
     for name, cls in sorted(discover().items()):
         mode = "report-only" if not cls.supports_apply else "apply-capable"
@@ -227,6 +240,22 @@ def build_parser() -> argparse.ArgumentParser:
     fw.add_argument("--allow", action="append", dest="allow",
                     help="extra allowlisted CIDR/IP, never blocked (repeatable)")
     fw.set_defaults(func=cmd_firewall)
+
+    hd = sub.add_parser(
+        "harden",
+        help="host hardening: checks + reversible interim mitigations (local host)",
+    )
+    _add_common(hd)
+    hd.add_argument("action", choices=["check", "plan", "apply", "list", "revert"],
+                    help="check (read-only) / plan / apply / list / revert")
+    hd.add_argument("--yes", action="store_true", help="actually apply/revert")
+    hd.add_argument("--mptcp-off", action="store_true", dest="mptcp_off",
+                    help="disable MPTCP kernel-wide (sysctl drop-in)")
+    hd.add_argument("--drop-ip-options", action="store_true", dest="drop_ip_options",
+                    help="drop inbound IPv4 packets with IP options (nftables)")
+    hd.add_argument("--no-persist", action="store_true", dest="no_persist",
+                    help="don't install the boot-time re-apply systemd unit")
+    hd.set_defaults(func=cmd_harden)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
     _add_common(lp)
