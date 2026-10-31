@@ -1,5 +1,10 @@
 # Contributing
 
+New here? Read **[AGENTS.md](AGENTS.md)** (why kevward exists and the
+non-negotiable rules) and **[README.md](README.md)** (what it does and how to
+run it) first. This file is the **how to contribute** — plugins, AI-assisted
+prompts, the CLA, and the dev loop.
+
 ## Add support for a service in ~5 minutes
 
 kevward auto-discovers any plugin dropped into `kevward/plugins/`. There is

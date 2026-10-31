@@ -293,6 +293,16 @@ change — including AI-generated contributions — goes through human review an
 CI before merge. If you'd like to contribute in this style, see the
 AI-assisted guide in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Supporting kevward
+
+The most useful support is **contribution**: add a service plugin or a distro
+backend, run kevward on your own servers and file what breaks, improve the docs,
+or help triage issues — see [CONTRIBUTING.md](CONTRIBUTING.md) and
+[AGENTS.md](AGENTS.md). If you use an AI coding agent, pointing it at
+[AGENTS.md](AGENTS.md) and opening a reviewed PR is a real contribution in the
+spirit of the project. And spreading the word — a star, a mention, a write-up —
+genuinely helps a young defensive project reach the people it can protect.
+
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
