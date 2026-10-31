@@ -21,6 +21,10 @@ import ipaddress
 import json
 import os
 import re
+import secrets
+import socket
+import struct
+import time
 from dataclasses import dataclass, field
 
 from .integrations import fail2ban, logwatch
@@ -261,11 +265,167 @@ def _plan_data(min_sshd: int, extra_allow: list[str]) -> dict:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Optional DNSBL cross-check (opt-in; off by default -> no network call).
+# Confirms (or just annotates) that an IP is also flagged by a DNS blocklist,
+# to reduce false positives before blocking. stdlib-only: a minimal UDP DNS
+# query to a *configurable* resolver (DNSBLs rate-limit per resolver, and big
+# public resolvers like 8.8.8.8 are blocked by Spamhaus). Fail soft: any
+# error / timeout / blocked-resolver code is "unknown" and never blocks.
+# --------------------------------------------------------------------------- #
+_DNSBL_MALICIOUS = {f"127.0.0.{i}" for i in (2, 3, 4, 5, 6, 7, 9)}  # SBL/XBL/CBL
+DNSBL_CACHE = "/var/cache/kevward/dnsbl.json"
+
+
+def _dns_build_query(name: str) -> tuple[bytes, int]:
+    tid = secrets.randbits(16)
+    hdr = struct.pack(">HHHHHH", tid, 0x0100, 1, 0, 0, 0)  # RD=1, 1 question
+    q = b"".join(bytes([len(x)]) + x.encode() for x in name.split(".")) + b"\x00"
+    q += struct.pack(">HH", 1, 1)  # QTYPE=A, QCLASS=IN
+    return hdr + q, tid
+
+
+def _dns_skip_name(data: bytes, off: int) -> int:
+    while off < len(data):
+        n = data[off]
+        if n == 0:
+            return off + 1
+        if n & 0xC0 == 0xC0:  # compression pointer ends the name
+            return off + 2
+        off += 1 + n
+    return off
+
+
+def _dns_parse(resp: bytes) -> tuple[int, list[str]]:
+    """Return (rcode, [A-record IPs]). Tolerant, best-effort."""
+    if len(resp) < 12:
+        return (-1, [])
+    _, flags, qd, an, _, _ = struct.unpack(">HHHHHH", resp[:12])
+    rcode = flags & 0x0F
+    off = 12
+    for _ in range(qd):
+        off = _dns_skip_name(resp, off) + 4  # + qtype + qclass
+    ips: list[str] = []
+    for _ in range(an):
+        off = _dns_skip_name(resp, off)
+        if off + 10 > len(resp):
+            break
+        rtype, _, _, rdlen = struct.unpack(">HHIH", resp[off:off + 10])
+        off += 10
+        rdata = resp[off:off + rdlen]
+        off += rdlen
+        if rtype == 1 and rdlen == 4:
+            ips.append(".".join(str(b) for b in rdata))
+    return (rcode, ips)
+
+
+def classify_dnsbl(rcode: int, ips: list[str]) -> str:
+    """'clean' / 'malicious' / 'policy' / 'unknown'. Conservative: anything we
+    are not sure is malicious is never treated as a reason to block."""
+    if rcode == 3:        # NXDOMAIN -> not listed
+        return "clean"
+    if rcode != 0:
+        return "unknown"
+    if not ips:
+        return "clean"
+    if any(ip.startswith("127.255.255.") for ip in ips):
+        return "unknown"  # open-resolver / rate-limited / blocked
+    if any(ip in _DNSBL_MALICIOUS for ip in ips):
+        return "malicious"
+    return "policy"       # PBL or other listing -> weak signal, don't block
+
+
+def _default_resolver() -> str | None:
+    try:
+        with open("/etc/resolv.conf") as fh:
+            for line in fh:
+                if line.startswith("nameserver"):
+                    return line.split()[1]
+    except OSError:
+        pass
+    return None
+
+
+def dnsbl_lookup(ip: str, *, zone: str, resolver: str | None = None,
+                 timeout: float = 3.0) -> str:
+    octets = ip.split(".")
+    if len(octets) != 4:  # IPv6 not supported in this MVP
+        return "unknown"
+    res = resolver or _default_resolver()
+    if not res:
+        return "unknown"
+    name = ".".join(reversed(octets)) + "." + zone
+    query, _ = _dns_build_query(name)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(timeout)
+        try:
+            s.sendto(query, (res, 53))
+            resp, _addr = s.recvfrom(512)
+        finally:
+            s.close()
+    except OSError:
+        return "unknown"  # fail soft
+    return classify_dnsbl(*_dns_parse(resp))
+
+
+def _load_cache() -> dict:
+    try:
+        with open(DNSBL_CACHE) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_cache(cache: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(DNSBL_CACHE), exist_ok=True)
+        with open(DNSBL_CACHE, "w") as fh:
+            json.dump(cache, fh)
+    except OSError:
+        pass
+
+
+def reputation_for(candidates: list[Candidate], *, zone: str,
+                   resolver: str | None, top_n: int, cache_days: float) -> dict:
+    """{ip: verdict} for the top_n candidates by score. Cache-aware; fail-soft;
+    'unknown' is never cached so it is re-checked next time."""
+    top = sorted(candidates, key=lambda c: c.score, reverse=True)[:max(0, top_n)]
+    cache = _load_cache()
+    now = time.time()
+    ttl = cache_days * 86400
+    rep: dict[str, str] = {}
+    changed = False
+    for c in top:
+        ent = cache.get(c.ip)
+        if ent and (now - ent.get("ts", 0)) < ttl:
+            rep[c.ip] = ent["verdict"]
+            continue
+        v = dnsbl_lookup(c.ip, zone=zone, resolver=resolver)
+        rep[c.ip] = v
+        if v != "unknown":
+            cache[c.ip] = {"verdict": v, "ts": now}
+            changed = True
+    if changed:
+        _save_cache(cache)
+    return rep
+
+
 def run_cli(action: str, *, ttl_days: float, min_sshd: int,
-            extra_allow: list[str], yes: bool, use_json: bool) -> int:
+            extra_allow: list[str], yes: bool, use_json: bool,
+            check_dnsbl: bool = False, require_reputation: bool = False,
+            dnsbl_zone: str = "zen.spamhaus.org", dnsbl_resolver: str | None = None,
+            dnsbl_top_n: int = 10, dnsbl_cache_days: float = 7.0) -> int:
     if action in ("plan", "apply"):
         data = _plan_data(min_sshd, extra_allow)
         to_add = data["to_add"]
+        rep: dict[str, str] = {}
+        if check_dnsbl:
+            rep = reputation_for(to_add, zone=dnsbl_zone, resolver=dnsbl_resolver,
+                                 top_n=dnsbl_top_n, cache_days=dnsbl_cache_days)
+            if require_reputation:
+                # confirm mode: block only candidates confirmed malicious by DNSBL
+                to_add = [c for c in to_add if rep.get(c.ip) == "malicious"]
         if use_json:
             out = {
                 "action": action,
@@ -276,6 +436,9 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 "to_add": [vars(c) for c in to_add],
                 "already_present": data["already_present"],
                 "allowlisted_skipped": data["allowlisted_skipped"],
+                "dnsbl": {"enabled": check_dnsbl,
+                          "mode": "confirm" if require_reputation else "enrich",
+                          "zone": dnsbl_zone, "verdicts": rep} if check_dnsbl else None,
             }
             print(json.dumps(out, indent=2, ensure_ascii=False))
         else:
@@ -283,12 +446,18 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 print("note: nftables (nft) not found -- showing candidates only.")
             if not data["root"]:
                 print("note: not root -- evidence and set state may be incomplete.")
+            if check_dnsbl:
+                mode = "confirm (block only DNSBL-malicious)" if require_reputation \
+                    else "enrich (annotate only)"
+                print(f"note: DNSBL cross-check on top {dnsbl_top_n} via "
+                      f"{dnsbl_zone} -- mode: {mode} (unknown never blocks)")
             print(f"candidates: {data['candidates']}  "
                   f"allowlisted (never blocked): {len(data['allowlisted_skipped'])}  "
                   f"already in set: {len(data['already_present'])}")
             print(f"would add {len(to_add)} IP(s)  (TTL {ttl_days:g}d):")
             for c in to_add[:100]:
-                print(f"  + {c.ip:<39} {c.reason}")
+                tag = f"  [DNSBL: {rep[c.ip]}]" if c.ip in rep else ""
+                print(f"  + {c.ip:<39} {c.reason}{tag}")
             if len(to_add) > 100:
                 print(f"  ... and {len(to_add) - 100} more")
 

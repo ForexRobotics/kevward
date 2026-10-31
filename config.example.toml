@@ -36,3 +36,10 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # Extra CIDRs/IPs that must NEVER be blocked. Loopback, RFC1918, CGNAT and the
 # current SSH/admin source are always allowlisted automatically; add your own:
 # allow = ["203.0.113.0/24", "198.51.100.10"]
+# Optional DNSBL cross-check (off by default -> no network call). When on, only
+# the top-N candidates are looked up; see `firewall --require-reputation`.
+# check_dnsbl = false
+# dnsbl_zone = "zen.spamhaus.org"   # or a Spamhaus DQS zone: "<key>.zen.dq.spamhaus.net"
+# dnsbl_resolver = "1.2.3.4"        # query this resolver directly (recommended); unset = system resolver
+# dnsbl_top_n = 10
+# dnsbl_cache_days = 7
