@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.1
+
+- **Fix `kevward harden list` false negative for `ip_options_table`.** Querying
+  nftables needs root, so an unprivileged `harden list` was reporting the
+  kevward table as absent (`False`) when it actually existed. Detection is now
+  tri-state — `True` (present) / `False` (confirmed absent) / `unknown (run as
+  root)` — and non-root runs print a hint instead of a misleading `False`. The
+  mitigation itself was always applied correctly; only the status readout was
+  wrong.
+- **`kevward harden revert` no longer overstates re-enabling MPTCP.** It now
+  removes only kevward's sysctl drop-in and re-evaluates all drop-ins
+  (`sysctl --system`) rather than forcing `net.mptcp.enabled=1`, then reports
+  the real effective value — so a hand-written drop-in that still disables MPTCP
+  is reported honestly.
+
 ## 0.4.0
 
 Two additions aimed at the attacker/defender gap: safer blocklisting, and

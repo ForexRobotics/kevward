@@ -50,6 +50,26 @@ def _sysctl(key: str) -> str | None:
     return r.out.strip() if r.ok else None
 
 
+def _nft_table_exists(name: str) -> bool | None:
+    """Whether the ``inet <name>`` nft table is present.
+
+    Tri-state: True (present), False (confirmed absent), or None (can't tell --
+    nft missing, or not root so the query is denied). Querying nft requires
+    CAP_NET_ADMIN, so an unprivileged ``harden list`` must not mistake "denied"
+    for "absent".
+    """
+    if not have("nft"):
+        return None
+    r = run(["nft", "list", "table", "inet", name], timeout=10)
+    if r.ok:
+        return True
+    err = (r.err or "").lower()
+    if "no such file" in err or "does not exist" in err or "no such table" in err:
+        return False
+    # permission denied / operation not permitted / anything else -> unknown
+    return None
+
+
 def running_kernel() -> str:
     r = run(["uname", "-r"], timeout=10)
     return r.out.strip()
@@ -234,8 +254,15 @@ def revert() -> list[str]:
     msgs = []
     if os.path.exists(SYSCTL_FILE):
         os.remove(SYSCTL_FILE)
-        run(["sysctl", "-w", "net.mptcp.enabled=1"], timeout=10)
-        msgs.append("mptcp re-enabled; sysctl drop-in removed")
+        # Re-evaluate ALL sysctl drop-ins rather than forcing =1: another
+        # drop-in (e.g. a hand-written 99-disable-mptcp.conf) may still set it.
+        run(["sysctl", "--system"], timeout=20)
+        eff = _sysctl("net.mptcp.enabled")
+        if eff == "0":
+            msgs.append("removed kevward mptcp drop-in; net.mptcp.enabled is "
+                        "still 0 — another sysctl.d drop-in is disabling MPTCP")
+        else:
+            msgs.append(f"removed kevward mptcp drop-in; net.mptcp.enabled now {eff}")
     run(["systemctl", "disable", "--now", UNIT_NAME], timeout=20)
     if os.path.exists(UNIT_FILE):
         os.remove(UNIT_FILE)
@@ -251,9 +278,7 @@ def state() -> dict:
     return {
         "mptcp_enabled": _sysctl("net.mptcp.enabled"),
         "mptcp_dropin": os.path.exists(SYSCTL_FILE),
-        "ip_options_table": run(
-            ["nft", "list", "table", "inet", NFT_TABLE], timeout=10
-        ).ok,
+        "ip_options_table": _nft_table_exists(NFT_TABLE),
         "boot_unit_enabled": run(
             ["systemctl", "is-enabled", UNIT_NAME], timeout=10
         ).out.strip() == "enabled",
@@ -293,7 +318,11 @@ def run_cli(action: str, *, mptcp_off: bool, drop_ip_options: bool,
             print(json.dumps(st, indent=2))
         else:
             for k, v in st.items():
-                print(f"  {k}: {v}")
+                shown = "unknown (run as root)" if v is None else v
+                print(f"  {k}: {shown}")
+            if st.get("ip_options_table") is None and not is_root():
+                print("  note: querying nftables needs root — "
+                      "re-run with sudo to resolve ip_options_table")
         return 0
 
     # If no mitigation flag was given, apply/plan both (the common case).
