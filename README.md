@@ -108,6 +108,8 @@ kevward apply                 # DRY RUN: show what would be patched
 sudo kevward apply --yes      # actually apply security updates
 sudo kevward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot
 sudo kevward schedule-reboot --window 04:00
+kevward firewall plan         # DRY RUN: attacker IPs that would be blocked
+kevward harden check          # kernel/sysctl/exposure posture (read-only)
 kevward list-plugins
 ```
 
@@ -146,6 +148,67 @@ sudo kevward firewall flush --yes     # remove kevward's set (reverts the change
 
 Tune it in `[firewall]` (`ttl_days`, `min_sshd_failures`, `allow`) — see
 `config.example.toml`.
+
+#### Optional: DNSBL reputation cross-check
+
+By default the blocklist is built from *this host's own* evidence. You can
+optionally cross-check the top candidates against a DNS blocklist (DNSBL) first,
+so a noisy-but-benign IP isn't blocked on local evidence alone:
+
+```bash
+# enrich (default): annotate the plan with each IP's reputation, block nothing extra
+sudo kevward firewall plan --check-dnsbl
+
+# confirm: block ONLY the candidates the DNSBL also flags as malicious
+sudo kevward firewall apply --yes --check-dnsbl --require-reputation
+
+# query a specific resolver / zone (recommended — see note)
+sudo kevward firewall plan --check-dnsbl --dnsbl-resolver 1.2.3.4 \
+    --dnsbl-zone your-key.zen.dq.spamhaus.net
+```
+
+- **Off by default** — kevward makes no network call unless you pass
+  `--check-dnsbl`. Only the top *N* candidates (default 10, `--dnsbl-top-n`) are
+  looked up; results are cached.
+- **Fail-soft, always.** A timeout, a `SERVFAIL`, an IPv6 address, or a
+  blocked-resolver response all classify as *unknown* and **never** cause a
+  block. The mandatory allowlist still wins over everything.
+- **Mind the resolver.** DNSBLs rate-limit per resolver, and Spamhaus **blocks
+  public resolvers** (Google/Cloudflare return error codes, not verdicts). Query
+  a resolver you control with `--dnsbl-resolver`, or use a Spamhaus DQS zone
+  (`--dnsbl-zone your-key.zen.dq.spamhaus.net`). Defaults are in `[firewall]`.
+
+## Host hardening & interim mitigations
+
+`kevward harden` reports host-level posture and, when you opt in, applies
+**reversible, kevward-owned interim mitigations** — for the window between a
+vulnerability being actively exploited and a vendor fix landing on your box.
+Like everything else, it only touches the local host.
+
+```bash
+kevward harden check                 # read-only: kernel, sysctls, exposure
+sudo kevward harden apply --yes --mptcp-off --drop-ip-options   # opt-in mitigations
+sudo kevward harden list             # what kevward has applied
+sudo kevward harden revert --yes     # remove exactly what kevward added
+```
+
+`harden check` reports the running vs newest-installed kernel (and whether a
+reboot is pending), key security sysctls, Ubuntu Livepatch status, and public
+TCP listeners. `harden apply` can:
+
+- `--mptcp-off` — disable MPTCP kernel-wide via a kevward-owned sysctl drop-in.
+- `--drop-ip-options` — drop inbound IPv4 packets carrying IP options, via a
+  kevward-owned nftables table.
+
+Both are **made reboot-persistent** by a small kevward-owned systemd unit that
+re-applies them on boot, so an interim mitigation survives a reboot until the
+real fix ships. `revert` removes precisely what kevward added (drop-in, nft
+table, and unit) and nothing else. Dry-run by default; it never touches SSH or
+ufw.
+
+> This was built in response to CVE-2026-98432 (a Linux kernel IPv4 TCP flaw):
+> a way to stand up a reversible stopgap on exposed hosts *now*, then cleanly
+> remove it once the patched kernel is installed and rebooted.
 
 ## Turn a report into an action plan (with AI)
 

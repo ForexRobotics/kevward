@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+Two additions aimed at the attacker/defender gap: safer blocklisting, and
+reversible interim mitigations for the window before a kernel fix ships.
 
 - **`kevward firewall` optional DNSBL cross-check (opt-in).** `--check-dnsbl`
   looks up only the top-N block candidates against a DNS blocklist to reduce
