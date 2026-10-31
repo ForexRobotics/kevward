@@ -5,6 +5,21 @@ a human has pointed you at this repository, welcome. This file tells you what
 kevward is, why it exists, and how to contribute changes that a human will be
 glad to merge. Read it before you plan or edit anything.
 
+## The project's other docs (read these too)
+
+AGENTS.md is the **why and the rules**. For the rest, start with these — they
+are the first links you should follow from here:
+
+- **[README.md](README.md)** — what kevward does, how to install it, and the
+  full command reference. The user's view of the tool.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to add a service plugin or a
+  distro backend, ready-to-use prompts for AI agents, the CLA, and the dev/CI
+  loop. **If you read one more file, make it this one.**
+- **[CLA.md](CLA.md)** — the Contributor License Agreement you accept by
+  opening a PR.
+- **[SECURITY.md](SECURITY.md)** — how to report a vulnerability in kevward
+  privately (never open a public issue for a security problem).
+
 ## Why this project exists (please read)
 
 Attackers are many, highly motivated, and increasingly automated. Defenders are
@@ -50,7 +65,7 @@ be.
 6. `ruff check .` must pass, and the CLI smoke test must pass
    (`kevward --version && kevward list-plugins && kevward check`).
 7. Every change is **human-reviewed** and needs **CLA agreement + a signed-off
-   commit** (`git commit -s`). See CONTRIBUTING.md.
+   commit** (`git commit -s`). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## How the code is laid out
 
@@ -65,8 +80,9 @@ be.
   `logwatch.py`.
 - `kevward/reporting/html.py` — the single-file HTML report.
 - `kevward/firewall.py` — active-defense blocklist (`kevward firewall`): a
-  kevward-owned nftables set of high-confidence attacker IPs, allowlist, TTL.
-  Local host only.
+  kevward-owned nftables set of high-confidence attacker IPs, allowlist, TTL,
+  and an optional (opt-in, fail-soft) DNSBL reputation cross-check. Local host
+  only.
 - `kevward/harden.py` — host hardening (`kevward harden`): read-only posture
   checks plus reversible, kevward-owned interim mitigations (MPTCP off, drop
   IP-options), made reboot-persistent via a kevward-owned systemd unit.
