@@ -67,8 +67,11 @@ be.
 - `kevward/firewall.py` — active-defense blocklist (`kevward firewall`): a
   kevward-owned nftables set of high-confidence attacker IPs, allowlist, TTL.
   Local host only.
+- `kevward/harden.py` — host hardening (`kevward harden`): read-only posture
+  checks plus reversible, kevward-owned interim mitigations (MPTCP off, drop
+  IP-options), made reboot-persistent via a kevward-owned systemd unit.
 - `kevward/cli.py` — subcommands (`check`, `trends`, `report`, `apply`,
-  `schedule-reboot`, `firewall`, `list-plugins`).
+  `schedule-reboot`, `firewall`, `harden`, `list-plugins`).
 
 ## The two most common contributions
 

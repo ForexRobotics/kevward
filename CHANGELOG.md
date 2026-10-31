@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **`kevward harden` (prototype) — host hardening checks + reversible interim
+  mitigations, local host only.** `harden check` reports posture (running vs
+  newest-installed kernel + reboot-required, key security sysctls, Ubuntu
+  Livepatch status, public TCP listeners). `harden apply --yes` applies opt-in,
+  kevward-owned, reversible mitigations: `--mptcp-off` (sysctl drop-in) and
+  `--drop-ip-options` (drop inbound IPv4 packets carrying IP options via an
+  nftables table). The ip-options rule is made **reboot-persistent** by a tiny
+  kevward-owned systemd unit that re-applies it on boot — so interim mitigations
+  survive a reboot. `harden list` shows state; `harden revert --yes` removes
+  exactly what kevward added. Dry-run by default; never touches SSH or ufw;
+  motivated by CVE-2026-98432. (#6)
+
 ## 0.3.0
 
 - **`kevward firewall` — active-defense blocklist (local host only).** Turns the
