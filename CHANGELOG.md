@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **`kevward report --audit` folds compromise indicators into the HTML report.**
+  The daily report can now include the `kevward audit` findings (reverse SSH,
+  backdoor sockets, persistence) as their own "Host compromise indicators"
+  section, and their severities count toward the report's header totals — so one
+  page shows patch posture, attacker IPs *and* whether anything looks like a
+  foothold. Off unless `--audit` is passed (audit reads processes/sockets/files
+  and wants root for full visibility); the rest of the report is unchanged.
+
 ## 0.6.0
 
 Detection past the perimeter: a read-only scan for a foothold *after* an

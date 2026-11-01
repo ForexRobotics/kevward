@@ -57,6 +57,31 @@ def render(result: RunResult) -> str:
                 f"<td class='cve'>{_esc(f.cve or '')}</td></tr>"
             )
 
+    # --- audit (host compromise indicators) ---
+    audit_rows = ""
+    for f in (result.audit or []):
+        sev = f.severity if isinstance(f.severity, str) else f.severity.value
+        sev_counts[sev] = sev_counts.get(sev, 0) + 1  # reflected in the header chips
+        audit_rows += (
+            f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
+            f"{_esc(sev)}</span></td><td>{_esc(f.title)}</td>"
+            f"<td class='muted'>{_esc(f.detail)}</td></tr>"
+        )
+    audit_block = ""
+    # Shown only when `report --audit` ran: None means audit was not requested.
+    if result.audit is not None:
+        audit_block = f"""
+  <section>
+    <h2>Host compromise indicators (audit)</h2>
+    <p class="muted" style="font-size:12px">Read-only scan for a post-intrusion
+    foothold — reverse SSH / tunnels, reverse-shell or bind-backdoor sockets, and
+    persistence (ld.so.preload, cron, systemd units, rc, authorized_keys). These
+    flag <em>possible</em> indicators to review, not confirmed compromise; run as
+    root for full visibility.</p>
+    <table><thead><tr><th>Sev</th><th>Indicator</th><th>Detail</th></tr></thead>
+    <tbody>{audit_rows or "<tr><td colspan=3 class='muted'>No compromise indicators found.</td></tr>"}</tbody></table>
+  </section>"""
+
     def chip(sev: str) -> str:
         return (
             f"<span class='chip' style='border-color:{_SEV_COLOR[sev]};"
@@ -177,6 +202,7 @@ def render(result: RunResult) -> str:
       </div>
     </div>
   </section>
+  {audit_block}
 
   <footer class="muted" style="text-align:center;font-size:12px">
     kevward · defensive posture report · {datetime.now().year} ·
