@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1
+
+- **Fix: `kevward firewall` no longer allowlists a transient `:22` peer.** The
+  persisted nftables *accept* set was built from `ss`-listed established SSH
+  connections, which can include an attacker mid-brute-force — persisting that
+  IP as "allowed" defeated the blocklist for it. The accept set now contains
+  only stable entries (the allowlist floor, configured `allow`, and the running
+  session's own SSH source); the broader established-peer scan is still used for
+  the in-memory self-block guard, where it is recomputed each run and never
+  persisted. Re-run `firewall apply` to regenerate a clean accept set. (#17)
+
 ## 0.5.0
 
 Firewall hardening: known-bad networks can be blocked permanently, and the

@@ -160,14 +160,26 @@ def ttl_seconds(days: float) -> int:
 # --------------------------------------------------------------------------- #
 # Host introspection (best-effort; never fatal)
 # --------------------------------------------------------------------------- #
-def current_admin_ips() -> set[str]:
-    """IPs currently administering this host, so the operator is never blocked:
-    this process's SSH_* env, plus established inbound SSH peers."""
+def session_admin_ips() -> set[str]:
+    """IP(s) of the SSH session running kevward right now, from sshd's env.
+    This is *definitely* the operator, so it is safe to allowlist even in the
+    persisted accept set."""
     ips: set[str] = set()
     for var in ("SSH_CLIENT", "SSH_CONNECTION"):
         val = os.environ.get(var, "")
         if val:
             ips.add(val.split()[0])
+    return ips
+
+
+def current_admin_ips() -> set[str]:
+    """session_admin_ips() plus established inbound SSH peers (best-effort).
+
+    Used only for the in-memory self-block guard (``select``). NOT for the
+    persisted accept set: an established :22 connection can be an attacker
+    mid-brute-force, and persisting that as "allowed" would defeat the
+    blocklist (issue #17). The accept set uses session_admin_ips() only."""
+    ips = session_admin_ips()
     res = run(["ss", "-tn", "state", "established", "sport", "=", ":22"], timeout=10)
     if res.ok:
         for line in res.out.splitlines():
@@ -628,8 +640,10 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
             print(f"refused: {msg}")
             return 2
         # Allowlist -> accept set, so it wins at the nft level too (incl. over a
-        # permanent block). Floor + configured CIDRs + the live admin source(s).
-        allow_cidrs = list(_DEFAULT_ALLOW) + list(extra_allow) + sorted(current_admin_ips())
+        # permanent block). Only *stable* entries are persisted here: the floor,
+        # configured CIDRs, and the running session's own SSH source. Transient
+        # established-:22 peers are deliberately excluded (issue #17).
+        allow_cidrs = list(_DEFAULT_ALLOW) + list(extra_allow) + sorted(session_admin_ips())
         apply_allowset(allow_cidrs)
         perm_added, perm_err = apply_blockset(block)
         added, errors = add_elements([c.ip for c in to_add], ttl_seconds(ttl_days))

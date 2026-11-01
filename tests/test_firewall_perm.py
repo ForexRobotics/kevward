@@ -32,6 +32,16 @@ def test_strip_runtime_state_drops_expires_keeps_timeout():
     assert out == "elements = { 1.2.3.4 timeout 14d }"
 
 
+def test_session_admin_ips_are_env_only_not_from_ss(monkeypatch):
+    # The persisted accept set uses these; they must come only from the running
+    # session's sshd env, never from an established-:22 scan (issue #17).
+    monkeypatch.setenv("SSH_CONNECTION", "203.0.113.9 51530 10.0.0.1 22")
+    monkeypatch.delenv("SSH_CLIENT", raising=False)
+    assert fw.session_admin_ips() == {"203.0.113.9"}
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    assert fw.session_admin_ips() == set()
+
+
 def test_unit_template_is_a_oneshot_that_loads_the_saved_file():
     unit = fw._UNIT_TEMPLATE.format(nft="/usr/sbin/nft", file=fw.PERSIST_FILE)
     assert "Type=oneshot" in unit
