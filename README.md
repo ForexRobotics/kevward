@@ -104,6 +104,7 @@ kevward check                 # report findings, change nothing (default)
 kevward check -s nginx -s php # limit to specific services
 kevward trends                # actively-exploited CVEs relevant to this host
 kevward report --trends       # write an HTML posture + attacker-IP report
+sudo kevward report --trends --audit   # + fold in compromise indicators (audit)
 kevward apply                 # DRY RUN: show what would be patched
 sudo kevward apply --yes      # actually apply security updates
 sudo kevward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot
@@ -248,6 +249,16 @@ It flags, for a human to confirm:
 Findings say *possible*, not *confirmed* — `audit` points you at what to look
 at. It never kills a process or deletes a file; remediation stays a human
 decision (and blocking stays with `firewall` / `harden`).
+
+To fold the audit into your daily HTML report (so one page shows posture,
+attackers *and* intrusion indicators), add `--audit` to `report`:
+
+```bash
+sudo kevward report --trends --audit -o report.html
+```
+
+The indicators appear as their own section and their severities are reflected
+in the report's header counts.
 
 ## Turn a report into an action plan (with AI)
 

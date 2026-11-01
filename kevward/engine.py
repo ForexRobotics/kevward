@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .config import Config
-from .model import ServiceReport
+from .model import Finding, ServiceReport
 from .plugin import load
 
 
@@ -21,6 +21,9 @@ class RunResult:
     os: str
     services: list[ServiceReport] = field(default_factory=list)
     attackers: dict[str, Any] = field(default_factory=dict)
+    # Host compromise indicators (`kevward audit`). None = not run; [] = run,
+    # nothing found; a list = indicators to review. Set by `report --audit`.
+    audit: list[Finding] | None = None
 
     @property
     def reboot_required(self) -> bool:
@@ -34,6 +37,7 @@ class RunResult:
             "reboot_required": self.reboot_required,
             "services": [s.to_dict() for s in self.services],
             "attackers": self.attackers,
+            "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
         }
 
     def to_json(self, indent: int = 2) -> str:

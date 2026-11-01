@@ -78,7 +78,8 @@ be.
 - `kevward/model.py` — `Finding`, `Severity`, `FindingKind`, result types.
 - `kevward/integrations/` — `trends.py` (CISA KEV matching), `fail2ban.py`,
   `logwatch.py`.
-- `kevward/reporting/html.py` — the single-file HTML report.
+- `kevward/reporting/html.py` — the single-file HTML report (posture, attacker
+  IPs, CISA KEV trends, and — with `report --audit` — compromise indicators).
 - `kevward/firewall.py` — active-defense blocklist (`kevward firewall`): a
   kevward-owned nftables set of high-confidence attacker IPs, an allowlist
   *accept* set that always wins, TTL'd evidence plus permanent operator `block`

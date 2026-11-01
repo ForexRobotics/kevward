@@ -4,7 +4,7 @@ Subcommands:
   check            Report findings (no changes). Default if none given.
   plan             Alias for check, framed as "what apply would do".
   apply            Apply security updates (and minor upgrades if policy allows).
-  report           Write an HTML posture report (+ attacker IPs, + trends).
+  report           Write an HTML posture report (+ attacker IPs, + trends, + audit).
   trends           Show actively-exploited CVEs (CISA KEV) relevant to this host.
   schedule-reboot  Schedule a reboot in the maintenance window.
   firewall         Manage an nftables blocklist of attacker IPs (local host).
@@ -115,6 +115,9 @@ def cmd_report(args) -> int:
     result = run_engine(cfg, do_apply=False, dry_run=True)
     host_terms = detected_kev_terms(cfg.policy.services or None)
     result.attackers = _collect_attackers(args.trends, host_terms)
+    if args.audit:
+        from . import audit as ad
+        result.audit = ad.audit()
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -231,6 +234,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(r)
     r.add_argument("-o", "--output", help="output HTML path")
     r.add_argument("--trends", action="store_true", help="include CISA KEV trends (network)")
+    r.add_argument("--audit", action="store_true",
+                   help="include host compromise indicators (read-only; sudo for full view)")
     r.set_defaults(func=cmd_report)
 
     t = sub.add_parser("trends", help="actively-exploited CVEs relevant to host")

@@ -1,0 +1,42 @@
+"""The HTML report integrates audit findings only when audit was run."""
+
+from __future__ import annotations
+
+from kevward.engine import RunResult
+from kevward.model import Finding, FindingKind, Severity
+from kevward.reporting.html import render
+
+
+def _base(**kw) -> RunResult:
+    return RunResult(host="web01", generated_at="2026-11-02T00:00:00+00:00",
+                     os="Linux 6.8.0-150-generic", **kw)
+
+
+def test_no_audit_section_when_not_run():
+    html = render(_base())                      # audit is None
+    assert "Host compromise indicators" not in html
+
+
+def test_audit_section_present_but_clean():
+    html = render(_base(audit=[]))              # ran, nothing found
+    assert "Host compromise indicators" in html
+    assert "No compromise indicators found" in html
+
+
+def test_audit_finding_shown_and_counted_in_header():
+    f = Finding(service="audit", kind=FindingKind.CONFIG, severity=Severity.HIGH,
+                title="possible reverse shell: bash -> 185.100.1.1:4444",
+                detail="ESTAB ... bash")
+    html = render(_base(audit=[f]))
+    assert "Host compromise indicators" in html
+    assert "possible reverse shell" in html
+    # the finding's severity is reflected in the header severity chips
+    assert "high: <b>1</b>" in html
+
+
+if __name__ == "__main__":
+    for name, obj in sorted(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            obj()
+            print(f"ok  {name}")
+    print("all report-audit tests passed")
