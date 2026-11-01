@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
+
+One page, the whole picture: the daily report can now also say whether the host
+looks compromised, not just how exposed it is.
 
 - **`kevward report --audit` folds compromise indicators into the HTML report.**
   The daily report can now include the `kevward audit` findings (reverse SSH,
