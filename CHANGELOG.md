@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+Firewall hardening: known-bad networks can be blocked permanently, and the
+active-defense blocklist now survives a reboot.
 
 - **`kevward firewall` permanent block list (`block`), CIDR-capable.** A new
   `[firewall] block` (and `--block`) is the mirror of `allow`: operator-declared
