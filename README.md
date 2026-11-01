@@ -110,6 +110,7 @@ sudo kevward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot
 sudo kevward schedule-reboot --window 04:00
 kevward firewall plan         # DRY RUN: attacker IPs that would be blocked
 kevward harden check          # kernel/sysctl/exposure posture (read-only)
+sudo kevward audit            # read-only scan for host compromise indicators
 kevward list-plugins
 ```
 
@@ -221,6 +222,32 @@ ufw.
 > This was built in response to CVE-2026-98432 (a Linux kernel IPv4 TCP flaw):
 > a way to stand up a reversible stopgap on exposed hosts *now*, then cleanly
 > remove it once the patched kernel is installed and rebooted.
+
+## Host compromise indicators
+
+`kevward audit` is a **read-only** scan for the signs of a foothold *after* an
+attacker is in — the step past "who is knocking". It changes nothing, and (like
+everything here) only ever looks at the local host.
+
+```bash
+sudo kevward audit            # (sudo for full process/socket/file visibility)
+kevward audit --json          # machine-readable, pairs with an LLM triage
+```
+
+It flags, for a human to confirm:
+
+- **Reverse SSH / tunnels** — local `ssh` / `autossh` doing remote (`-R`) or
+  dynamic (`-D`) forwarding: a classic exfil / pivot backdoor.
+- **Reverse shells & bind backdoors** — an established *outbound* connection to
+  an external host owned by a shell/interpreter, or a shell listening on a
+  non-loopback address. (Inbound connections to your own services are ignored.)
+- **Persistence** — `/etc/ld.so.preload`, cron, admin-added systemd units, shell
+  rc / `profile.d`, and `authorized_keys` carrying reverse-shell or downloader
+  patterns, forced commands, or world-writable permissions.
+
+Findings say *possible*, not *confirmed* — `audit` points you at what to look
+at. It never kills a process or deletes a file; remediation stays a human
+decision (and blocking stays with `firewall` / `harden`).
 
 ## Turn a report into an action plan (with AI)
 

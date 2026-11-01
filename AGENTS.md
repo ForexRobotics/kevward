@@ -87,8 +87,12 @@ be.
 - `kevward/harden.py` — host hardening (`kevward harden`): read-only posture
   checks plus reversible, kevward-owned interim mitigations (MPTCP off, drop
   IP-options), made reboot-persistent via a kevward-owned systemd unit.
+- `kevward/audit.py` — host compromise indicators (`kevward audit`): read-only
+  detection of reverse SSH / tunnels, reverse-shell or bind-backdoor sockets,
+  and persistence (ld.so.preload, cron, systemd units, rc/profile.d,
+  authorized_keys). Reports only; never changes the system. Local host only.
 - `kevward/cli.py` — subcommands (`check`, `trends`, `report`, `apply`,
-  `schedule-reboot`, `firewall`, `harden`, `list-plugins`).
+  `schedule-reboot`, `firewall`, `harden`, `audit`, `list-plugins`).
 
 ## The two most common contributions
 
