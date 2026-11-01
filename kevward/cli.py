@@ -9,6 +9,7 @@ Subcommands:
   schedule-reboot  Schedule a reboot in the maintenance window.
   firewall         Manage an nftables blocklist of attacker IPs (local host).
   harden           Host hardening checks + reversible interim mitigations.
+  audit            Read-only scan for host compromise indicators (local host).
   list-plugins     Show discovered service plugins.
 
 Safety: `apply` changes the system and is never implied. Everything else is
@@ -194,6 +195,11 @@ def cmd_harden(args) -> int:
     )
 
 
+def cmd_audit(args) -> int:
+    from . import audit as ad
+    return ad.run_cli(use_json=args.json)
+
+
 def cmd_list_plugins(args) -> int:
     for name, cls in sorted(discover().items()):
         mode = "report-only" if not cls.supports_apply else "apply-capable"
@@ -282,6 +288,13 @@ def build_parser() -> argparse.ArgumentParser:
     hd.add_argument("--no-persist", action="store_true", dest="no_persist",
                     help="don't install the boot-time re-apply systemd unit")
     hd.set_defaults(func=cmd_harden)
+
+    au = sub.add_parser(
+        "audit",
+        help="read-only scan for host compromise indicators (local host only)",
+    )
+    _add_common(au)
+    au.set_defaults(func=cmd_audit)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
     _add_common(lp)

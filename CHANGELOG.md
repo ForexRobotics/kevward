@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **`kevward audit` — read-only host compromise indicators (local host only).**
+  A new subcommand that looks for the signs of a post-intrusion foothold, past
+  "who is knocking": **reverse SSH / tunnels** (`ssh`/`autossh` with `-R`/`-D`),
+  **reverse shells & bind backdoors** (an established outbound socket to an
+  external host owned by a shell/interpreter, or a shell listening on a
+  non-loopback address — inbound to your own services is ignored), and
+  **persistence** (`/etc/ld.so.preload`, cron, admin-added systemd units, shell
+  rc / `profile.d`, and `authorized_keys` carrying reverse-shell/downloader
+  patterns, forced commands, or world-writable permissions). `kevward audit`
+  prints findings (`--json` for machine output). It is strictly read-only — it
+  never kills a process, deletes a file, or touches a remote host; findings say
+  *possible*, not *confirmed*. Run with `sudo` for full visibility. (#7)
+
 ## 0.5.1
 
 - **Fix: `kevward firewall` no longer allowlists a transient `:22` peer.** The
