@@ -28,13 +28,38 @@ import time
 from dataclasses import dataclass, field
 
 from .integrations import fail2ban, logwatch
-from .util import have, is_root, run
+from .util import have, is_root, run, which
 
 # kevward-owned nftables objects. We only ever touch these.
 TABLE = "kevward"
-SET4 = "blocklist4"
+SET4 = "blocklist4"            # evidence-based host IPs, TTL'd
 SET6 = "blocklist6"
+ALLOW4 = "allow4"             # accept set: the allowlist wins at nft level too
+ALLOW6 = "allow6"
+BLOCKCIDR4 = "blockcidr4"     # operator-configured permanent blocks (CIDR/IP)
+BLOCKCIDR6 = "blockcidr6"
 CHAIN = "input"
+
+# Reboot-persistence (issue #12): a kevward-owned systemd unit re-applies the
+# saved ruleset on boot, exactly like kevward-harden does for harden.
+PERSIST_FILE = "/etc/kevward/firewall.nft"
+PERSIST_UNIT = "kevward-firewall.service"
+PERSIST_UNIT_FILE = "/etc/systemd/system/kevward-firewall.service"
+_UNIT_TEMPLATE = """\
+[Unit]
+Description=kevward: reapply active-defense firewall blocklist on boot
+After=network-pre.target
+Wants=network-pre.target
+Before=network.target
+
+[Service]
+Type=oneshot
+ExecStart={nft} -f {file}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+"""
 
 # Networks that must NEVER be blocked (the hard allowlist floor).
 _DEFAULT_ALLOW = [
@@ -165,50 +190,173 @@ def nft_available() -> bool:
     return have("nft")
 
 
+def _table_snippet() -> str:
+    """kevward's table. The allowlist is an *accept* set checked before the
+    drops, so it wins even over an operator's permanent CIDR block. Evidence
+    IPs are TTL'd (``blocklist*``); operator blocks are permanent CIDR/IP sets
+    (``blockcidr*``, interval + auto-merge so overlapping ranges just merge)."""
+    return (
+        f"table inet {TABLE} {{\n"
+        f"  set {ALLOW4} {{ type ipv4_addr; flags interval; auto-merge; }}\n"
+        f"  set {ALLOW6} {{ type ipv6_addr; flags interval; auto-merge; }}\n"
+        f"  set {SET4} {{ type ipv4_addr; flags timeout; }}\n"
+        f"  set {SET6} {{ type ipv6_addr; flags timeout; }}\n"
+        f"  set {BLOCKCIDR4} {{ type ipv4_addr; flags interval; auto-merge; }}\n"
+        f"  set {BLOCKCIDR6} {{ type ipv6_addr; flags interval; auto-merge; }}\n"
+        f"  chain {CHAIN} {{\n"
+        f"    type filter hook input priority -150; policy accept;\n"
+        f"    ip saddr @{ALLOW4} accept\n"
+        f"    ip6 saddr @{ALLOW6} accept\n"
+        f"    ip saddr @{SET4} drop\n"
+        f"    ip6 saddr @{SET6} drop\n"
+        f"    ip saddr @{BLOCKCIDR4} drop\n"
+        f"    ip6 saddr @{BLOCKCIDR6} drop\n"
+        f"  }}\n"
+        f"}}\n"
+    )
+
+
+def _schema_current() -> bool:
+    """True if the live table already uses the current schema (accept set +
+    permanent-CIDR set). An older table (issue #4 schema) is recreated once so
+    the new sets and the allow-accept rule exist; its elements are re-added by
+    the same apply."""
+    r = _nft(["list", "table", "inet", TABLE])
+    return r.ok and ALLOW4 in r.out and BLOCKCIDR4 in r.out
+
+
 def ensure_table() -> tuple[bool, str]:
-    """Idempotently create kevward's table/sets/chain. Only our chain is ever
-    flushed; existing sets (and their elements) are preserved."""
+    """Idempotently create kevward's table/sets/chain. Only our own objects are
+    ever touched. An older-schema table is recreated once; otherwise only our
+    chain's rules are reasserted and set contents are preserved."""
     if not nft_available():
         return False, "nftables (nft) not found"
     if not is_root():
         return False, "root required"
-    if not _nft(["list", "table", "inet", TABLE]).ok:
-        snippet = (
-            f"table inet {TABLE} {{\n"
-            f"  set {SET4} {{ type ipv4_addr; flags timeout; }}\n"
-            f"  set {SET6} {{ type ipv6_addr; flags timeout; }}\n"
-            f"  chain {CHAIN} {{\n"
-            f"    type filter hook input priority -150; policy accept;\n"
-            f"    ip saddr @{SET4} drop\n"
-            f"    ip6 saddr @{SET6} drop\n"
-            f"  }}\n"
-            f"}}\n"
-        )
-        r = _nft(["-f", "-"], input_=snippet)
+    exists = _nft(["list", "table", "inet", TABLE]).ok
+    if exists and not _schema_current():
+        _nft(["delete", "table", "inet", TABLE])
+        exists = False
+    if not exists:
+        r = _nft(["-f", "-"], input_=_table_snippet())
         if not r.ok:
             return False, r.err.strip() or "nft create failed"
     else:
         # Reassert only our own chain's rules; leaves set contents intact.
         _nft(["flush", "chain", "inet", TABLE, CHAIN])
-        _nft(["add", "rule", "inet", TABLE, CHAIN, "ip", "saddr", f"@{SET4}", "drop"])
-        _nft(["add", "rule", "inet", TABLE, CHAIN, "ip6", "saddr", f"@{SET6}", "drop"])
+        for proto, setname, verdict in (
+            ("ip", ALLOW4, "accept"), ("ip6", ALLOW6, "accept"),
+            ("ip", SET4, "drop"), ("ip6", SET6, "drop"),
+            ("ip", BLOCKCIDR4, "drop"), ("ip6", BLOCKCIDR6, "drop"),
+        ):
+            _nft(["add", "rule", "inet", TABLE, CHAIN, proto, "saddr",
+                  f"@{setname}", verdict])
     return True, "ok"
 
 
+def _set_elements(setname: str) -> set[str]:
+    out: set[str] = set()
+    r = _nft(["list", "set", "inet", TABLE, setname])
+    if not r.ok:
+        return out
+    m = re.search(r"elements\s*=\s*\{(.*?)\}", r.out, re.S)
+    if not m:
+        return out
+    for tok in m.group(1).split(","):
+        tok = tok.strip()
+        if tok:
+            out.add(tok.split()[0])
+    return out
+
+
 def current_set_ips() -> set[str]:
-    ips: set[str] = set()
-    for setname in (SET4, SET6):
-        r = _nft(["list", "set", "inet", TABLE, setname])
-        if not r.ok:
+    """Evidence-based host IPs currently in the TTL'd blocklist (for dedup)."""
+    return _set_elements(SET4) | _set_elements(SET6)
+
+
+def _split_v4_v6(cidrs: list[str]) -> tuple[list[str], list[str]]:
+    """Partition CIDRs/IPs into v4 and v6; silently drop unparseable entries."""
+    v4: list[str] = []
+    v6: list[str] = []
+    for c in cidrs:
+        try:
+            net = ipaddress.ip_network(c, strict=False)
+        except ValueError:
             continue
-        m = re.search(r"elements\s*=\s*\{(.*?)\}", r.out, re.S)
-        if not m:
-            continue
-        for tok in m.group(1).split(","):
-            tok = tok.strip()
-            if tok:
-                ips.add(tok.split()[0])
-    return ips
+        (v6 if net.version == 6 else v4).append(c)
+    return v4, v6
+
+
+def _add_plain(setname: str, items: list[str]) -> tuple[int, list[str]]:
+    """Add items with no timeout to a set, skipping any already present."""
+    todo = [x for x in items if x not in _set_elements(setname)]
+    if not todo:
+        return 0, []
+    r = _nft(["add", "element", "inet", TABLE, setname, "{ " + ", ".join(todo) + " }"])
+    return (len(todo), []) if r.ok else (0, [r.err.strip() or f"failed adding to {setname}"])
+
+
+def apply_allowset(cidrs: list[str]) -> tuple[int, list[str]]:
+    """Populate the accept sets so the allowlist wins at the nft level too
+    (including over a permanent block). Overlapping ranges auto-merge."""
+    v4, v6 = _split_v4_v6(cidrs)
+    a, e1 = _add_plain(ALLOW4, v4)
+    b, e2 = _add_plain(ALLOW6, v6)
+    return a + b, e1 + e2
+
+
+def apply_blockset(cidrs: list[str]) -> tuple[int, list[str]]:
+    """Add operator-configured permanent blocks (CIDR or IP, no TTL)."""
+    v4, v6 = _split_v4_v6(cidrs)
+    a, e1 = _add_plain(BLOCKCIDR4, v4)
+    b, e2 = _add_plain(BLOCKCIDR6, v6)
+    return a + b, e1 + e2
+
+
+# --------------------------------------------------------------------------- #
+# Reboot-persistence (issue #12): save kevward's table and reload it on boot.
+# --------------------------------------------------------------------------- #
+def _strip_runtime_state(dump: str) -> str:
+    """Remove output-only state (``expires``) so an ``nft list`` dump reloads
+    cleanly with ``nft -f``. Element timeouts are preserved (reset on boot)."""
+    return re.sub(r"\s+expires\s+\S+", "", dump)
+
+
+def persist_ruleset() -> tuple[bool, str]:
+    """Save the current table to PERSIST_FILE and install a boot unit that
+    reloads it, so the blocklist survives a reboot. Mirrors kevward-harden."""
+    if not is_root():
+        return False, "root required"
+    r = _nft(["list", "table", "inet", TABLE])
+    if not r.ok:
+        return False, r.err.strip() or "could not read table"
+    body = _strip_runtime_state(r.out)
+    # declare -> delete -> define keeps the reload idempotent across boots.
+    content = f"table inet {TABLE}\ndelete table inet {TABLE}\n{body}"
+    nftpath = which("nft") or "/usr/sbin/nft"
+    try:
+        os.makedirs(os.path.dirname(PERSIST_FILE), exist_ok=True)
+        with open(PERSIST_FILE, "w") as fh:
+            fh.write(content)
+        with open(PERSIST_UNIT_FILE, "w") as fh:
+            fh.write(_UNIT_TEMPLATE.format(nft=nftpath, file=PERSIST_FILE))
+    except OSError as e:
+        return False, f"write failed: {e}"
+    run(["systemctl", "daemon-reload"], timeout=20)
+    r2 = run(["systemctl", "enable", PERSIST_UNIT], timeout=20)
+    return (True, "enabled (reapplied on boot)") if r2.ok else \
+        (False, r2.err.strip() or "systemctl enable failed")
+
+
+def remove_persistence() -> None:
+    """Remove the boot unit and saved ruleset (used by flush). Best-effort."""
+    run(["systemctl", "disable", "--now", PERSIST_UNIT], timeout=20)
+    for path in (PERSIST_UNIT_FILE, PERSIST_FILE):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    run(["systemctl", "daemon-reload"], timeout=20)
 
 
 def add_elements(ips: list[str], ttl_s: int) -> tuple[int, list[str]]:
@@ -413,9 +561,11 @@ def reputation_for(candidates: list[Candidate], *, zone: str,
 
 def run_cli(action: str, *, ttl_days: float, min_sshd: int,
             extra_allow: list[str], yes: bool, use_json: bool,
+            block: list[str] | None = None, persist: bool = True,
             check_dnsbl: bool = False, require_reputation: bool = False,
             dnsbl_zone: str = "zen.spamhaus.org", dnsbl_resolver: str | None = None,
             dnsbl_top_n: int = 10, dnsbl_cache_days: float = 7.0) -> int:
+    block = list(block or [])
     if action in ("plan", "apply"):
         data = _plan_data(min_sshd, extra_allow)
         to_add = data["to_add"]
@@ -436,6 +586,8 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 "to_add": [vars(c) for c in to_add],
                 "already_present": data["already_present"],
                 "allowlisted_skipped": data["allowlisted_skipped"],
+                "permanent_blocks": block,
+                "persist": persist,
                 "dnsbl": {"enabled": check_dnsbl,
                           "mode": "confirm" if require_reputation else "enrich",
                           "zone": dnsbl_zone, "verdicts": rep} if check_dnsbl else None,
@@ -460,6 +612,10 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 print(f"  + {c.ip:<39} {c.reason}{tag}")
             if len(to_add) > 100:
                 print(f"  ... and {len(to_add) - 100} more")
+            if block:
+                shown = ", ".join(block[:8]) + (" ..." if len(block) > 8 else "")
+                print(f"permanent blocks (config, no TTL): {len(block)} -> {shown}")
+            print(f"reboot-persistence: {'on' if persist else 'off (--no-persist)'}")
 
         if action == "plan":
             return 0
@@ -471,8 +627,22 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
         if not ok:
             print(f"refused: {msg}")
             return 2
+        # Allowlist -> accept set, so it wins at the nft level too (incl. over a
+        # permanent block). Floor + configured CIDRs + the live admin source(s).
+        allow_cidrs = list(_DEFAULT_ALLOW) + list(extra_allow) + sorted(current_admin_ips())
+        apply_allowset(allow_cidrs)
+        perm_added, perm_err = apply_blockset(block)
         added, errors = add_elements([c.ip for c in to_add], ttl_seconds(ttl_days))
+        errors += perm_err
         print(f"added {added} IP(s) to the kevward blocklist (nft inet {TABLE}).")
+        if block:
+            print(f"permanent blocks: {perm_added} new, {len(block)} configured.")
+        if persist:
+            pok, pmsg = persist_ruleset()
+            print(f"reboot-persistence: {pmsg}" if pok
+                  else f"reboot-persistence: not enabled ({pmsg})")
+        else:
+            print("reboot-persistence: skipped (--no-persist)")
         for e in errors:
             print(f"  ! {e}")
         return 0 if not errors else 1
@@ -481,10 +651,12 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
         if not (nft_available() and is_root()):
             print("note: needs nftables + root to read the live set.")
             return 2
-        for setname in (SET4, SET6):
+        for setname in (ALLOW4, ALLOW6, SET4, SET6, BLOCKCIDR4, BLOCKCIDR6):
             r = _nft(["list", "set", "inet", TABLE, setname])
             if r.ok:
                 print(r.out.rstrip())
+        unit = run(["systemctl", "is-enabled", PERSIST_UNIT], timeout=10).out.strip()
+        print(f"reboot-persistence unit: {unit or 'not installed'}")
         return 0
 
     if action == "flush":
@@ -492,6 +664,7 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
             print("refused: pass --yes to remove kevward's blocklist.")
             return 2
         ok, msg = flush_table()
+        remove_persistence()
         print(msg if ok else f"refused: {msg}")
         return 0 if ok else 2
 

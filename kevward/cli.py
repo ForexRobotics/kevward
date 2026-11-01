@@ -167,10 +167,13 @@ def cmd_firewall(args) -> int:
     min_sshd = (args.min_sshd if args.min_sshd is not None
                 else cfg.firewall.min_sshd_failures)
     extra_allow = list(cfg.firewall.allow) + (args.allow or [])
+    block = list(cfg.firewall.block) + (args.block or [])
+    persist = cfg.firewall.persist and not args.no_persist
     top_n = args.dnsbl_top_n if args.dnsbl_top_n is not None else cfg.firewall.dnsbl_top_n
     return fw.run_cli(
         args.action, ttl_days=ttl_days, min_sshd=min_sshd,
         extra_allow=extra_allow, yes=args.yes, use_json=args.json,
+        block=block, persist=persist,
         check_dnsbl=args.check_dnsbl or cfg.firewall.check_dnsbl,
         require_reputation=args.require_reputation,
         dnsbl_zone=args.dnsbl_zone or cfg.firewall.dnsbl_zone,
@@ -247,6 +250,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="sshd-failure threshold to qualify an IP")
     fw.add_argument("--allow", action="append", dest="allow",
                     help="extra allowlisted CIDR/IP, never blocked (repeatable)")
+    fw.add_argument("--block", action="append", dest="block",
+                    help="permanent blocked CIDR/IP, no TTL (repeatable)")
+    fw.add_argument("--no-persist", action="store_true", dest="no_persist",
+                    help="don't install the boot-time re-apply systemd unit")
     fw.add_argument("--check-dnsbl", action="store_true", dest="check_dnsbl",
                     help="cross-check top candidates against a DNSBL (opt-in, network)")
     fw.add_argument("--require-reputation", action="store_true",

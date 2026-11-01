@@ -58,6 +58,11 @@ class FirewallConfig:
     min_sshd_failures: int = 20
     # Extra CIDRs/IPs that must never be blocked (added to the built-in floor).
     allow: list[str] = field(default_factory=list)
+    # Permanent operator-configured blocks (CIDR or IP, no TTL). The mirror of
+    # `allow`; the allowlist still always wins over these.
+    block: list[str] = field(default_factory=list)
+    # Install a systemd unit so the blocklist is re-applied on boot.
+    persist: bool = True
     # Optional DNSBL cross-check (off by default -> no network call).
     check_dnsbl: bool = False
     # DNSBL zone to query (e.g. a Spamhaus DQS zone "<key>.zen.dq.spamhaus.net").

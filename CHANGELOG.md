@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **`kevward firewall` permanent block list (`block`), CIDR-capable.** A new
+  `[firewall] block` (and `--block`) is the mirror of `allow`: operator-declared
+  permanent blocks, given as a CIDR or a single IP, with no TTL. The allowlist
+  still **always wins** — it is now an nftables *accept* set checked before the
+  drops, so a bad `block` entry can't lock out loopback, RFC1918, a configured
+  `allow`, or the live admin/SSH source. Permanent blocks live in their own
+  `interval, auto-merge` sets so overlapping ranges merge instead of erroring;
+  evidence-based entries keep their TTL as before. An older-schema table is
+  recreated once on the next `apply`. (#13)
+- **`kevward firewall` reboot-persistence.** `apply` now installs a kevward-owned
+  `kevward-firewall.service` that re-applies the saved blocklist on boot (mirrors
+  `kevward-harden`), so the active-defense set survives a reboot instead of
+  needing a manual re-`apply`. `--no-persist` (or `[firewall] persist = false`)
+  opts out; `flush` removes the unit and the saved ruleset too. (#12)
+
 ## 0.4.1
 
 - **Fix `kevward harden list` false negative for `ip_options_table`.** Querying

@@ -140,14 +140,26 @@ sudo kevward firewall flush --yes     # remove kevward's set (reverts the change
 
 - **Dry-run by default**; `apply` needs `--yes`.
 - **A mandatory allowlist always wins** — loopback, RFC1918, CGNAT, the current
-  SSH/admin source, and any `allow` CIDRs are never blocked, so you can't lock
-  yourself out via the default flow.
-- **Every entry has a TTL** (default 14 days) and ages out automatically.
-- Uses an **nftables named set** (O(1) lookup), which scales to thousands of IPs
+  SSH/admin source, and any `allow` CIDRs are never blocked (an nftables *accept*
+  set checked before the drops), so you can't lock yourself out — not even with a
+  bad permanent block.
+- **Evidence-based entries have a TTL** (default 14 days) and age out
+  automatically.
+- **Permanent blocks** for known-bad networks: set `block = ["109.160.32.0/24",
+  …]` (or `--block`), the mirror of `allow`. CIDR or single IP, no TTL.
+- **Survives reboots**: `apply` installs a kevward-owned systemd unit that
+  re-applies the blocklist on boot. Opt out with `--no-persist`.
+- Uses **nftables named sets** (O(1) lookup), which scale to thousands of IPs
   where a per-rule firewall does not. kevward only ever touches its own table.
 
-Tune it in `[firewall]` (`ttl_days`, `min_sshd_failures`, `allow`) — see
-`config.example.toml`.
+```bash
+# permanent-block a hostile subnet, keep the auto-blocklist, persist across reboot
+sudo kevward firewall apply --yes --block 109.160.32.0/24
+sudo kevward firewall list             # allow / evidence / permanent sets + unit
+```
+
+Tune it in `[firewall]` (`ttl_days`, `min_sshd_failures`, `allow`, `block`,
+`persist`) — see `config.example.toml`.
 
 #### Optional: DNSBL reputation cross-check
 
