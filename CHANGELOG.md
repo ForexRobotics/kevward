@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
+
+Detection past the perimeter: a read-only scan for a foothold *after* an
+attacker is in, complementing the patch/exposure posture kevward already covers.
 
 - **`kevward audit` — read-only host compromise indicators (local host only).**
   A new subcommand that looks for the signs of a post-intrusion foothold, past
