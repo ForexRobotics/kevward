@@ -80,9 +80,10 @@ be.
   `logwatch.py`.
 - `kevward/reporting/html.py` — the single-file HTML report.
 - `kevward/firewall.py` — active-defense blocklist (`kevward firewall`): a
-  kevward-owned nftables set of high-confidence attacker IPs, allowlist, TTL,
-  and an optional (opt-in, fail-soft) DNSBL reputation cross-check. Local host
-  only.
+  kevward-owned nftables set of high-confidence attacker IPs, an allowlist
+  *accept* set that always wins, TTL'd evidence plus permanent operator `block`
+  CIDRs, an optional (opt-in, fail-soft) DNSBL reputation cross-check, and
+  reboot-persistence via a kevward-owned systemd unit. Local host only.
 - `kevward/harden.py` — host hardening (`kevward harden`): read-only posture
   checks plus reversible, kevward-owned interim mitigations (MPTCP off, drop
   IP-options), made reboot-persistent via a kevward-owned systemd unit.

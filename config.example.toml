@@ -36,6 +36,11 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # Extra CIDRs/IPs that must NEVER be blocked. Loopback, RFC1918, CGNAT and the
 # current SSH/admin source are always allowlisted automatically; add your own:
 # allow = ["203.0.113.0/24", "198.51.100.10"]
+# Permanent blocks (CIDR or IP, no TTL) -- the mirror of `allow`, for known-bad
+# attacker networks. The allowlist above still always wins over these.
+# block = ["109.160.32.0/24", "77.239.124.0/24"]
+# Re-apply the blocklist on boot via a kevward-owned systemd unit (default on).
+# persist = true
 # Optional DNSBL cross-check (off by default -> no network call). When on, only
 # the top-N candidates are looked up; see `firewall --require-reputation`.
 # check_dnsbl = false
