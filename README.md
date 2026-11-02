@@ -345,6 +345,10 @@ AI-assisted guide in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Supporting kevward
 
+See the **[public roadmap board][roadmap]** for what is shipped, what is in
+progress, and the `good first issue` / `help wanted` tickets that are up for
+grabs. Pick one — human or AI agent welcome.
+
 The most useful support is **contribution**: add a service plugin or a distro
 backend, run kevward on your own servers and file what breaks, improve the docs,
 or help triage issues — see [CONTRIBUTING.md](CONTRIBUTING.md) and
@@ -362,3 +366,5 @@ version as a service, you must offer its source to that service's users
 (AGPL §13). Copyright © 2026 Forex Robotics Co., Ltd. (Forex Robotics 株式会社);
 contributions are accepted under a CLA so the project can be relicensed in
 future if the maintainer chooses (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+[roadmap]: https://github.com/users/ForexRobotics/projects/3
