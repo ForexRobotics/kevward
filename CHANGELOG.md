@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 Compromise detection, deeper: three new read-only `audit` checks aimed at the
 footholds real post-intrusion campaigns leave behind.
