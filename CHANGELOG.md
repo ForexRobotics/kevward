@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **`firewall`: packet counters on the block rules.** The `drop` rules for the
+  evidence and permanent-CIDR block sets now carry an nftables `counter`, so
+  `kevward firewall list` / `nft list table inet kevward` shows how many
+  packets each block set has actually dropped — a direct, read-only answer to
+  "is this block still catching traffic?" that the cumulative sshd log can't
+  give. Counters are reasserted on `firewall apply`; existing hosts pick them
+  up on their next apply.
+
 ## 0.8.0
 
 Compromise detection, deeper: three new read-only `audit` checks aimed at the

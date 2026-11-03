@@ -17,11 +17,21 @@ def test_split_v4_v6_partitions_and_drops_garbage():
 def test_table_snippet_allowlist_accepts_before_it_drops():
     snip = fw._table_snippet()
     # allow sets are accepted before any drop -> allowlist wins over blocks
-    assert snip.index(f"@{fw.ALLOW4} accept") < snip.index(f"@{fw.SET4} drop")
-    assert snip.index(f"@{fw.SET4} drop") < snip.index(f"@{fw.BLOCKCIDR4} drop")
+    assert snip.index(f"@{fw.ALLOW4} accept") < snip.index(f"@{fw.SET4} counter drop")
+    assert snip.index(f"@{fw.SET4} counter drop") < snip.index(f"@{fw.BLOCKCIDR4} counter drop")
     # CIDR support: permanent/allow sets are interval sets; evidence is TTL'd
     assert f"set {fw.BLOCKCIDR4} {{ type ipv4_addr; flags interval; auto-merge; }}" in snip
     assert f"set {fw.SET4} {{ type ipv4_addr; flags timeout; }}" in snip
+
+
+def test_table_snippet_drops_are_counted():
+    # drop rules carry a counter so `nft list` shows how much each block set
+    # actually catches; allow rules stay plain accepts (no counter).
+    snip = fw._table_snippet()
+    for s in (fw.SET4, fw.SET6, fw.BLOCKCIDR4, fw.BLOCKCIDR6):
+        assert f"@{s} counter drop" in snip
+    assert f"@{fw.ALLOW4} accept" in snip
+    assert f"@{fw.ALLOW4} counter accept" not in snip
 
 
 def test_strip_runtime_state_drops_expires_keeps_timeout():
