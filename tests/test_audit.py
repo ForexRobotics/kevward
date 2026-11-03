@@ -57,6 +57,42 @@ def test_proc_of_parses_ss_users_column():
     assert ad._proc_of("ESTAB 0 0 a b") == ""
 
 
+def test_is_suspicious_php_prepend():
+    assert ad.is_suspicious_php_prepend("/tmp/.x/shell.php")
+    assert ad.is_suspicious_php_prepend("/dev/shm/p.php")
+    assert ad.is_suspicious_php_prepend("/var/www/.hidden/pre.php")
+    # unset / an in-package app prepend at a normal path are not flagged by shape
+    assert ad.is_suspicious_php_prepend("") is None
+    assert ad.is_suspicious_php_prepend("none") is None
+    assert ad.is_suspicious_php_prepend('"/usr/share/php/Sentry/prepend.php"') is None
+
+
+def test_classify_proc_exe():
+    assert ad.classify_proc_exe("/dev/shm/.gs/x")
+    assert "deleted" in ad.classify_proc_exe("/tmp/beacon (deleted)")
+    assert ad.classify_proc_exe("/home/u/.cache/.a")
+    # normal binaries, incl. a daemon pending restart after an upgrade, stay quiet
+    assert ad.classify_proc_exe("/usr/sbin/sshd") is None
+    assert ad.classify_proc_exe("/usr/sbin/nginx (deleted)") is None
+
+
+def test_is_masqueraded():
+    assert ad.is_masqueraded("/dev/shm/x", "[kcached]")
+    assert not ad.is_masqueraded("", "[kworker/0:1]")   # real kernel thread: no exe
+    assert not ad.is_masqueraded("/usr/bin/bash", "bash")
+
+
+def test_classify_dpkg_verify():
+    assert ad.classify_dpkg_verify("??5??????   /usr/bin/ssh")[0] == "/usr/bin/ssh"
+    assert ad.classify_dpkg_verify("??5?????? c /etc/ssh/sshd_config") is None  # conffile
+    assert ad.classify_dpkg_verify("missing     /usr/share/doc/x/README") is None
+    assert ad.classify_dpkg_verify("?????????  /usr/bin/ok") is None  # no checksum change
+    assert ad.classify_dpkg_verify("") is None
+    # known post-install churn (CA bundles, pip wheels) is not a signal
+    assert ad.classify_dpkg_verify("??5??????   /etc/ssl/certs/ca-certificates.crt") is None
+    assert ad.classify_dpkg_verify("??5??????   /usr/lib/x86_64-linux-gnu/libnssckbi.so") is None
+
+
 if __name__ == "__main__":
     for name, obj in sorted(globals().items()):
         if name.startswith("test_") and callable(obj):

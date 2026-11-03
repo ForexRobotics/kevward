@@ -90,8 +90,10 @@ be.
   IP-options), made reboot-persistent via a kevward-owned systemd unit.
 - `kevward/audit.py` — host compromise indicators (`kevward audit`): read-only
   detection of reverse SSH / tunnels, reverse-shell or bind-backdoor sockets,
-  and persistence (ld.so.preload, cron, systemd units, rc/profile.d,
-  authorized_keys). Reports only; never changes the system. Local host only.
+  persistence (ld.so.preload, cron, systemd units, rc/profile.d, authorized_keys,
+  PHP auto_prepend/append hijack), rogue process origin (deleted/temp/hidden/
+  masqueraded executables), and package integrity (`dpkg --verify`). Reports
+  only; never changes the system. Local host only.
 - `kevward/cli.py` — subcommands (`check`, `trends`, `report`, `apply`,
   `schedule-reboot`, `firewall`, `harden`, `audit`, `list-plugins`).
 

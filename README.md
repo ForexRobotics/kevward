@@ -243,8 +243,16 @@ It flags, for a human to confirm:
   an external host owned by a shell/interpreter, or a shell listening on a
   non-loopback address. (Inbound connections to your own services are ignored.)
 - **Persistence** — `/etc/ld.so.preload`, cron, admin-added systemd units, shell
-  rc / `profile.d`, and `authorized_keys` carrying reverse-shell or downloader
-  patterns, forced commands, or world-writable permissions.
+  rc / `profile.d`, `authorized_keys` carrying reverse-shell or downloader
+  patterns, forced commands or world-writable permissions, and a PHP
+  `auto_prepend_file` / `auto_append_file` pointed at a temp/hidden/writable file
+  (a stealthy web-server foothold).
+- **Rogue process origin** — a process backed by a deleted, temp-resident or
+  hidden executable (an in-memory implant), or wearing a kernel-thread name
+  (`[kcached]`-style) while backed by a real binary.
+- **Package integrity** — installed files whose checksum no longer matches the
+  package (`dpkg --verify`), i.e. a modified / backdoored system binary — with no
+  stored baseline for an attacker to tamper with. (Non-Debian hosts are skipped.)
 
 Findings say *possible*, not *confirmed* — `audit` points you at what to look
 at. It never kills a process or deletes a file; remediation stays a human

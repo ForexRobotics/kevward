@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+Compromise detection, deeper: three new read-only `audit` checks aimed at the
+footholds real post-intrusion campaigns leave behind.
+
+- **`audit`: package integrity via `dpkg --verify`.** Flags installed files
+  whose checksum no longer matches the package — a modified / backdoored system
+  binary (e.g. a trojanised `sshd` / `sudo` / `curl`) — with no stored baseline
+  for an attacker to tamper with. Known post-install churn (CA bundles, bundled
+  pip wheels) is suppressed to stay low-noise; non-Debian hosts are skipped. (#34)
+- **`audit`: rogue process origin.** Flags a process backed by a deleted,
+  temp-resident (`/dev/shm`, `/tmp`) or hidden executable — an in-memory implant
+  — or one wearing a kernel-thread name (`[kcached]`-style) while backed by a
+  real binary. A plain deleted exe at a normal path (a daemon pending restart
+  after an upgrade) is deliberately ignored. (#28)
+- **`audit`: PHP `auto_prepend_file` / `auto_append_file` hijack.** Flags a PHP
+  prepend/append directive pointed at a temp, hidden, or world-writable file —
+  a stealthy web-server foothold that runs on every request. (#30)
+
 ## 0.7.0
 
 One page, the whole picture: the daily report can now also say whether the host
