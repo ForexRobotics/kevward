@@ -141,10 +141,17 @@ def cmd_trends(args) -> int:
           f"({'fresh' if data['cache_fresh'] else 'cached'})")
     print(f"matched to detected software ({', '.join(host_terms)}): "
           f"{data['match_count']} ({data['ransomware_linked']} ransomware-linked)")
-    print("note: name-level match — confirm version applicability per CVE.\n")
+    if data.get("version_aware"):
+        print(f"version-checked: {data.get('applicable_count', 0)} applicable here, "
+              f"{data.get('fixed_count', 0)} already fixed "
+              f"(rest: version not confirmed)\n")
+    else:
+        print("note: name-level match — confirm version applicability per CVE.\n")
     for m in data["matches"][:25]:
         rw = " [ransomware]" if m["ransomware"] else ""
-        print(f"  {m['cve']:18} {m['vendor']}/{m['product']}  (added {m['date_added']}){rw}")
+        tag = f"[{m['applicability']}] " if data.get("version_aware") else ""
+        print(f"  {tag}{m['cve']:18} {m['vendor']}/{m['product']}  "
+              f"(added {m['date_added']}){rw}")
     return 0
 
 

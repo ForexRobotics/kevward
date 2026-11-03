@@ -288,7 +288,9 @@ Then paste `posture.json` into your AI assistant with a prompt like:
 > config change, why it matters, and how to roll it back. Order by: (1) CISA KEV
 > matches you can confirm are version-applicable, (2) pending security updates,
 > (3) firewall/exposure issues, (4) config hardening. Flag anything that could
-> cause downtime, and note that KEV matches are name-level — confirm each CVE's
+> cause downtime. KEV matches carry an `applicability` label (`applicable` =
+> affected and unpatched on this host, `fixed`, or `possible` = version not
+> confirmed); prioritise `applicable`, and for `possible` confirm the CVE's
 > version applicability before acting. Use only the findings in the data; do not
 > invent any.
 >
