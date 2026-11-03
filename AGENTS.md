@@ -76,8 +76,9 @@ be.
 - `kevward/plugins/*.py` — one file per service (nginx, php, mysql, …). Each is
   auto-discovered; there is no central list to edit.
 - `kevward/model.py` — `Finding`, `Severity`, `FindingKind`, result types.
-- `kevward/integrations/` — `trends.py` (CISA KEV matching), `fail2ban.py`,
-  `logwatch.py`.
+- `kevward/integrations/` — `trends.py` (CISA KEV matching), `usn.py`
+  (version-level KEV applicability: per-CVE Ubuntu security data + in-tree
+  Debian version compare, cached and fail-soft), `fail2ban.py`, `logwatch.py`.
 - `kevward/reporting/html.py` — the single-file HTML report (posture, attacker
   IPs, CISA KEV trends, and — with `report --audit` — compromise indicators).
 - `kevward/firewall.py` — active-defense blocklist (`kevward firewall`): a

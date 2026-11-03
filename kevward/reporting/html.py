@@ -102,30 +102,61 @@ def render(result: RunResult) -> str:
     ) or "<p class='muted'>No sshd auth failures found.</p>"
 
     # --- trend matches ---
+    _va = bool(trends.get("version_aware"))
+    _badge = {
+        "applicable": ("applicable", "#c0582b"),
+        "fixed": ("fixed", "#2f6f4f"),
+        "possible": ("possible", "#50607a"),
+    }
     trend_rows = ""
     for m in (trends.get("matches") or [])[:30]:
         rw = " \U0001F512" if m.get("ransomware") else ""
+        status_cell = ""
+        if _va:
+            label, color = _badge.get(m.get("applicability", "possible"), _badge["possible"])
+            status_cell = f"<td><span class='pill' style='background:{color}'>{label}</span></td>"
         trend_rows += (
             f"<tr><td class='cve'>{_esc(m.get('cve'))}{rw}</td>"
+            f"{status_cell}"
             f"<td>{_esc(m.get('vendor'))}/{_esc(m.get('product'))}</td>"
             f"<td>{_esc(m.get('name'))}</td>"
             f"<td>{_esc(m.get('date_added'))}</td></tr>"
         )
     trend_block = ""
     if trends:
+        _status_th = "<th>Status</th>" if _va else ""
+        _ncols = 5 if _va else 4
+        if _va:
+            applic_line = (
+                f" · <b>{trends.get('applicable_count', 0)}</b> applicable here"
+                f" · {trends.get('fixed_count', 0)} already fixed"
+            )
+            note = (
+                "Name-matched against software on this host, then cross-checked "
+                "against installed versions via Ubuntu security data: "
+                "<b>applicable</b> = affected and not yet patched on this host, "
+                "<b>fixed</b> = already at/after the fixed version, "
+                "<b>possible</b> = couldn't confirm the version (treat as "
+                "name-level only)."
+            )
+        else:
+            applic_line = ""
+            note = (
+                "Matched by product name against software detected on this host. "
+                "This flags <em>possible</em> exposure — confirm version-level "
+                "applicability for each CVE before acting."
+            )
         trend_block = f"""
         <section>
           <h2>Actively-exploited (CISA KEV) relevant to this host</h2>
           <p class="muted">Catalog: {trends.get('catalog_size','?')} CVEs ·
           matches: <b>{trends.get('match_count',0)}</b> ·
-          ransomware-linked: <b>{trends.get('ransomware_linked',0)}</b>
+          ransomware-linked: <b>{trends.get('ransomware_linked',0)}</b>{applic_line}
           {'· (cached snapshot)' if not trends.get('cache_fresh') else ''}</p>
-          <p class="muted" style="font-size:12px">Matched by product name against
-          software detected on this host. This flags <em>possible</em> exposure —
-          confirm version-level applicability for each CVE before acting.</p>
-          <table><thead><tr><th>CVE</th><th>Vendor/Product</th>
+          <p class="muted" style="font-size:12px">{note}</p>
+          <table><thead><tr><th>CVE</th>{_status_th}<th>Vendor/Product</th>
           <th>Name</th><th>Added</th></tr></thead>
-          <tbody>{trend_rows or "<tr><td colspan=4 class='muted'>No matches.</td></tr>"}</tbody></table>
+          <tbody>{trend_rows or f"<tr><td colspan={_ncols} class='muted'>No matches.</td></tr>"}</tbody></table>
         </section>"""
 
     generated = _esc(result.generated_at)

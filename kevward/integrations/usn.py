@@ -1,0 +1,255 @@
+"""Version-level KEV applicability (issue #3).
+
+``trends.py`` matches CISA KEV entries to this host by vendor/product *name*,
+which can only say a CVE is *possibly* relevant. This module adds an optional
+layer that answers the sharper question — "is that CVE actually unpatched on
+*this* host's installed versions?" — by cross-referencing Ubuntu's per-CVE
+security data against the installed source-package versions.
+
+Design (per issue #3):
+- **Per-CVE, targeted.** Only the CVEs that already name-matched are looked up,
+  via ``https://ubuntu.com/security/cves/<CVE>.json`` (no API key).
+- **Offline-tolerant.** Each CVE's JSON is cached under ``/var/cache/kevward``;
+  any network error falls back to cache, then fails soft (the caller keeps the
+  name-level "possible" label — no regression).
+- **Bounded.** A per-run count cap and a wall-clock budget keep the extra
+  requests light and a report from hanging on a flaky network.
+- **stdlib-only**, read-only: this only reads a public catalog and the local
+  dpkg database. No credentials, no outbound host data.
+
+The version comparison implements Debian's version-ordering algorithm in pure
+Python (so it is unit-testable offline); at runtime ``dpkg --compare-versions``
+is preferred when available.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+import urllib.request
+from pathlib import Path
+
+from ..util import have, run
+
+CVE_URL = "https://ubuntu.com/security/cves/{cve}.json"
+CACHE_DIR = Path("/var/cache/kevward/usn")
+CACHE_TTL = 24 * 3600  # seconds; fix-version status changes slowly
+
+# Release statuses that mean "affected and not yet fixed on this release".
+_VULN_STATUSES = {"needed", "pending", "deferred"}
+
+
+# --------------------------------------------------------------------------- #
+# Debian version comparison (pure Python; see deb-version(7) / dpkg verrevcmp)
+# --------------------------------------------------------------------------- #
+def _order(c: str) -> int:
+    """Ordering weight of a single non-digit character: ``~`` sorts before
+    everything (even end-of-string), letters before all other punctuation."""
+    if c == "~":
+        return -1
+    if c == "":
+        return 0
+    if c.isalpha():
+        return ord(c)
+    return ord(c) + 256
+
+
+def _cmp_fragment(a: str, b: str) -> int:
+    """Compare two upstream/revision fragments per Debian's algorithm."""
+    ia, ib, la, lb = 0, 0, len(a), len(b)
+    while ia < la or ib < lb:
+        # Lexical (non-digit) run.
+        while (ia < la and not a[ia].isdigit()) or (ib < lb and not b[ib].isdigit()):
+            ca = a[ia] if ia < la else ""
+            cb = b[ib] if ib < lb else ""
+            oa = _order("" if ca.isdigit() else ca)
+            ob = _order("" if cb.isdigit() else cb)
+            if oa != ob:
+                return -1 if oa < ob else 1
+            if not ca.isdigit():
+                ia += 1
+            if not cb.isdigit():
+                ib += 1
+        # Numeric run: strip leading zeros, then compare by length, then value.
+        while ia < la and a[ia] == "0":
+            ia += 1
+        while ib < lb and b[ib] == "0":
+            ib += 1
+        da, db = "", ""
+        while ia < la and a[ia].isdigit():
+            da += a[ia]
+            ia += 1
+        while ib < lb and b[ib].isdigit():
+            db += b[ib]
+            ib += 1
+        if len(da) != len(db):
+            return -1 if len(da) < len(db) else 1
+        if da != db:
+            return -1 if da < db else 1
+    return 0
+
+
+def _split_epoch(v: str) -> tuple[int, str]:
+    if ":" in v:
+        head, _, rest = v.partition(":")
+        try:
+            return int(head), rest
+        except ValueError:
+            return 0, v
+    return 0, v
+
+
+def _split_upstream_rev(v: str) -> tuple[str, str]:
+    if "-" in v:
+        up, _, rev = v.rpartition("-")
+        return up, rev
+    return v, ""
+
+
+def deb_compare(a: str, b: str) -> int:
+    """Return -1/0/1 for Debian version strings ``a`` vs ``b``."""
+    ea, ra = _split_epoch(a.strip())
+    eb, rb = _split_epoch(b.strip())
+    if ea != eb:
+        return -1 if ea < eb else 1
+    ua, va = _split_upstream_rev(ra)
+    ub, vb = _split_upstream_rev(rb)
+    c = _cmp_fragment(ua, ub)
+    if c:
+        return c
+    return _cmp_fragment(va, vb)
+
+
+def version_lt(installed: str, fixed: str) -> bool:
+    """True if ``installed`` is older than ``fixed``. Prefers dpkg at runtime,
+    falls back to the pure-Python comparison (used by tests / dpkg-less hosts)."""
+    if have("dpkg"):
+        r = run(["dpkg", "--compare-versions", installed, "lt", fixed])
+        if r.rc in (0, 1):
+            return r.rc == 0
+    return deb_compare(installed, fixed) < 0
+
+
+# --------------------------------------------------------------------------- #
+# Host facts
+# --------------------------------------------------------------------------- #
+def host_codename() -> str:
+    """Ubuntu/Debian release codename (e.g. ``jammy``), or '' if undetermined."""
+    try:
+        for line in Path("/etc/os-release").read_text().splitlines():
+            if line.startswith("VERSION_CODENAME="):
+                return line.split("=", 1)[1].strip().strip('"').lower()
+    except OSError:
+        pass
+    return ""
+
+
+def installed_source_versions() -> dict[str, str]:
+    """Map every installed source package -> its (highest) installed version.
+
+    Ubuntu's CVE data is keyed by *source* package and fixes are *source*
+    versions, so we compare against source versions. ``${source:Version}`` /
+    ``${source:Package}`` are empty when they equal the binary's, so we fall
+    back to the binary fields."""
+    if not have("dpkg-query"):
+        return {}
+    fmt = "${source:Package}\\t${source:Version}\\t${Package}\\t${Version}\\n"
+    r = run(["dpkg-query", "-W", "-f=" + fmt])
+    if not r.ok:
+        return {}
+    out: dict[str, str] = {}
+    for line in r.out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        src, srcver, pkg, ver = (p.strip() for p in parts)
+        name = src or pkg
+        version = srcver or ver
+        if not name or not version:
+            continue
+        if name not in out or deb_compare(version, out[name]) > 0:
+            out[name] = version
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Per-CVE Ubuntu security data (cached, fail-soft)
+# --------------------------------------------------------------------------- #
+def _cache_path(cve: str) -> Path:
+    return CACHE_DIR / f"{cve.upper()}.json"
+
+
+def fetch_cve(cve: str, timeout: int = 8) -> dict | None:
+    """Return Ubuntu's security JSON for ``cve``, or None. Uses a fresh cache
+    entry when present; on a network error falls back to a stale one."""
+    cve = cve.strip().upper()
+    if not cve.startswith("CVE-"):
+        return None
+    cp = _cache_path(cve)
+    try:
+        if cp.is_file() and (time.time() - cp.stat().st_mtime) < CACHE_TTL:
+            return json.loads(cp.read_text())
+    except (OSError, ValueError):
+        pass
+    try:
+        req = urllib.request.Request(
+            CVE_URL.format(cve=cve), headers={"User-Agent": "kevward"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cp.write_text(json.dumps(data))
+        except OSError:
+            pass
+        return data
+    except Exception:
+        try:
+            if cp.is_file():
+                return json.loads(cp.read_text())
+        except (OSError, ValueError):
+            pass
+        return None
+
+
+def _status_for(pkg: dict, codename: str) -> dict | None:
+    """The status entry for ``codename`` within a CVE-JSON package, or None."""
+    for st in pkg.get("statuses") or []:
+        rel = (st.get("release_codename") or st.get("release") or "").lower()
+        if rel == codename:
+            return st
+    return None
+
+
+def classify_cve(data: dict | None, codename: str, installed: dict[str, str]) -> str:
+    """Decide a name-matched CVE's applicability for this host.
+
+    Returns ``"applicable"`` (an installed source package is affected and not
+    fixed), ``"fixed"`` (every installed affected package is at/after its fix),
+    or ``"possible"`` (no installed package matched, no release data, or the
+    lookup failed) — which keeps the conservative name-level meaning.
+    """
+    if not data or not codename:
+        return "possible"
+    verdict = "possible"
+    for p in data.get("packages") or []:
+        name = (p.get("name") or "").strip()
+        inst = installed.get(name)
+        if not inst:
+            continue  # not installed on this host (by source name)
+        st = _status_for(p, codename)
+        if st is None:
+            continue
+        status = (st.get("status") or "").lower()
+        if status == "released":
+            fixed = (st.get("description") or "").strip()
+            # Some entries put the version in a dedicated field instead.
+            fixed = fixed or (st.get("fixed_version") or "").strip()
+            if fixed and version_lt(inst, fixed):
+                return "applicable"
+            if fixed:
+                verdict = "fixed"
+        elif status in _VULN_STATUSES:
+            return "applicable"
+        # not-affected / DNE / ignored / unknown -> leave verdict unchanged
+    return verdict

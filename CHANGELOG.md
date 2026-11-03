@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`trends`: version-level KEV applicability.** A name-matched CISA KEV CVE is
+  now cross-referenced against this host's installed source-package versions
+  using Ubuntu's per-CVE security data, so each match is labelled **applicable**
+  (affected and not yet patched here), **fixed** (already at/after the fix), or
+  **possible** (couldn't confirm the version). Per-CVE, cached under
+  `/var/cache/kevward`, bounded by a count cap and a wall-clock budget, and
+  fully fail-soft: offline or without data it falls back to the existing
+  name-level "possible" labelling (no regression). stdlib-only; Debian version
+  comparison is implemented in-tree (prefers `dpkg` at runtime). Shown in
+  `kevward trends` and the `--trends` report. (#3)
 - **`firewall`: packet counters on the block rules.** The `drop` rules for the
   evidence and permanent-CIDR block sets now carry an nftables `counter`, so
   `kevward firewall list` / `nft list table inet kevward` shows how many

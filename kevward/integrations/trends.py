@@ -89,14 +89,44 @@ _HOST_KEYWORDS = [
 ]
 
 
+def _applicability(
+    hits: list[KevEntry], max_checks: int, budget_s: float
+) -> dict[str, str]:
+    """Label each name-matched CVE 'applicable' / 'fixed' / 'possible' using the
+    version-aware USN layer. Fail-soft: any problem leaves CVEs as 'possible'
+    (the existing name-level meaning), so there is no regression offline."""
+    from . import usn
+
+    codename = usn.host_codename()
+    installed = usn.installed_source_versions() if codename else {}
+    if not (codename and installed):
+        return {}
+    labels: dict[str, str] = {}
+    deadline = time.monotonic() + budget_s
+    for e in hits[:max_checks]:
+        if time.monotonic() > deadline:
+            break
+        labels[e.cve] = usn.classify_cve(usn.fetch_cve(e.cve), codename, installed)
+    return labels
+
+
 def matching_trends(
     host_terms: list[str] | None = None,
     url: str = KEV_URL,
+    version_aware: bool = True,
+    max_version_checks: int = 80,
+    version_budget_s: float = 45.0,
 ) -> dict:
     """Return KEV entries plausibly relevant to this host, plus summary stats.
 
     ``host_terms`` lets callers pass detected product names (e.g. from the
     service plugins). When omitted, a broad built-in keyword list is used.
+
+    When ``version_aware`` is set (default), each name-matched CVE is further
+    cross-referenced against this host's installed versions via Ubuntu's
+    per-CVE security data, labelling it 'applicable' (unpatched here), 'fixed',
+    or 'possible' (couldn't confirm). The pass is bounded by ``max_version_checks``
+    and ``version_budget_s`` and fails soft to name-level labelling.
     """
     catalog = _load_catalog(url)
     terms = [t.lower() for t in (host_terms or _HOST_KEYWORDS)]
@@ -109,10 +139,26 @@ def matching_trends(
         if any(t in hay for t in terms):
             hits.append(e)
     hits.sort(key=lambda e: e.date_added, reverse=True)
+
+    labels: dict[str, str] = {}
+    if version_aware and hits:
+        try:
+            labels = _applicability(hits, max_version_checks, version_budget_s)
+        except Exception:
+            labels = {}  # never let the version layer break a report
+
+    def _match_dict(e: KevEntry) -> dict:
+        d = dict(e.__dict__)
+        d["applicability"] = labels.get(e.cve, "possible")
+        return d
+
     return {
         "catalog_size": len(catalog),
         "cache_fresh": _cache_fresh(),
         "match_count": len(hits),
         "ransomware_linked": sum(1 for e in hits if e.ransomware),
-        "matches": [e.__dict__ for e in hits[:100]],
+        "version_aware": bool(labels),
+        "applicable_count": sum(1 for v in labels.values() if v == "applicable"),
+        "fixed_count": sum(1 for v in labels.values() if v == "fixed"),
+        "matches": [_match_dict(e) for e in hits[:100]],
     }
