@@ -219,10 +219,10 @@ def _table_snippet() -> str:
         f"    type filter hook input priority -150; policy accept;\n"
         f"    ip saddr @{ALLOW4} accept\n"
         f"    ip6 saddr @{ALLOW6} accept\n"
-        f"    ip saddr @{SET4} drop\n"
-        f"    ip6 saddr @{SET6} drop\n"
-        f"    ip saddr @{BLOCKCIDR4} drop\n"
-        f"    ip6 saddr @{BLOCKCIDR6} drop\n"
+        f"    ip saddr @{SET4} counter drop\n"
+        f"    ip6 saddr @{SET6} counter drop\n"
+        f"    ip saddr @{BLOCKCIDR4} counter drop\n"
+        f"    ip6 saddr @{BLOCKCIDR6} counter drop\n"
         f"  }}\n"
         f"}}\n"
     )
@@ -261,8 +261,11 @@ def ensure_table() -> tuple[bool, str]:
             ("ip", SET4, "drop"), ("ip6", SET6, "drop"),
             ("ip", BLOCKCIDR4, "drop"), ("ip6", BLOCKCIDR6, "drop"),
         ):
+            # counter on the drops so `nft list` / `firewall list` shows how
+            # much each block set is actually catching.
+            extra = ["counter"] if verdict == "drop" else []
             _nft(["add", "rule", "inet", TABLE, CHAIN, proto, "saddr",
-                  f"@{setname}", verdict])
+                  f"@{setname}", *extra, verdict])
     return True, "ok"
 
 
