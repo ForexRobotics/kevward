@@ -15,8 +15,8 @@
 </p>
 
 <sub>One `kevward report` — patch posture, actively-exploited (CISA KEV) matches,
-and attacker IPs — in a single self-contained HTML page (light & dark themes).
-Demo data shown.</sub>
+attacker IPs, and (with `--audit`) host compromise indicators — in a single
+self-contained HTML page (light & dark themes). Demo data shown.</sub>
 
 kevward runs *on a server* and answers three questions a sysadmin asks every
 morning:
