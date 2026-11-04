@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Generic composer projects (any PHP app, not just Laravel).
 
 Scans configured roots for composer.lock files and runs `composer audit`.

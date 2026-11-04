@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """ufw: apt package + "is the firewall actually active?" check."""
 
 from __future__ import annotations

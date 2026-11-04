@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Self-contained HTML report: patch posture + attacker-IP visualization.
 
 No external assets or JS frameworks — a single file you can scp off the box or

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Host hardening: read-only checks + a small set of safe, reversible,
 kevward-owned interim mitigations. Local host only, defensive.
 

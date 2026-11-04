@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Laravel projects: composer advisory audit (report-only) + version note.
 
 Scans configured project paths for a Laravel app (artisan + composer.lock) and

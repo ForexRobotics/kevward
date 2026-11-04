@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """kevward - defensive server hardening & patch automation for Ubuntu.
 
 A plugin-based CLI that inspects running services, reports known

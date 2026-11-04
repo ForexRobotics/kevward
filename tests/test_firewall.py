@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Unit tests for the firewall blocklist logic.
 
 These cover the safety-critical parts without needing nft or root:

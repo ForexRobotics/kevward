@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Collect banned-IP telemetry from fail2ban.
 
 Prefers `fail2ban-client` (authoritative current state); falls back to parsing

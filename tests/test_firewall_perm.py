@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Unit tests for the permanent-block list (#13) and reboot-persistence (#12)
 helpers — the parts that don't need nft or root."""
 

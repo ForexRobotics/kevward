@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Version-level KEV applicability (issue #3).
 
 ``trends.py`` matches CISA KEV entries to this host by vendor/product *name*,

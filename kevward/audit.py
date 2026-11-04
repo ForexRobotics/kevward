@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Host compromise indicators (`kevward audit`) — read-only, local host only.
 
 This is a *detection* aid, not a scanner and not a cleaner. It looks at the
