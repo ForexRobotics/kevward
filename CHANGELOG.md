@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
+
+Sharper signal: a KEV match now tells you whether it actually applies to *this*
+host's installed versions, and a permanent firewall block shows how much it is
+really catching.
 
 - **`trends`: version-level KEV applicability.** A name-matched CISA KEV CVE is
   now cross-referenced against this host's installed source-package versions
