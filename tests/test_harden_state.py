@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Unit tests for harden's nft table detection (tri-state, no root/network)."""
 
 from __future__ import annotations

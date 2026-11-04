@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Configuration loading and the safety policy.
 
 Config is optional; sane, *safe* defaults apply when no file is present.

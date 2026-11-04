@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Unit tests for harden's pure-logic parsers (no root / nft / systemd needed).
 
 Runnable with pytest, or directly: ``python tests/test_harden.py``.

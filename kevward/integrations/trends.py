@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Recent attack-trend awareness.
 
 Pulls CISA's Known Exploited Vulnerabilities (KEV) catalog — the authoritative

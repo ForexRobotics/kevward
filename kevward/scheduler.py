@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Reboot handling: report, schedule in a maintenance window, or (opt-in) now.
 
 Uses systemd where available (``shutdown`` schedules a timed reboot). Nothing

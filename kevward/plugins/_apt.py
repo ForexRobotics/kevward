@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Reusable base for apt-managed services.
 
 Most Ubuntu services (nginx, php, openssh, ufw, ...) are just a set of apt

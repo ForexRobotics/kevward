@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Lightweight attacker signal from auth logs (logwatch-style, no dependency).
 
 If `logwatch` is installed we capture its summary; independently we parse

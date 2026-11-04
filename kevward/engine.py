@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Runs plugins according to policy and produces an aggregate run result."""
 
 from __future__ import annotations

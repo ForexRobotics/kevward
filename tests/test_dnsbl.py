@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Unit tests for the DNSBL cross-check (pure logic + fail-soft; no network)."""
 
 from __future__ import annotations

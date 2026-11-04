@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Active-defense blocklist: a kevward-owned nftables set of high-confidence
 attacker IPs, built from the host's *own* fail2ban / sshd evidence.
 

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Plugin contract and registry.
 
 Adding support for a new service is intentionally a one-file job: subclass

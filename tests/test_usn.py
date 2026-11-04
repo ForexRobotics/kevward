@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """Unit tests for the version-aware KEV layer (#3) — the pure parts that need
 no network, root, or dpkg: Debian version comparison and CVE applicability."""
 

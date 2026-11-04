@@ -125,6 +125,14 @@ git commit -s -m "..."    # appends: Signed-off-by: Your Name <you@example.com>
 A PR without sign-off, or from someone who has not agreed to the CLA, cannot be
 merged.
 
+Every source file carries an SPDX license header; keep it at the top of any new
+file:
+
+```python
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+```
+
 ## Ground rules
 
 - **Defensive only.** PRs that add remote scanning, exploitation, "hack-back",

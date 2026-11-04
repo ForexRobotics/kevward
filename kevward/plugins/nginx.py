@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 Forex Robotics Co., Ltd.
+
 """nginx: apt packages + a couple of cheap config hardening checks."""
 
 from __future__ import annotations
