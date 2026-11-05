@@ -96,6 +96,52 @@ def test_classify_dpkg_verify():
     assert ad.classify_dpkg_verify("??5??????   /usr/lib/x86_64-linux-gnu/libnssckbi.so") is None
 
 
+def test_classify_passwd_line():
+    assert ad.classify_passwd_line("toor:x:0:0::/root:/bin/bash")  # UID 0 dupe
+    assert ad.classify_passwd_line("root:x:0:0:root:/root:/bin/bash") is None
+    assert ad.classify_passwd_line("alice:x:1000:1000::/home/alice:/bin/bash") is None
+    assert ad.classify_passwd_line("garbage") is None
+
+
+def test_classify_shadow_line():
+    assert ad.classify_shadow_line("baduser::19000:0:99999:7:::") == "baduser"
+    assert ad.classify_shadow_line("root:$6$abc$def:19000:0:99999:7:::") is None
+    assert ad.classify_shadow_line("daemon:*:19000:0:99999:7:::") is None
+    assert ad.classify_shadow_line("sys:!:19000:0:99999:7:::") is None
+
+
+def test_classify_sudoers_line():
+    assert ad.classify_sudoers_line("eviluser ALL=(ALL) NOPASSWD: ALL")
+    assert ad.classify_sudoers_line("%admin ALL=(ALL) NOPASSWD:ALL")
+    assert ad.classify_sudoers_line("alice ALL=(ALL:ALL) ALL") is None  # normal admin
+    assert ad.classify_sudoers_line("# a comment") is None
+    assert ad.classify_sudoers_line("Defaults env_reset") is None
+
+
+def test_classify_suid():
+    assert ad.classify_suid("/usr/local/bin/bash")          # suid shell
+    assert ad.classify_suid("/home/u/.cache/python3")       # suid interpreter
+    assert ad.classify_suid("/tmp/.x/rootme")               # temp/hidden path
+    assert ad.classify_suid("/dev/shm/x")
+    # legitimate system suid must NOT flag
+    assert ad.classify_suid("/usr/bin/sudo") is None
+    assert ad.classify_suid("/usr/bin/passwd") is None
+    assert ad.classify_suid("/bin/mount") is None
+    assert ad.classify_suid("/usr/bin/pkexec") is None
+
+
+def test_classify_rc_line():
+    assert ad.classify_rc_line("sudo() { read -s p; echo $p >> ~/.c; command sudo \"$@\"; }")
+    assert ad.classify_rc_line("function ssh() { : ; }")
+    assert ad.classify_rc_line("alias sudo='read -s p; echo $p>>/tmp/.l; sudo'")
+    assert ad.classify_rc_line("BASH_ENV=/tmp/.x/env.sh")
+    # benign conveniences must NOT flag
+    assert ad.classify_rc_line("alias sudo='sudo '") is None
+    assert ad.classify_rc_line("alias ll='ls -la'") is None
+    assert ad.classify_rc_line("export PROMPT_COMMAND='history -a; history -n'") is None
+    assert ad.classify_rc_line("# alias sudo='evil'") is None
+
+
 if __name__ == "__main__":
     for name, obj in sorted(globals().items()):
         if name.startswith("test_") and callable(obj):
