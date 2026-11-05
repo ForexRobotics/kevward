@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from . import __version__
 from .config import Config
 from .model import Finding, ServiceReport
 from .plugin import load
@@ -34,6 +35,7 @@ class RunResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "kevward_version": __version__,
             "host": self.host,
             "generated_at": self.generated_at,
             "os": self.os,

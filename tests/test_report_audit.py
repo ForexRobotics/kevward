@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from kevward import __version__
 from kevward.engine import RunResult
 from kevward.model import Finding, FindingKind, Severity
 from kevward.reporting.html import render
@@ -35,6 +36,12 @@ def test_audit_finding_shown_and_counted_in_header():
     assert "possible reverse shell" in html
     # the finding's severity is reflected in the header severity chips
     assert "high: <b>1</b>" in html
+
+
+def test_report_shows_kevward_version():
+    html = render(_base())
+    assert f"kevward {__version__}" in html          # footer + header
+    assert _base().to_dict()["kevward_version"] == __version__
 
 
 if __name__ == "__main__":
