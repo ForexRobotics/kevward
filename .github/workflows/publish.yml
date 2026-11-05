@@ -1,12 +1,19 @@
-name: Publish to PyPI
+name: Publish & announce
 
-# Publishes on a version tag (e.g. v0.2.0) using PyPI Trusted Publishing
-# (OIDC) — no API token or secret is stored in the repo.
+# On a version tag (e.g. v0.2.0):
+#   1. build + publish to PyPI via Trusted Publishing (OIDC) — no stored token.
+#   2. create a GitHub Release from the matching CHANGELOG section.
+#   3. announce it to Discord (only if a DISCORD_WEBHOOK secret is set).
 #
-# One-time setup on PyPI: create the project (or a "pending publisher") at
+# One-time PyPI setup: create the project (or a "pending publisher") at
 # https://pypi.org/manage/account/publishing/ with:
 #   owner = ForexRobotics, repo = kevward, workflow = publish.yml,
 #   environment = pypi
+#
+# One-time Discord setup (optional — the announce step is skipped without it):
+#   In the target Discord channel: Edit Channel -> Integrations -> Webhooks ->
+#   New Webhook -> copy the URL. Then add it as a repo secret named
+#   DISCORD_WEBHOOK (Settings -> Secrets and variables -> Actions).
 
 on:
   push:
@@ -50,3 +57,44 @@ jobs:
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  announce:
+    needs: publish          # only announce once the package is actually live
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="## $VERSION" \
+            '$0==v{f=1;next} /^## /&&f{exit} f{print}' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "See the changelog and the release page." > notes.md
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "kevward ${{ steps.notes.outputs.version }}" \
+            --notes-file notes.md \
+          || gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "kevward ${{ steps.notes.outputs.version }}" \
+            --notes-file notes.md
+      - name: Announce to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
+        run: |
+          VERSION="${{ steps.notes.outputs.version }}"
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
+          NOTES="$(head -c 1400 notes.md)"
+          MSG="$(printf '**kevward %s** released :shield:\n\n%s\n\n%s' \
+            "$VERSION" "$NOTES" "$URL")"
+          jq -n --arg c "$MSG" '{content: $c}' > payload.json
+          curl -sS -X POST -H "Content-Type: application/json" \
+            -d @payload.json "$DISCORD_WEBHOOK"
