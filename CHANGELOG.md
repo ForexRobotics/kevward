@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
+
+Compromise detection, second wave: four more read-only `audit` checks for the
+footholds a post-intrusion attacker leaves behind — rogue accounts, setuid
+backdoors, shell-rc credential hijacks, and more persistence spots.
 
 - **`audit`: four new compromise checks (deeper foothold detection).** All
   read-only, stdlib-only, *possible* not *confirmed*, with unit-tested pure
