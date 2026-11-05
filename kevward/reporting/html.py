@@ -12,6 +12,7 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
+from .. import __version__ as _KW_VERSION
 from ..engine import RunResult
 
 _SEV_COLOR = {
@@ -209,7 +210,7 @@ def render(result: RunResult) -> str:
 <body><div class="wrap">
   <header>
     <h1>kevward — {_esc(result.host)}</h1>
-    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b></p>
+    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · kevward {_KW_VERSION}</p>
     <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
   </header>
 
@@ -239,7 +240,7 @@ def render(result: RunResult) -> str:
   {audit_block}
 
   <footer class="muted" style="text-align:center;font-size:12px">
-    kevward · defensive posture report · {datetime.now().year} ·
+    kevward {_KW_VERSION} · defensive posture report · {datetime.now().year} ·
     AGPL-3.0 ·
     <a href="https://github.com/ForexRobotics/kevward" style="color:inherit">source</a>
   </footer>

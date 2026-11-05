@@ -136,6 +136,7 @@ def cmd_trends(args) -> int:
     from .integrations import trends as trends_mod
     host_terms = detected_kev_terms(cfg.policy.services or None)
     data = trends_mod.matching_trends(host_terms)
+    data["kevward_version"] = __version__
     if args.json:
         import json
         print(json.dumps(data, indent=2, ensure_ascii=False))

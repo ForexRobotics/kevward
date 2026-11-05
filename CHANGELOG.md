@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **`report`: show the kevward version in the output.** The HTML report's header
+  and footer now carry `kevward X.Y.Z`, and the JSON (`report --json`,
+  `trends --json`) gains a `kevward_version` field — so a report says which
+  version produced it (useful for triage and confirming an upgrade took
+  effect). Read from `kevward.__version__`; presentational only. (#50)
+
 ## 0.10.0
 
 Compromise detection, second wave: four more read-only `audit` checks for the
