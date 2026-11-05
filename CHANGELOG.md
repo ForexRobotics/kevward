@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **`audit`: four new compromise checks (deeper foothold detection).** All
+  read-only, stdlib-only, *possible* not *confirmed*, with unit-tested pure
+  classifiers:
+  - **Rogue local accounts** — a UID-0 account other than `root`, a login
+    account with an empty password, a `NOPASSWD: ALL` sudoers grant, or a
+    world-writable sudoers file. (#37)
+  - **SUID/SGID anomalies** — a setuid/setgid shell or interpreter, or a
+    setuid/setgid file in a temp or hidden path (a classic root backdoor the
+    patch/port view misses), over a bounded directory walk. (#29)
+  - **Shell-rc credential hijacks** — a function or redirecting alias wrapping
+    `sudo`/`ssh`/`su`/`passwd`, or `PROMPT_COMMAND`/`BASH_ENV` wired to run a
+    command; benign convenience aliases are not flagged. (#32)
+  - **Extended persistence** — `at` jobs and user-level systemd `.service`
+    units are now scanned alongside cron and system units (a malicious timer's
+    payload is its paired service, caught with the units). (#39)
 - **Fix: false "reboot required" on `linux-firmware` / `libc*` package updates.**
   The reboot flag used `pkg.startswith(("linux-", "libc"))`, which wrongly fired
   on firmware blobs (`linux-firmware-*`), kernel headers/tools, and every

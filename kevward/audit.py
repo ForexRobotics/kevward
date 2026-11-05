@@ -13,9 +13,19 @@ host kevward runs on for the tell-tale signs of a post-intrusion foothold:
   listening on a non-loopback address (a bind backdoor).
 - **Persistence** — ``/etc/ld.so.preload``, cron, admin-added systemd units,
   shell rc / ``profile.d``, ``authorized_keys`` carrying reverse-shell or
-  downloader patterns, forced commands or world-writable permissions, and a PHP
+  downloader patterns, forced commands or world-writable permissions, a PHP
   ``auto_prepend_file``/``auto_append_file`` pointed at a temp/hidden/writable
-  file (a stealthy web-server foothold).
+  file, plus ``at`` jobs and user-level systemd units (a malicious timer's
+  payload is its paired ``.service``, caught with the units).
+- **Rogue local accounts** — a UID-0 account other than ``root``, a login
+  account with an empty password, a ``NOPASSWD: ALL`` sudoers grant, or a
+  world-writable sudoers file.
+- **SUID/SGID anomalies** — a setuid/setgid shell or interpreter, or a
+  setuid/setgid file in a temp or hidden path (a classic root backdoor the
+  patch/port view misses).
+- **Shell-rc hijacks** — a function or redirecting alias wrapping
+  ``sudo``/``ssh``/``su``/``passwd`` (a credential logger), or
+  ``PROMPT_COMMAND``/``BASH_ENV`` wired to run a command.
 - **Rogue process origin** — a process backed by a deleted, temp-resident or
   hidden executable (an in-memory implant), or one wearing a kernel-thread name
   while backed by a real binary (a ``[kcached]``-style disguise).
@@ -457,6 +467,9 @@ def check_persistence() -> list[Finding]:
     out += _check_rc()
     out += _check_authkeys()
     out += _check_php_prepend()
+    out += _check_rc_hijack()
+    out += _check_at()
+    out += _check_user_units()
     return out
 
 
@@ -564,9 +577,288 @@ def _check_pkg_integrity(max_report: int = 40) -> list[Finding]:
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Rogue local accounts (#37), SUID/SGID anomalies (#29), rc hijacks (#32),
+# extended persistence (#39). Pure classifiers first, then collectors.
+# --------------------------------------------------------------------------- #
+
+# Login shells a would-be attacker account would use; a nologin/false shell
+# means the account can't log in, so an empty password there is not a finding.
+_NOLOGIN_SHELLS = {
+    "", "/usr/sbin/nologin", "/sbin/nologin", "/bin/false", "/usr/bin/false",
+    "/dev/null",
+}
+
+# Shell/interpreter basenames whose setuid copy is a classic root backdoor.
+_SUID_INTERP = {
+    "bash", "sh", "dash", "zsh", "ksh", "ash", "busybox",
+    "python", "perl", "ruby", "lua", "php", "node",
+    "env", "awk", "gawk", "find", "vim", "nmap", "tclsh", "expect",
+}
+
+_SUDO_NOPASSWD_ALL = re.compile(r"\bNOPASSWD:\s*ALL\b", re.I)
+_RC_CRED = r"(sudo|ssh|su|passwd|doas)"
+
+
+def classify_passwd_line(line: str) -> str | None:
+    """Flag a ``/etc/passwd`` line that is a rogue account. Conservative: only
+    a UID-0 account other than ``root`` (a hidden second superuser)."""
+    parts = line.rstrip("\n").split(":")
+    if len(parts) < 7:
+        return None
+    name, uid = parts[0], parts[2]
+    try:
+        uidn = int(uid)
+    except ValueError:
+        return None
+    if uidn == 0 and name != "root":
+        return "UID 0 account other than root"
+    return None
+
+
+def classify_shadow_line(line: str) -> str | None:
+    """Return the account name if its ``/etc/shadow`` password field is empty
+    (login with no password), else None. ``*`` / ``!`` are locked, not empty."""
+    parts = line.rstrip("\n").split(":")
+    if len(parts) < 2:
+        return None
+    name, pw = parts[0], parts[1]
+    return name if pw == "" else None
+
+
+def classify_sudoers_line(line: str) -> str | None:
+    """Flag a passwordless-to-everything sudoers grant. Kept narrow (only
+    ``NOPASSWD: ALL``) so ordinary ``user ALL=(ALL) ALL`` does not fire."""
+    s = line.strip()
+    if not s or s.startswith("#") or s.startswith("Defaults"):
+        return None
+    if _SUDO_NOPASSWD_ALL.search(s):
+        return "passwordless sudo to ALL (NOPASSWD: ALL)"
+    return None
+
+
+def classify_suid(path: str) -> str | None:
+    """Why a setuid/setgid file looks suspicious, or None. The caller has
+    already confirmed the suid/sgid bit; this decides *where/what* is wrong.
+
+    Legitimate system suid binaries (``sudo``, ``passwd``, ``mount``, …) are not
+    shells and live in standard paths, so they do not match."""
+    if _SUSPECT_EXE_DIR.match(path) or "/." in path:
+        return "setuid/setgid file in a temp or hidden path"
+    base = os.path.basename(path)
+    stem = re.sub(r"[0-9.]+$", "", base)  # python3.11 -> python
+    if base in _SUID_INTERP or stem in _SUID_INTERP:
+        return "setuid/setgid shell or interpreter"
+    return None
+
+
+def classify_rc_line(line: str) -> str | None:
+    """Flag a shell-rc credential hijack (distinct from a reverse shell): a
+    function or redirecting alias wrapping ``sudo``/``ssh``/``su``/``passwd``,
+    or ``PROMPT_COMMAND``/``BASH_ENV`` wired to run something. A plain
+    convenience alias is deliberately not flagged."""
+    s = line.strip()
+    if not s or s.startswith("#"):
+        return None
+    m = re.match(rf"(?:function\s+)?{_RC_CRED}\s*\(\s*\)", s)
+    if m:
+        return f"shell function overrides '{m.group(1)}'"
+    am = re.match(rf"alias\s+{_RC_CRED}\s*=\s*(.+)$", s)
+    if am:
+        val = am.group(2)
+        if re.search(r">>?\s*\S|;|\|\||&&|\$\(|`|/dev/|/tmp/", val):
+            return f"alias '{am.group(1)}' redirects or chains a command"
+        return None
+    if re.match(r"(?:export\s+)?PROMPT_COMMAND\s*=", s) and (
+        is_suspicious_cmdline(s) or _TEMP_PATH.search(s)
+    ):
+        return "PROMPT_COMMAND runs a suspicious command"
+    if re.match(r"(?:export\s+)?BASH_ENV\s*=", s):
+        return "BASH_ENV set (runs a script for non-interactive bash)"
+    return None
+
+
+def _check_accounts() -> list[Finding]:
+    out: list[Finding] = []
+    login_accounts: dict[str, str] = {}
+    try:
+        with open("/etc/passwd", errors="replace") as fh:
+            for ln in fh:
+                reason = classify_passwd_line(ln)
+                if reason:
+                    name = ln.split(":", 1)[0]
+                    out.append(_f(Severity.HIGH, f"{reason}: {name}",
+                                  detail=ln.strip()[:200]))
+                parts = ln.rstrip("\n").split(":")
+                if len(parts) >= 7 and parts[6] not in _NOLOGIN_SHELLS:
+                    login_accounts[parts[0]] = parts[6]
+    except OSError:
+        pass
+    try:
+        with open("/etc/shadow", errors="replace") as fh:
+            for ln in fh:
+                name = classify_shadow_line(ln)
+                if name and name in login_accounts:
+                    out.append(_f(Severity.HIGH,
+                                  f"login account with an empty password: {name}",
+                                  detail="set a password or lock the account"))
+    except OSError:
+        pass  # not root / no shadow readable
+    sfiles = ["/etc/sudoers"]
+    try:
+        sfiles += [os.path.join("/etc/sudoers.d", n)
+                   for n in os.listdir("/etc/sudoers.d")]
+    except OSError:
+        pass
+    for sf in sfiles:
+        try:
+            st = os.stat(sf)
+        except OSError:
+            continue
+        if st.st_mode & 0o022:
+            out.append(_f(Severity.HIGH,
+                          f"sudoers file is group/world-writable: {sf}",
+                          detail=f"mode {oct(st.st_mode & 0o777)}"))
+        try:
+            with open(sf, errors="replace") as fh:
+                for ln in fh:
+                    reason = classify_sudoers_line(ln)
+                    if reason:
+                        out.append(_f(Severity.MEDIUM, f"{reason} in {sf}",
+                                      detail=ln.strip()[:200]))
+        except OSError:
+            continue
+    return out
+
+
+_SUID_SCAN_DIRS = [
+    "/usr/bin", "/usr/sbin", "/bin", "/sbin", "/usr/local/bin",
+    "/usr/local/sbin", "/opt", "/tmp", "/var/tmp", "/dev/shm",
+]
+
+
+def _check_suid(max_report: int = 40, max_files: int = 60000) -> list[Finding]:
+    out: list[Finding] = []
+    seen = 0
+    for d in _SUID_SCAN_DIRS + _home_dirs():
+        for root, _dirs, files in os.walk(d, onerror=lambda e: None):
+            for fn in files:
+                seen += 1
+                if seen > max_files:
+                    return out
+                p = os.path.join(root, fn)
+                if os.path.islink(p):
+                    continue
+                try:
+                    st = os.lstat(p)
+                except OSError:
+                    continue
+                if not st.st_mode & 0o6000:  # no setuid/setgid bit
+                    continue
+                reason = classify_suid(p)
+                if reason:
+                    out.append(_f(Severity.HIGH, f"{reason}: {p}",
+                                  detail=f"mode {oct(st.st_mode & 0o7777)} "
+                                         f"uid {st.st_uid}"))
+                    if len(out) >= max_report:
+                        return out
+    return out
+
+
+_RC_HIJACK_FILES = (".bashrc", ".bash_profile", ".bash_login", ".profile",
+                    ".zshrc", ".zprofile")
+
+
+def _check_rc_hijack() -> list[Finding]:
+    out: list[Finding] = []
+    files = ["/etc/bash.bashrc", "/etc/profile", "/etc/zsh/zshrc"]
+    try:
+        files += [os.path.join("/etc/profile.d", n)
+                  for n in os.listdir("/etc/profile.d")]
+    except OSError:
+        pass
+    for home in ["/root", *_home_dirs()]:
+        files += [os.path.join(home, rc) for rc in _RC_HIJACK_FILES]
+    for f in files:
+        try:
+            st = os.stat(f)
+        except OSError:
+            continue
+        if st.st_mode & 0o022:
+            out.append(_f(Severity.MEDIUM,
+                          f"shell rc file is group/world-writable: {f}",
+                          detail=f"mode {oct(st.st_mode & 0o777)}"))
+        try:
+            with open(f, errors="replace") as fh:
+                content = fh.read()
+        except OSError:
+            continue
+        for ln in content.splitlines():
+            reason = classify_rc_line(ln)
+            if reason:
+                out.append(_f(Severity.MEDIUM, f"{reason} in {f}",
+                              detail=ln.strip()[:200]))
+    return out
+
+
+def _check_at() -> list[Finding]:
+    out: list[Finding] = []
+    for d in ("/var/spool/cron/atjobs", "/var/spool/at",
+              "/var/spool/at/atjobs"):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(d, n)
+            try:
+                with open(p, errors="replace") as fh:
+                    content = fh.read()
+            except OSError:
+                continue
+            for ln in content.splitlines():
+                s = ln.strip()
+                if s and not s.startswith("#") and is_suspicious_cmdline(s):
+                    out.append(_f(Severity.HIGH, f"suspicious at-job in {p}",
+                                  detail=s[:200]))
+                    break
+    return out
+
+
+def _check_user_units() -> list[Finding]:
+    """User-level systemd service units — a persistence spot the system-unit
+    scan misses. A malicious timer's payload is its paired ``.service``, caught
+    here (user) or by ``_check_units`` (system)."""
+    out: list[Finding] = []
+    bases = ["/etc/systemd/user", "/run/systemd/user"]
+    for home in ["/root", *_home_dirs()]:
+        bases.append(os.path.join(home, ".config/systemd/user"))
+    for base in bases:
+        try:
+            names = [n for n in os.listdir(base) if n.endswith(".service")]
+        except OSError:
+            continue
+        for n in names:
+            try:
+                with open(os.path.join(base, n), errors="replace") as fh:
+                    for ln in fh:
+                        s = ln.strip()
+                        if s.startswith("ExecStart"):
+                            reason = is_suspicious_exec(s)
+                            if reason:
+                                out.append(_f(
+                                    Severity.HIGH,
+                                    f"suspicious user unit {n}: {reason}",
+                                    detail=s[:200]))
+            except OSError:
+                continue
+    return out
+
+
 def audit() -> list[Finding]:
     findings = (check_reverse_ssh() + check_connections() + check_persistence()
-                + _check_proc_origin() + _check_pkg_integrity())
+                + _check_proc_origin() + _check_pkg_integrity()
+                + _check_accounts() + _check_suid())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
     return findings
 
