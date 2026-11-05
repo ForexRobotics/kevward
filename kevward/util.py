@@ -61,3 +61,20 @@ def reboot_pending() -> bool:
     return os.path.exists("/var/run/reboot-required") or os.path.exists(
         "/run/reboot-required"
     )
+
+
+def pkg_needs_reboot(pkg: str) -> bool:
+    """True if upgrading this package implies a reboot: the kernel image or the
+    C runtime (glibc).
+
+    Deliberately narrow. The old heuristic ``startswith(("linux-", "libc"))``
+    over-flagged: ``linux-firmware-*`` (firmware blobs), ``linux-headers-*``,
+    ``linux-tools-*``, ``linux-libc-dev`` all start with ``linux-`` but need no
+    reboot, and the ``libc`` prefix swept in unrelated libraries (``libcurl``,
+    ``libcups``, ``libcairo``, …). Only the kernel image and glibc do.
+    """
+    return (
+        pkg.startswith("linux-image")
+        or pkg == "libc6"
+        or pkg.startswith("libc6-")
+    )

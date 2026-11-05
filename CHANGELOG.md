@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: false "reboot required" on `linux-firmware` / `libc*` package updates.**
+  The reboot flag used `pkg.startswith(("linux-", "libc"))`, which wrongly fired
+  on firmware blobs (`linux-firmware-*`), kernel headers/tools, and every
+  `libc`-prefixed library (`libcurl`, `libcups`, …). It is now narrowed to the
+  kernel image (`linux-image*`) and glibc (`libc6`) via a new
+  `util.pkg_needs_reboot`, so a routine firmware upgrade no longer reports the
+  host as needing a reboot.
+
 ## 0.9.0
 
 Sharper signal: a KEV match now tells you whether it actually applies to *this*
