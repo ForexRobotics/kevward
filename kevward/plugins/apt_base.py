@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
-from ..util import have, reboot_pending
+from ..util import have, pkg_needs_reboot, reboot_pending
 from ._apt import AptServicePlugin, _simulate_upgrade
 
 
@@ -41,7 +41,7 @@ class AptPlugin(AptServicePlugin):
                     detail=f"origin: {change['origin'].strip()}",
                     current_version=change["cur"],
                     fixed_version=change["new"],
-                    reboot_required=change["pkg"].startswith(("linux-", "libc")),
+                    reboot_required=pkg_needs_reboot(change["pkg"]),
                     ref=change["pkg"],
                 )
             )

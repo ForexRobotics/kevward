@@ -21,7 +21,7 @@ import re
 
 from ..model import ActionResult, Finding, FindingKind, Severity
 from ..plugin import ServicePlugin
-from ..util import have, is_root, run
+from ..util import have, is_root, pkg_needs_reboot, run
 
 # Lines from `apt-get -s upgrade` look like:
 #   Inst nginx [1.24.0-1] (1.24.0-2ubuntu1 Ubuntu:24.04/noble-security [amd64])
@@ -84,8 +84,8 @@ class AptServicePlugin(ServicePlugin):
                     detail=f"origin: {change['origin'].strip()}",
                     current_version=change["cur"],
                     fixed_version=change["new"],
-                    # Kernel/libc class packages imply a reboot; approximate.
-                    reboot_required=change["pkg"].startswith(("linux-", "libc")),
+                    # Only the kernel image and glibc imply a reboot.
+                    reboot_required=pkg_needs_reboot(change["pkg"]),
                     ref=change["pkg"],
                 )
             )
