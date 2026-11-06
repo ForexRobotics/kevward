@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
+
+Operational polish from a week of daily runs: quieter and more accurate EOL
+reporting, an `apply` that says why it failed, and the firewall's own drop
+counts surfaced in the report.
 
 - **`report`: show the kevward version in the output.** The HTML report's header
   and footer now carry `kevward X.Y.Z`, and the JSON (`report --json`,
