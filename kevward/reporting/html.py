@@ -105,6 +105,25 @@ def render(result: RunResult) -> str:
         _bar(ip, c, max_ssh, "#50607a") for ip, c in ssh[:20]
     ) or "<p class='muted'>No sshd auth failures found.</p>"
 
+    # --- firewall drops (issue #42 follow-up): packets dropped per kevward set.
+    fw = att.get("firewall") or {}
+
+    def _fw_pkts(*sets: str) -> int:
+        return sum(int(fw[s][0]) for s in sets if s in fw)
+
+    fw_line = ""
+    if fw:
+        evidence = _fw_pkts("blocklist4", "blocklist6")
+        cidr = _fw_pkts("blockcidr4", "blockcidr6")
+        total = evidence + cidr
+        fw_line = (
+            "<p class='muted' style='margin-top:0'>firewall drops "
+            "<span style='font-size:12px'>(since last ruleset load)</span>: "
+            f"evidence blocklist <b>{evidence:,}</b> · "
+            f"operator CIDR blocks <b>{cidr:,}</b> · "
+            f"total <b>{total:,}</b> packets</p>"
+        )
+
     # --- trend matches ---
     _va = bool(trends.get("version_aware"))
     _badge = {
@@ -224,6 +243,7 @@ def render(result: RunResult) -> str:
 
   <section>
     <h2>Attack sources</h2>
+    {fw_line}
     <div class="grid">
       <div>
         <p class="muted">fail2ban bans — currently banned: <span class="kpi">{f2b.get('live_total',0)}</span>

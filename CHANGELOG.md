@@ -20,6 +20,13 @@
   (`requires root -- re-run with sudo`), and `apply` returns a non-zero exit
   code when any step fails, so automation can tell a no-op from a failure.
   Read-only commands still run fine as non-root. (#54)
+- **`report`: show firewall drop counters (follow-up to #42).** The Attack
+  sources section now reports how many packets kevward's nftables sets dropped
+  — evidence blocklist vs operator CIDR blocks, plus a total — framed "since
+  last ruleset load" (the counters reset on each reload). A pure, unit-tested
+  `firewall.parse_drop_counters` reads them from an `nft list table` dump;
+  read-only, and the line is omitted when the table or counters are absent.
+  (#55)
 
 ## 0.10.0
 

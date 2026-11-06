@@ -292,6 +292,40 @@ def current_set_ips() -> set[str]:
     return _set_elements(SET4) | _set_elements(SET6)
 
 
+# Matches a counted drop rule in an `nft list table inet kevward` dump, e.g.
+#   ip saddr @blocklist4 counter packets 1747 bytes 104252 drop
+_DROP_COUNTER_RE = re.compile(
+    r"saddr\s+@(\w+)\s+counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+drop"
+)
+
+
+def parse_drop_counters(dump: str) -> dict[str, tuple[int, int]]:
+    """Parse per-set ``(packets, bytes)`` drop counters from an nft table dump.
+
+    Pure: no nft, no root. Returns an empty dict when the dump has no counters
+    (e.g. an older table built before the drop rules carried ``counter``).
+    """
+    return {
+        name: (int(pkts), int(byts))
+        for name, pkts, byts in _DROP_COUNTER_RE.findall(dump)
+    }
+
+
+def drop_counters() -> dict[str, tuple[int, int]]:
+    """Live per-set drop counters from kevward's table (read-only, fail-soft).
+
+    Empty when nft is unavailable, the table is absent, or no counters exist.
+    Counters reset whenever the ruleset is (re-)loaded, so callers should frame
+    the numbers as "since the last ruleset load", not an all-time total.
+    """
+    if not nft_available():
+        return {}
+    r = _nft(["list", "table", "inet", TABLE])
+    if not r.ok:
+        return {}
+    return parse_drop_counters(r.out)
+
+
 def _split_v4_v6(cidrs: list[str]) -> tuple[list[str], list[str]]:
     """Partition CIDRs/IPs into v4 and v6; silently drop unparseable entries."""
     v4: list[str] = []
