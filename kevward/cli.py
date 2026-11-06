@@ -48,9 +48,11 @@ def _mkconfig(args) -> Config:
 
 
 def _collect_attackers(include_trends: bool, host_terms=None) -> dict:
+    from . import firewall
     data = {
         "fail2ban": fail2ban.collect(),
         "logwatch": logwatch.collect(),
+        "firewall": {k: list(v) for k, v in firewall.drop_counters().items()},
     }
     if include_trends:
         from .integrations import trends as trends_mod
@@ -99,10 +101,17 @@ def cmd_apply(args) -> int:
     if dry:
         print("DRY RUN (pass --yes to actually apply)\n")
     result = run_engine(cfg, do_apply=True, dry_run=dry)
+    failed = False
     for svc in result.services:
         for a in svc.actions:
             tag = "would" if a.dry_run else ("ok" if a.ok else "FAIL")
-            print(f"[{svc.service}] {tag}: {a.description}")
+            line = f"[{svc.service}] {tag}: {a.description}"
+            if not a.ok and not a.dry_run and a.output:
+                # Surface why it failed (e.g. "requires root -- re-run with sudo").
+                reason = a.output.strip().splitlines()[0][:200]
+                line += f"  ({reason})"
+                failed = True
+            print(line)
     if result.reboot_required:
         if cfg.policy.allow_reboot and args.reboot and not dry:
             from .scheduler import schedule_reboot
@@ -110,7 +119,7 @@ def cmd_apply(args) -> int:
         else:
             print("\nreboot required (not scheduled; use schedule-reboot or --reboot "
                   "with allow_reboot=true)")
-    return 0
+    return 1 if failed else 0
 
 
 def cmd_report(args) -> int:

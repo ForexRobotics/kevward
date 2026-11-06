@@ -1,12 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
+
+Operational polish from a week of daily runs: quieter and more accurate EOL
+reporting, an `apply` that says why it failed, and the firewall's own drop
+counts surfaced in the report.
 
 - **`report`: show the kevward version in the output.** The HTML report's header
   and footer now carry `kevward X.Y.Z`, and the JSON (`report --json`,
   `trends --json`) gains a `kevward_version` field — so a report says which
   version produced it (useful for triage and confirming an upgrade took
   effect). Read from `kevward.__version__`; presentational only. (#50)
+- **Fix: EOL checks no longer flag versions with years of support left.** The
+  PHP and Node.js runtime EOL checks flagged *any* known version, so PHP 8.4
+  (supported to 2028-12) was reported as "nearing/after end of security
+  support" in 2026. A new shared, unit-tested `plugins/_eol.eol_phase` compares
+  the support-end month to today and emits a finding only when support has
+  ended (MEDIUM, "past …") or ends within ~6 months (LOW, "nearing …");
+  otherwise nothing. (#53)
+- **`apply`: say why an apt step failed, and exit non-zero.** Running
+  `apply --yes` without root printed a bare `[apt] FAIL: install: …` with no
+  reason. The failure reason is now shown inline
+  (`requires root -- re-run with sudo`), and `apply` returns a non-zero exit
+  code when any step fails, so automation can tell a no-op from a failure.
+  Read-only commands still run fine as non-root. (#54)
+- **`report`: show firewall drop counters (follow-up to #42).** The Attack
+  sources section now reports how many packets kevward's nftables sets dropped
+  — evidence blocklist vs operator CIDR blocks, plus a total — framed "since
+  last ruleset load" (the counters reset on each reload). A pure, unit-tested
+  `firewall.parse_drop_counters` reads them from an `nft list table` dump;
+  read-only, and the line is omitted when the table or counters are absent.
+  (#55)
 
 ## 0.10.0
 

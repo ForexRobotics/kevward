@@ -19,6 +19,7 @@ from pathlib import Path
 from ..model import Finding, FindingKind, Severity
 from ..plugin import ServicePlugin, register
 from ..util import have, run
+from ._eol import eol_phase
 
 _DEFAULT_ROOTS = ["/var/www", "/srv", str(Path.home() / "website")]
 
@@ -82,19 +83,22 @@ class NodejsPlugin(ServicePlugin):
         if not m:
             return []
         major = m.group(1)
-        if major in _NODE_EOL:
-            return [
-                Finding(
-                    service=self.name,
-                    kind=FindingKind.CONFIG,
-                    severity=Severity.MEDIUM,
-                    title=f"Node.js {v} end-of-life ~{_NODE_EOL[major]}",
-                    detail="Move to a current LTS line (even-numbered major) that "
-                    "still receives security updates.",
-                    current_version=v,
-                )
-            ]
-        return []
+        phase = eol_phase(_NODE_EOL[major]) if major in _NODE_EOL else None
+        if not phase:
+            return []
+        after = phase == "after"
+        return [
+            Finding(
+                service=self.name,
+                kind=FindingKind.CONFIG,
+                severity=Severity.MEDIUM if after else Severity.LOW,
+                title=f"Node.js {v} {'end-of-life' if after else 'nearing end-of-life'} "
+                f"~{_NODE_EOL[major]}",
+                detail="Move to a current LTS line (even-numbered major) that "
+                "still receives security updates.",
+                current_version=v,
+            )
+        ]
 
     def _npm_audit(self, proj: Path) -> list[Finding]:
         if not have("npm") or not (proj / "package-lock.json").is_file():

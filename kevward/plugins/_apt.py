@@ -102,7 +102,7 @@ class AptServicePlugin(ServicePlugin):
             return [
                 ActionResult(
                     self.name, desc, changed=False, ok=False,
-                    output="requires root",
+                    output="requires root -- re-run with sudo",
                 )
             ]
         if not have("apt-get"):

@@ -11,6 +11,7 @@ from ..model import Finding, FindingKind, Severity
 from ..plugin import register
 from ..util import run
 from ._apt import AptServicePlugin
+from ._eol import eol_phase
 
 # Approximate PHP security-support end dates (YYYY-MM). Update as upstream moves.
 _PHP_EOL = {
@@ -33,14 +34,15 @@ class PhpPlugin(AptServicePlugin):
     def check(self) -> list[Finding]:
         findings = super().check()
         ver = self._php_minor()
-        if ver and ver in _PHP_EOL:
-            # Rough "is it past security support" heuristic; detail is explicit.
+        phase = eol_phase(_PHP_EOL[ver]) if ver and ver in _PHP_EOL else None
+        if phase:
+            after = phase == "after"
             findings.append(
                 Finding(
                     service=self.name,
                     kind=FindingKind.CONFIG,
-                    severity=Severity.MEDIUM,
-                    title=f"PHP {ver} nearing/after end of security support",
+                    severity=Severity.MEDIUM if after else Severity.LOW,
+                    title=f"PHP {ver} {'past' if after else 'nearing'} end of security support",
                     detail=f"PHP {ver} security support ends ~{_PHP_EOL[ver]}. "
                     "Plan a migration to a supported branch.",
                     current_version=ver,
