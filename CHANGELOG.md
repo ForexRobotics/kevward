@@ -7,6 +7,13 @@
   `trends --json`) gains a `kevward_version` field — so a report says which
   version produced it (useful for triage and confirming an upgrade took
   effect). Read from `kevward.__version__`; presentational only. (#50)
+- **Fix: EOL checks no longer flag versions with years of support left.** The
+  PHP and Node.js runtime EOL checks flagged *any* known version, so PHP 8.4
+  (supported to 2028-12) was reported as "nearing/after end of security
+  support" in 2026. A new shared, unit-tested `plugins/_eol.eol_phase` compares
+  the support-end month to today and emits a finding only when support has
+  ended (MEDIUM, "past …") or ends within ~6 months (LOW, "nearing …");
+  otherwise nothing. (#53)
 
 ## 0.10.0
 
