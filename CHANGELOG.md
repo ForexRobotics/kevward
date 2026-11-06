@@ -14,6 +14,12 @@
   the support-end month to today and emits a finding only when support has
   ended (MEDIUM, "past …") or ends within ~6 months (LOW, "nearing …");
   otherwise nothing. (#53)
+- **`apply`: say why an apt step failed, and exit non-zero.** Running
+  `apply --yes` without root printed a bare `[apt] FAIL: install: …` with no
+  reason. The failure reason is now shown inline
+  (`requires root -- re-run with sudo`), and `apply` returns a non-zero exit
+  code when any step fails, so automation can tell a no-op from a failure.
+  Read-only commands still run fine as non-root. (#54)
 
 ## 0.10.0
 
