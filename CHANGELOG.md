@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.12.1
+
+Follow-up fix to 0.12.0's `unchecked` status.
 
 - **Fix: CVEs Ubuntu does not track no longer stay `unchecked` forever.**
   ubuntu.com answers 404 for KEV entries outside its tracker (Composer/npm
