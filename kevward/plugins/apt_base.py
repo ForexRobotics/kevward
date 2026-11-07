@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
-from ..util import have, pkg_needs_reboot, reboot_pending
-from ._apt import AptServicePlugin, _simulate_upgrade
+from ..util import have, reboot_pending
+from ._apt import AptServicePlugin, _simulate_upgrade, change_finding
 
 
 @register
@@ -29,22 +29,7 @@ class AptPlugin(AptServicePlugin):
     def check(self) -> list[Finding]:
         findings: list[Finding] = []
         for change in _simulate_upgrade():
-            security = change["security"]
-            findings.append(
-                Finding(
-                    service=self.name,
-                    kind=FindingKind.SECURITY_UPDATE
-                    if security
-                    else FindingKind.MINOR_UPGRADE,
-                    severity=Severity.HIGH if security else Severity.LOW,
-                    title=f"{change['pkg']} {change['cur']} → {change['new']}",
-                    detail=f"origin: {change['origin'].strip()}",
-                    current_version=change["cur"],
-                    fixed_version=change["new"],
-                    reboot_required=pkg_needs_reboot(change["pkg"]),
-                    ref=change["pkg"],
-                )
-            )
+            findings.append(change_finding(self.name, change))
         if reboot_pending():
             findings.append(
                 Finding(
