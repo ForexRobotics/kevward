@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.12.0
+
+Accuracy fixes from a daily check across four hosts: sshd hardening gaps,
+an honest period for sshd-failure totals, and KEV version checks that no
+longer hide an incomplete run.
 
 - **Fix: KEV version check no longer hides an incomplete run as "possible".**
   Two hosts on the same kernel (5.15.0-202) disagreed on CVE-2025-38352
