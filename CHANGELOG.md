@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Fix: the report no longer cuts the KEV table off silently.** It listed only
+  the first 30 matches with no indication (51 matches on the 22.04 hosts, so 21
+  were never shown). The HTML report now lists every match; the `trends` CLI
+  still prints 25 but ends with `... and N more`. (#72)
 - **Fix: kernel updates kept back by `apt-get upgrade` are now reported.**
   The apt check simulated `apt-get upgrade`, which never installs new
   packages, so a kernel update (`linux-generic` / `linux-image-generic` pulling

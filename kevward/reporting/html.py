@@ -156,7 +156,9 @@ def render(result: RunResult) -> str:
         "unchecked": ("unchecked", "#b8860b"),
     }
     trend_rows = ""
-    for m in (trends.get("matches") or [])[:30]:
+    # Every match is listed: the table used to stop at 30 rows without saying
+    # so, hiding e.g. 21 of 51 matches on a 22.04 host.
+    for m in (trends.get("matches") or []):
         rw = " \U0001F512" if m.get("ransomware") else ""
         status_cell = ""
         if _va:

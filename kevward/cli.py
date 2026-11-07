@@ -161,11 +161,16 @@ def cmd_trends(args) -> int:
               f"(rest: version not confirmed)\n")
     else:
         print("note: name-level match — confirm version applicability per CVE.\n")
-    for m in data["matches"][:25]:
+    limit = 25
+    for m in data["matches"][:limit]:
         rw = " [ransomware]" if m["ransomware"] else ""
         tag = f"[{m['applicability']}] " if data.get("version_aware") else ""
         print(f"  {tag}{m['cve']:18} {m['vendor']}/{m['product']}  "
               f"(added {m['date_added']}){rw}")
+    rest = len(data["matches"]) - limit
+    if rest > 0:
+        print(f"  ... and {rest} more (all matches: `kevward trends --json` "
+              f"or the HTML report)")
     return 0
 
 
