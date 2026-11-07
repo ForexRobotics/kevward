@@ -153,6 +153,7 @@ def render(result: RunResult) -> str:
         "applicable": ("applicable", "#c0582b"),
         "fixed": ("fixed", "#2f6f4f"),
         "possible": ("possible", "#50607a"),
+        "unchecked": ("unchecked", "#b8860b"),
     }
     trend_rows = ""
     for m in (trends.get("matches") or [])[:30]:
@@ -177,13 +178,20 @@ def render(result: RunResult) -> str:
                 f" · <b>{trends.get('applicable_count', 0)}</b> applicable here"
                 f" · {trends.get('fixed_count', 0)} already fixed"
             )
+            if trends.get("unchecked_count"):
+                applic_line += (
+                    f" · <b style='color:#b8860b'>{trends['unchecked_count']}"
+                    "</b> not checked"
+                )
             note = (
                 "Name-matched against software on this host, then cross-checked "
                 "against installed versions via Ubuntu security data: "
                 "<b>applicable</b> = affected and not yet patched on this host, "
                 "<b>fixed</b> = already at/after the fixed version, "
-                "<b>possible</b> = couldn't confirm the version (treat as "
-                "name-level only)."
+                "<b>possible</b> = looked up, but no installed package for this "
+                "release to judge (treat as name-level only), "
+                "<b>unchecked</b> = the lookup did not complete this run "
+                "(network or time budget) — re-run to resolve."
             )
         else:
             applic_line = ""

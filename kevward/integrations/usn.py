@@ -182,7 +182,32 @@ def _cache_path(cve: str) -> Path:
     return CACHE_DIR / f"{cve.upper()}.json"
 
 
-def fetch_cve(cve: str, timeout: int = 8) -> dict | None:
+def cache_state(cve: str) -> str:
+    """'fresh', 'stale' or 'none' for ``cve``'s cached JSON (no network)."""
+    cp = _cache_path(cve.strip().upper())
+    try:
+        if not cp.is_file():
+            return "none"
+        return "fresh" if (time.time() - cp.stat().st_mtime) < CACHE_TTL else "stale"
+    except OSError:
+        return "none"
+
+
+def cached_cve(cve: str) -> dict | None:
+    """``cve``'s cached JSON regardless of age, without touching the network.
+
+    Used when the time budget is spent: fix-version data changes slowly, so a
+    day-old answer beats reporting the CVE as unchecked."""
+    cp = _cache_path(cve.strip().upper())
+    try:
+        if cp.is_file():
+            return json.loads(cp.read_text())
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def fetch_cve(cve: str, timeout: float = 8) -> dict | None:
     """Return Ubuntu's security JSON for ``cve``, or None. Uses a fresh cache
     entry when present; on a network error falls back to a stale one."""
     cve = cve.strip().upper()

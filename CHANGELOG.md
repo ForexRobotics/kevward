@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Fix: KEV version check no longer hides an incomplete run as "possible".**
+  Two hosts on the same kernel (5.15.0-202) disagreed on CVE-2025-38352
+  (fixed vs possible): when a lookup failed or the per-run time budget/cap ran
+  out, every remaining CVE was silently labelled `possible`, indistinguishable
+  from "looked up, nothing installed to judge". These are now a separate
+  **`unchecked`** status (amber pill, counted as "N not checked" in the report
+  and CLI; JSON `unchecked_count`). The pass also converges instead of
+  depending on network speed: fresh-cached CVEs are classified first, each
+  fetch's timeout is capped by the remaining budget, and after the budget is
+  spent remaining CVEs fall back to any cached entry, however old, before being
+  reported unchecked. (#61)
 - **`report`: say what period the sshd failure totals cover.** The totals are
   summed over every rotated `auth.log*`, so a large historical number (e.g.
   477,768 from a subnet already blocked) read as a live attack. The Attack

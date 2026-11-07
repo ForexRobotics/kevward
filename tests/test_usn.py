@@ -112,6 +112,78 @@ def test_matching_trends_failsoft_without_codename(monkeypatch):
     assert d["matches"][0]["applicability"] == "possible"
 
 
+# --- #61: budget/lookup failure is 'unchecked', not 'possible' ---- #
+def _hits(n):
+    return [tr.KevEntry(cve=f"CVE-2026-{i}", vendor="linux", product="kernel",
+                        name="x", date_added="2026-01-01", due_date="", ransomware=False)
+            for i in range(1, n + 1)]
+
+
+_FIXED = {"packages": [{"name": "linux", "statuses": [
+    {"release_codename": "jammy", "status": "released",
+     "description": "5.15.0-100.110"}]}]}
+
+
+def _host(monkeypatch):
+    monkeypatch.setattr(usn, "host_codename", lambda: "jammy")
+    monkeypatch.setattr(usn, "installed_source_versions",
+                        lambda: {"linux": "5.15.0-202.212"})
+
+
+def test_lookup_failure_is_unchecked(monkeypatch):
+    _host(monkeypatch)
+    monkeypatch.setattr(usn, "cache_state", lambda cve: "none")
+    monkeypatch.setattr(usn, "fetch_cve", lambda cve, timeout=8: None)
+    labels = tr._applicability(_hits(2), max_checks=10, budget_s=30)
+    assert set(labels.values()) == {"unchecked"}
+
+
+def test_cap_reached_uses_stale_cache_then_unchecked(monkeypatch):
+    _host(monkeypatch)
+    monkeypatch.setattr(usn, "cache_state", lambda cve: "none")
+    monkeypatch.setattr(usn, "fetch_cve", lambda cve, timeout=8: _FIXED)
+    cached = {"CVE-2026-2": _FIXED}
+    monkeypatch.setattr(usn, "cached_cve", lambda cve: cached.get(cve))
+    labels = tr._applicability(_hits(3), max_checks=1, budget_s=30)
+    assert labels == {"CVE-2026-1": "fixed",      # fetched
+                      "CVE-2026-2": "fixed",      # cap hit -> stale cache
+                      "CVE-2026-3": "unchecked"}  # cap hit, nothing cached
+
+
+def test_budget_spent_does_not_masquerade_as_possible(monkeypatch):
+    _host(monkeypatch)
+    monkeypatch.setattr(usn, "cache_state", lambda cve: "none")
+    monkeypatch.setattr(usn, "fetch_cve", lambda cve, timeout=8: _FIXED)
+    monkeypatch.setattr(usn, "cached_cve", lambda cve: None)
+    labels = tr._applicability(_hits(3), max_checks=10, budget_s=0)
+    assert "possible" not in labels.values()
+    assert set(labels.values()) == {"unchecked"}
+
+
+def test_fresh_cache_first_and_counts(monkeypatch):
+    _host(monkeypatch)
+    hits = _hits(3)
+    fresh = {"CVE-2026-3"}
+    monkeypatch.setattr(usn, "cache_state",
+                        lambda cve: "fresh" if cve in fresh else "none")
+    seen = []
+
+    def fake_fetch(cve, timeout=8):
+        seen.append(cve)
+        return _FIXED
+
+    monkeypatch.setattr(usn, "fetch_cve", fake_fetch)
+    tr._applicability(hits, max_checks=10, budget_s=30)
+    assert seen[0] == "CVE-2026-3"  # cached entry classified before network ones
+
+    monkeypatch.setattr(tr, "_load_catalog", lambda url=tr.KEV_URL: hits)
+    monkeypatch.setattr(usn, "fetch_cve",
+                        lambda cve, timeout=8: _FIXED if cve in fresh else None)
+    monkeypatch.setattr(usn, "cached_cve", lambda cve: None)
+    d = tr.matching_trends(host_terms=["linux"])
+    assert d["unchecked_count"] == 2 and d["fixed_count"] == 1
+
+
 if __name__ == "__main__":
     for name, obj in sorted(globals().items()):
         if name.startswith("test_") and callable(obj):
