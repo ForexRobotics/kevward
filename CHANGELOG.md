@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **`report`: say what period the sshd failure totals cover.** The totals are
+  summed over every rotated `auth.log*`, so a large historical number (e.g.
+  477,768 from a subnet already blocked) read as a live attack. The Attack
+  sources section now shows the covered date span and a second line with the
+  last-24h attempts/sources and last-7d attempts. Both classic syslog and
+  RFC 3339 auth.log stamps are parsed (year rollover handled). JSON gains
+  `ssh_window_start`, `ssh_window_end`, `ssh_attempts_24h`, `ssh_attempts_7d`,
+  `ssh_sources_24h`; existing keys are unchanged. (#58)
 - **sshd: flag `LoginGraceTime 0` (MEDIUM).** Unauthenticated connections are
   then never timed out, so an attacker can hold pre-auth slots open and exhaust
   `MaxStartups`, locking administrators out. This is typically a leftover of the
