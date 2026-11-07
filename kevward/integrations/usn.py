@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -207,6 +208,18 @@ def cached_cve(cve: str) -> dict | None:
     return None
 
 
+# Cached in place of a CVE JSON when ubuntu.com answers 404.
+NOT_TRACKED = {"not_tracked_by_ubuntu": True, "packages": []}
+
+
+def _write_cache(cp: Path, data: dict) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cp.write_text(json.dumps(data))
+    except OSError:
+        pass
+
+
 def fetch_cve(cve: str, timeout: float = 8) -> dict | None:
     """Return Ubuntu's security JSON for ``cve``, or None. Uses a fresh cache
     entry when present; on a network error falls back to a stale one."""
@@ -225,12 +238,23 @@ def fetch_cve(cve: str, timeout: float = 8) -> dict | None:
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             data = json.loads(resp.read().decode("utf-8"))
-        try:
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            cp.write_text(json.dumps(data))
-        except OSError:
-            pass
+        _write_cache(cp, data)
         return data
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            # Ubuntu does not track this CVE (e.g. Composer/npm-only products,
+            # or upstream versions Ubuntu never shipped). That is a definitive
+            # answer, not a failed lookup: cache it so it is not re-fetched
+            # every run, and let classify_cve label it 'possible'.
+            data = dict(NOT_TRACKED)
+            _write_cache(cp, data)
+            return data
+        try:
+            if cp.is_file():
+                return json.loads(cp.read_text())
+        except (OSError, ValueError):
+            pass
+        return None
     except Exception:
         try:
             if cp.is_file():
