@@ -156,7 +156,8 @@ def cmd_trends(args) -> int:
           f"{data['match_count']} ({data['ransomware_linked']} ransomware-linked)")
     if data.get("version_aware"):
         print(f"version-checked: {data.get('applicable_count', 0)} applicable here, "
-              f"{data.get('fixed_count', 0)} already fixed "
+              f"{data.get('fixed_count', 0)} already fixed, "
+              f"{data.get('unchecked_count', 0)} not checked "
               f"(rest: version not confirmed)\n")
     else:
         print("note: name-level match — confirm version applicability per CVE.\n")

@@ -28,6 +28,27 @@ def _esc(s) -> str:
     return html.escape(str(s if s is not None else ""))
 
 
+def _ssh_window(lw: dict) -> tuple[str, str]:
+    """Label the sshd failure totals with the period they cover, and add the
+    last-24h / 7-day slice, so an all-time total from rotated logs is not read
+    as a current attack. Returns (suffix for the totals line, recent line)."""
+    start, end = lw.get("ssh_window_start"), lw.get("ssh_window_end")
+    if not lw.get("ssh_total_attempts") or not start:
+        return "", ""
+    span = f"{_esc(str(start)[:10])} → {_esc(str(end or start)[:10])}"
+    suffix = (
+        f" <span style='font-size:12px'>(all rotated auth logs, {span})</span>"
+    )
+    n24 = int(lw.get("ssh_attempts_24h") or 0)
+    n7 = int(lw.get("ssh_attempts_7d") or 0)
+    s24 = int(lw.get("ssh_sources_24h") or 0)
+    recent = (
+        f"<p class='muted' style='margin-top:-6px'>last 24h: <b>{n24:,}</b> "
+        f"attempts from <b>{s24}</b> sources · last 7d: <b>{n7:,}</b></p>"
+    )
+    return suffix, recent
+
+
 def _bar(label: str, value: int, maximum: int, color: str) -> str:
     pct = 0 if maximum == 0 else round(100 * value / maximum)
     return (
@@ -105,6 +126,8 @@ def render(result: RunResult) -> str:
         _bar(ip, c, max_ssh, "#50607a") for ip, c in ssh[:20]
     ) or "<p class='muted'>No sshd auth failures found.</p>"
 
+    ssh_window, ssh_recent = _ssh_window(lw)
+
     # --- firewall drops (issue #42 follow-up): packets dropped per kevward set.
     fw = att.get("firewall") or {}
 
@@ -130,6 +153,7 @@ def render(result: RunResult) -> str:
         "applicable": ("applicable", "#c0582b"),
         "fixed": ("fixed", "#2f6f4f"),
         "possible": ("possible", "#50607a"),
+        "unchecked": ("unchecked", "#b8860b"),
     }
     trend_rows = ""
     for m in (trends.get("matches") or [])[:30]:
@@ -154,13 +178,20 @@ def render(result: RunResult) -> str:
                 f" · <b>{trends.get('applicable_count', 0)}</b> applicable here"
                 f" · {trends.get('fixed_count', 0)} already fixed"
             )
+            if trends.get("unchecked_count"):
+                applic_line += (
+                    f" · <b style='color:#b8860b'>{trends['unchecked_count']}"
+                    "</b> not checked"
+                )
             note = (
                 "Name-matched against software on this host, then cross-checked "
                 "against installed versions via Ubuntu security data: "
                 "<b>applicable</b> = affected and not yet patched on this host, "
                 "<b>fixed</b> = already at/after the fixed version, "
-                "<b>possible</b> = couldn't confirm the version (treat as "
-                "name-level only)."
+                "<b>possible</b> = looked up, but no installed package for this "
+                "release to judge (treat as name-level only), "
+                "<b>unchecked</b> = the lookup did not complete this run "
+                "(network or time budget) — re-run to resolve."
             )
         else:
             applic_line = ""
@@ -252,7 +283,8 @@ def render(result: RunResult) -> str:
       </div>
       <div>
         <p class="muted">sshd auth failures — sources: <b>{lw.get('ssh_unique_sources',0)}</b>
-        · attempts: <b>{lw.get('ssh_total_attempts',0)}</b></p>
+        · attempts: <b>{lw.get('ssh_total_attempts',0)}</b>{ssh_window}</p>
+        {ssh_recent}
         {ssh_bars}
       </div>
     </div>

@@ -95,9 +95,21 @@ _HOST_KEYWORDS = [
 def _applicability(
     hits: list[KevEntry], max_checks: int, budget_s: float
 ) -> dict[str, str]:
-    """Label each name-matched CVE 'applicable' / 'fixed' / 'possible' using the
-    version-aware USN layer. Fail-soft: any problem leaves CVEs as 'possible'
-    (the existing name-level meaning), so there is no regression offline."""
+    """Label each name-matched CVE 'applicable' / 'fixed' / 'possible' /
+    'unchecked' using the version-aware USN layer.
+
+    'possible' means the lookup *ran* and found no installed, release-matched
+    package to judge; 'unchecked' means it could not run for that CVE (lookup
+    failed, per-run cap or time budget reached). Previously both collapsed into
+    'possible', so two hosts on the same kernel could disagree depending on how
+    far a cold-cache run got before the budget expired (#61).
+
+    To make results converge rather than depend on network speed:
+    - CVEs with a fresh cache entry are classified first (zero network cost);
+    - each fetch's timeout is capped by the remaining budget;
+    - once the budget is spent, remaining CVEs fall back to any cached entry,
+      however old, before being reported 'unchecked'.
+    Fail-soft: an empty dict means the layer did not run at all."""
     from . import usn
 
     codename = usn.host_codename()
@@ -105,11 +117,24 @@ def _applicability(
     if not (codename and installed):
         return {}
     labels: dict[str, str] = {}
+    order = {"fresh": 0, "stale": 1, "none": 2}
+    queue = sorted(hits, key=lambda e: order[usn.cache_state(e.cve)])  # stable
     deadline = time.monotonic() + budget_s
-    for e in hits[:max_checks]:
-        if time.monotonic() > deadline:
-            break
-        labels[e.cve] = usn.classify_cve(usn.fetch_cve(e.cve), codename, installed)
+    fetched = 0
+    for e in queue:
+        left = deadline - time.monotonic()
+        state = usn.cache_state(e.cve)
+        if state == "fresh":
+            data = usn.fetch_cve(e.cve)  # served from cache, no network
+        elif left > 0.5 and fetched < max_checks:
+            fetched += 1
+            data = usn.fetch_cve(e.cve, timeout=min(8.0, left))
+        else:
+            data = usn.cached_cve(e.cve)
+        labels[e.cve] = (
+            "unchecked" if data is None
+            else usn.classify_cve(data, codename, installed)
+        )
     return labels
 
 
@@ -128,7 +153,8 @@ def matching_trends(
     When ``version_aware`` is set (default), each name-matched CVE is further
     cross-referenced against this host's installed versions via Ubuntu's
     per-CVE security data, labelling it 'applicable' (unpatched here), 'fixed',
-    or 'possible' (couldn't confirm). The pass is bounded by ``max_version_checks``
+    'possible' (looked up, nothing installed to judge) or 'unchecked' (lookup
+    failed or budget reached). The pass is bounded by ``max_version_checks``
     and ``version_budget_s`` and fails soft to name-level labelling.
     """
     catalog = _load_catalog(url)
@@ -155,13 +181,17 @@ def matching_trends(
         d["applicability"] = labels.get(e.cve, "possible")
         return d
 
+    def _count(v: str) -> int:
+        return sum(1 for x in labels.values() if x == v)
+
     return {
         "catalog_size": len(catalog),
         "cache_fresh": _cache_fresh(),
         "match_count": len(hits),
         "ransomware_linked": sum(1 for e in hits if e.ransomware),
         "version_aware": bool(labels),
-        "applicable_count": sum(1 for v in labels.values() if v == "applicable"),
-        "fixed_count": sum(1 for v in labels.values() if v == "fixed"),
+        "applicable_count": _count("applicable"),
+        "fixed_count": _count("fixed"),
+        "unchecked_count": _count("unchecked"),
         "matches": [_match_dict(e) for e in hits[:100]],
     }

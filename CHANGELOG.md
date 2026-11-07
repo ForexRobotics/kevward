@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: KEV version check no longer hides an incomplete run as "possible".**
+  Two hosts on the same kernel (5.15.0-202) disagreed on CVE-2025-38352
+  (fixed vs possible): when a lookup failed or the per-run time budget/cap ran
+  out, every remaining CVE was silently labelled `possible`, indistinguishable
+  from "looked up, nothing installed to judge". These are now a separate
+  **`unchecked`** status (amber pill, counted as "N not checked" in the report
+  and CLI; JSON `unchecked_count`). The pass also converges instead of
+  depending on network speed: fresh-cached CVEs are classified first, each
+  fetch's timeout is capped by the remaining budget, and after the budget is
+  spent remaining CVEs fall back to any cached entry, however old, before being
+  reported unchecked. (#61)
+- **`report`: say what period the sshd failure totals cover.** The totals are
+  summed over every rotated `auth.log*`, so a large historical number (e.g.
+  477,768 from a subnet already blocked) read as a live attack. The Attack
+  sources section now shows the covered date span and a second line with the
+  last-24h attempts/sources and last-7d attempts. Both classic syslog and
+  RFC 3339 auth.log stamps are parsed (year rollover handled). JSON gains
+  `ssh_window_start`, `ssh_window_end`, `ssh_attempts_24h`, `ssh_attempts_7d`,
+  `ssh_sources_24h`; existing keys are unchanged. (#58)
+- **sshd: flag `LoginGraceTime 0` (MEDIUM).** Unauthenticated connections are
+  then never timed out, so an attacker can hold pre-auth slots open and exhaust
+  `MaxStartups`, locking administrators out. This is typically a leftover of the
+  2024 regreSSHion (CVE-2024-6387) stop-gap and was found on a production host.
+  The detail names the current `MaxStartups`. (#59)
+- **Fix: sshd now catches `PermitRootLogin without-password`.** Ubuntu 22.04's
+  `sshd -T` prints the legacy spelling, which the check did not recognise, so
+  key-only root login went unreported there. Both spellings are now flagged —
+  at **LOW** (was MEDIUM for `prohibit-password`): password root login stays
+  HIGH, key-only root login is a hardening nudge. The checks moved into a pure,
+  unit-tested `classify_sshd_config`. (#59)
+
 ## 0.11.0
 
 Operational polish from a week of daily runs: quieter and more accurate EOL
