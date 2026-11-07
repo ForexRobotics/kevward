@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **sshd: flag `LoginGraceTime 0` (MEDIUM).** Unauthenticated connections are
+  then never timed out, so an attacker can hold pre-auth slots open and exhaust
+  `MaxStartups`, locking administrators out. This is typically a leftover of the
+  2024 regreSSHion (CVE-2024-6387) stop-gap and was found on a production host.
+  The detail names the current `MaxStartups`. (#59)
+- **Fix: sshd now catches `PermitRootLogin without-password`.** Ubuntu 22.04's
+  `sshd -T` prints the legacy spelling, which the check did not recognise, so
+  key-only root login went unreported there. Both spellings are now flagged —
+  at **LOW** (was MEDIUM for `prohibit-password`): password root login stays
+  HIGH, key-only root login is a hardening nudge. The checks moved into a pure,
+  unit-tested `classify_sshd_config`. (#59)
+
 ## 0.11.0
 
 Operational polish from a week of daily runs: quieter and more accurate EOL
