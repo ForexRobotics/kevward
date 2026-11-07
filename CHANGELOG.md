@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: kernel updates kept back by `apt-get upgrade` are now reported.**
+  The apt check simulated `apt-get upgrade`, which never installs new
+  packages, so a kernel update (`linux-generic` / `linux-image-generic` pulling
+  in a new `linux-image-*`) was silently "kept back" and never became a
+  finding — including when it came from `-security`. Seen on both Ubuntu 24.04
+  hosts: `linux-libc-dev` 6.8.0-149 was reported while the running kernel
+  stayed at 147. kevward now also simulates `dist-upgrade` and reports the
+  difference as `… (kept back)` findings with the usual security severity, a
+  reboot flag for kernel metapackages, and the command to apply them. Parsing
+  stays locale-independent (only `Inst` lines are read). (#73)
 ## 0.12.1
 
 Follow-up fix to 0.12.0's `unchecked` status.
