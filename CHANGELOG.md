@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: CVEs Ubuntu does not track no longer stay `unchecked` forever.**
+  ubuntu.com answers 404 for KEV entries outside its tracker (Composer/npm
+  products such as Livewire, PHPUnit, ThinkPHP, systeminformation, or upstream
+  versions Ubuntu never shipped). 0.12.0 treated that like a network failure:
+  the CVE was reported `unchecked`, never cached, and re-fetched every run,
+  eating the time budget. A 404 is now cached as "not tracked by Ubuntu" and
+  labelled `possible`; 5xx and transport errors remain `unchecked`. Seen on
+  tk2-225, where 7 such CVEs never converged. (follow-up to #61)
+
 ## 0.12.0
 
 Accuracy fixes from a daily check across four hosts: sshd hardening gaps,

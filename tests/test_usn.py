@@ -184,6 +184,38 @@ def test_fresh_cache_first_and_counts(monkeypatch):
     assert d["unchecked_count"] == 2 and d["fixed_count"] == 1
 
 
+# --- 404 from ubuntu.com = "not tracked", cached, not a failed lookup ------- #
+def _http_error(code):
+    import urllib.error
+    def boom(req, timeout=8):
+        raise urllib.error.HTTPError(req.full_url, code, "x", {}, None)
+    return boom
+
+
+def test_404_is_cached_as_not_tracked_and_classifies_possible(monkeypatch, tmp_path):
+    monkeypatch.setattr(usn, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(usn.urllib.request, "urlopen", _http_error(404))
+    data = usn.fetch_cve("CVE-2018-20062")  # ThinkPHP: not in Ubuntu's tracker
+    assert data == usn.NOT_TRACKED
+    assert usn.cache_state("CVE-2018-20062") == "fresh"  # not re-fetched next run
+    assert usn.classify_cve(data, "jammy", {"linux": "5.15.0-202.212"}) == "possible"
+
+
+def test_server_error_is_still_a_failed_lookup(monkeypatch, tmp_path):
+    monkeypatch.setattr(usn, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(usn.urllib.request, "urlopen", _http_error(503))
+    assert usn.fetch_cve("CVE-2026-1") is None
+    assert usn.cache_state("CVE-2026-1") == "none"
+
+
+def test_404_not_tracked_never_ends_up_unchecked(monkeypatch, tmp_path):
+    monkeypatch.setattr(usn, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(usn.urllib.request, "urlopen", _http_error(404))
+    _host(monkeypatch)
+    labels = tr._applicability(_hits(2), max_checks=10, budget_s=30)
+    assert set(labels.values()) == {"possible"}
+
+
 if __name__ == "__main__":
     for name, obj in sorted(globals().items()):
         if name.startswith("test_") and callable(obj):
