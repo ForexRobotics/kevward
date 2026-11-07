@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.12.2
+
+Fixes found by the first automated morning summary.
 
 - **Fix: the report no longer cuts the KEV table off silently.** It listed only
   the first 30 matches with no indication (51 matches on the 22.04 hosts, so 21
