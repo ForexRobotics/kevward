@@ -35,8 +35,9 @@ class ServicePlugin(abc.ABC):
     #: changes are too risky to make unattended.
     supports_apply: bool = True
 
-    #: Substrings used to match this service's upstream in threat-intel feeds
-    #: (e.g. CISA KEV). Only consulted when the service is detected on the host,
+    #: Whole-word terms matched against the vendor/product in threat-intel
+    #: feeds (e.g. CISA KEV); ``vendor:product`` pins both. Only consulted
+    #: when the service is detected on the host,
     #: which keeps trend matches relevant instead of flooding them with
     #: appliances/products this host doesn't run. Empty = not matched by name.
     kev_terms: list[str] = []

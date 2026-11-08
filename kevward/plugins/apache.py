@@ -16,9 +16,10 @@ class ApachePlugin(AptServicePlugin):
     name = "apache"
     packages = ["apache2", "apache2-bin"]
     service_unit = "apache2.service"
-    # "http server" targets KEV's "Apache / HTTP Server" without matching the
-    # many other Apache Foundation products (Struts, Tomcat, ActiveMQ, ...).
-    kev_terms = ["http server"]
+    # vendor:product pins KEV's "Apache / HTTP Server": not the other Apache
+    # Foundation products (Struts, Tomcat, ActiveMQ, ...) and not Oracle's
+    # "HTTP Server", which a bare "http server" term used to match.
+    kev_terms = ["apache:http server"]
 
     def check(self) -> list[Finding]:
         findings = super().check()

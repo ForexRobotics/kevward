@@ -107,6 +107,17 @@ def render(result: RunResult) -> str:
     <tbody>{audit_rows or "<tr><td colspan=3 class='muted'>No compromise indicators found.</td></tr>"}</tbody></table>
   </section>"""
 
+    # Audit indicators are counted in the chips too; say so, or a header of
+    # "low: 1" next to an empty Findings table reads as a contradiction.
+    n_audit = len(result.audit or [])
+    audit_note = (
+        f"<p class='muted' style='font-size:12px;margin:6px 0 0'>counts include "
+        f"{n_audit} audit indicator{'s' if n_audit != 1 else ''} "
+        f"(see Host compromise indicators)</p>" if n_audit else ""
+    )
+    no_findings = ("No package or config findings (audit indicators are listed "
+                   "below)." if n_audit else "No findings.")
+
     def chip(sev: str) -> str:
         return (
             f"<span class='chip' style='border-color:{_SEV_COLOR[sev]};"
@@ -275,6 +286,7 @@ def render(result: RunResult) -> str:
     <h1>kevward — {_esc(result.host)}</h1>
     <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · kevward {_KW_VERSION}</p>
     <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
+    {audit_note}
   </header>
 
   {trend_block}
@@ -282,7 +294,7 @@ def render(result: RunResult) -> str:
   <section>
     <h2>Findings</h2>
     <table><thead><tr><th>Sev</th><th>Service</th><th>Kind</th><th>Title</th><th>CVE</th></tr></thead>
-    <tbody>{''.join(rows) or "<tr><td colspan=5 class='muted'>No findings.</td></tr>"}</tbody></table>
+    <tbody>{''.join(rows) or f"<tr><td colspan=5 class='muted'>{no_findings}</td></tr>"}</tbody></table>
   </section>
 
   <section>

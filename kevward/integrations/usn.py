@@ -37,7 +37,11 @@ from ..util import have, run
 
 CVE_URL = "https://ubuntu.com/security/cves/{cve}.json"
 CACHE_DIR = Path("/var/cache/kevward/usn")
-CACHE_TTL = 24 * 3600  # seconds; fix-version status changes slowly
+# Fix-version status changes slowly. Kept above 24h on purpose: reports run
+# once a day at the same time, so a 24h TTL made yesterday's cache "stale" on
+# every run and each report re-fetched everything, hitting the time budget
+# (CVEs left 'unchecked'). 36h lets a daily run reuse the previous day's data.
+CACHE_TTL = 36 * 3600  # seconds
 
 # Release statuses that mean "affected and not yet fixed on this release".
 _VULN_STATUSES = {"needed", "pending", "deferred"}
