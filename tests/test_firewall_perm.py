@@ -45,6 +45,46 @@ def test_strip_runtime_state_drops_expires_keeps_timeout():
     assert out == "elements = { 1.2.3.4 timeout 14d }"
 
 
+def test_strip_runtime_state_keeps_element_separators():
+    # Real multi-element `nft list` output: `expires` sits right before the
+    # comma. Dropping the comma made the saved file unloadable at boot.
+    dump = (
+        "\t\telements = { 2.57.121.25 timeout 14d expires 13d2h3m4s500ms, "
+        "2.57.121.112 timeout 14d expires 9d1h,\n"
+        "\t\t\t     2.57.122.74 timeout 14d expires 1h }"
+    )
+    out = fw._strip_runtime_state(dump)
+    assert "expires" not in out
+    assert out == (
+        "\t\telements = { 2.57.121.25 timeout 14d, "
+        "2.57.121.112 timeout 14d,\n"
+        "\t\t\t     2.57.122.74 timeout 14d }"
+    )
+
+
+def test_persist_refuses_to_arm_unit_when_nft_rejects_file(monkeypatch, tmp_path):
+    from types import SimpleNamespace as NS
+    calls = []
+
+    def fake_nft(args, input_=None):
+        calls.append(args)
+        if args[:1] == ["-c"]:
+            return NS(ok=False, out="", err="firewall.nft:25: Error: syntax error\n")
+        return NS(ok=True, out="table inet kevward {\n}\n", err="")
+
+    monkeypatch.setattr(fw, "is_root", lambda: True)
+    monkeypatch.setattr(fw, "_nft", fake_nft)
+    monkeypatch.setattr(fw, "PERSIST_FILE", str(tmp_path / "firewall.nft"))
+    unit = tmp_path / "kevward-firewall.service"
+    monkeypatch.setattr(fw, "PERSIST_UNIT_FILE", str(unit))
+    monkeypatch.setattr(fw, "run", lambda *a, **k: NS(ok=True, out="", err=""))
+    ok, msg = fw.persist_ruleset()
+    assert not ok
+    assert "nft -c" in msg
+    assert not unit.exists()                    # boot unit never armed
+    assert ["-c", "-f", str(tmp_path / "firewall.nft")] in calls
+
+
 def test_session_admin_ips_are_env_only_not_from_ss(monkeypatch):
     # The persisted accept set uses these; they must come only from the running
     # session's sshd env, never from an established-:22 scan (issue #17).

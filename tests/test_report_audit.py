@@ -50,3 +50,14 @@ if __name__ == "__main__":
             obj()
             print(f"ok  {name}")
     print("all report-audit tests passed")
+
+
+def test_firewall_not_loaded_warning_only_when_unit_enabled():
+    gone = _base(attackers={"firewall_state": {"table": False, "unit": "enabled"}})
+    assert "kevward firewall not loaded" in render(gone)
+    ok = _base(attackers={"firewall_state": {"table": True, "unit": "enabled"}})
+    assert "kevward firewall not loaded" not in render(ok)
+    never = _base(attackers={"firewall_state": {"table": False, "unit": ""}})
+    assert "kevward firewall not loaded" not in render(never)
+    unknown = _base(attackers={"firewall_state": {"table": None, "unit": "enabled"}})
+    assert "kevward firewall not loaded" not in render(unknown)

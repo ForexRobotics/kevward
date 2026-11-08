@@ -326,6 +326,19 @@ def drop_counters() -> dict[str, tuple[int, int]]:
     return parse_drop_counters(r.out)
 
 
+def table_state() -> dict:
+    """Is kevward's table loaded, and is the boot unit enabled? (read-only).
+
+    ``table`` is None when it can't be judged (no nft, or not root). The
+    report flags ``table is False`` with the unit enabled: the blocklist was
+    meant to be on but isn't (e.g. the boot-time reload failed).
+    """
+    unit = run(["systemctl", "is-enabled", PERSIST_UNIT], timeout=10).out.strip()
+    if not (nft_available() and is_root()):
+        return {"table": None, "unit": unit}
+    return {"table": _nft(["list", "table", "inet", TABLE]).ok, "unit": unit}
+
+
 def _split_v4_v6(cidrs: list[str]) -> tuple[list[str], list[str]]:
     """Partition CIDRs/IPs into v4 and v6; silently drop unparseable entries."""
     v4: list[str] = []
@@ -370,8 +383,12 @@ def apply_blockset(cidrs: list[str]) -> tuple[int, list[str]]:
 # --------------------------------------------------------------------------- #
 def _strip_runtime_state(dump: str) -> str:
     """Remove output-only state (``expires``) so an ``nft list`` dump reloads
-    cleanly with ``nft -f``. Element timeouts are preserved (reset on boot)."""
-    return re.sub(r"\s+expires\s+\S+", "", dump)
+    cleanly with ``nft -f``. Element timeouts are preserved (reset on boot).
+
+    The value must stop at the element separator: ``\\S+`` used to swallow the
+    trailing comma (``expires 13d2h,``), leaving ``a timeout 14d b timeout 14d``
+    which ``nft -f`` rejects, so the table silently vanished on reboot."""
+    return re.sub(r"\s+expires\s+[^\s,}]+", "", dump)
 
 
 def persist_ruleset() -> tuple[bool, str]:
@@ -390,6 +407,15 @@ def persist_ruleset() -> tuple[bool, str]:
         os.makedirs(os.path.dirname(PERSIST_FILE), exist_ok=True)
         with open(PERSIST_FILE, "w") as fh:
             fh.write(content)
+    except OSError as e:
+        return False, f"write failed: {e}"
+    # Never arm the boot unit with a file nft would reject: that fails only at
+    # the next reboot, silently, leaving the host without its blocklist.
+    chk = _nft(["-c", "-f", PERSIST_FILE])
+    if not chk.ok:
+        first = (chk.err.strip().splitlines() or ["syntax error"])[0]
+        return False, f"saved ruleset failed `nft -c` validation: {first}"
+    try:
         with open(PERSIST_UNIT_FILE, "w") as fh:
             fh.write(_UNIT_TEMPLATE.format(nft=nftpath, file=PERSIST_FILE))
     except OSError as e:
@@ -705,12 +731,21 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
         if not (nft_available() and is_root()):
             print("note: needs nftables + root to read the live set.")
             return 2
+        shown = 0
         for setname in (ALLOW4, ALLOW6, SET4, SET6, BLOCKCIDR4, BLOCKCIDR6):
             r = _nft(["list", "set", "inet", TABLE, setname])
             if r.ok:
                 print(r.out.rstrip())
+                shown += 1
         unit = run(["systemctl", "is-enabled", PERSIST_UNIT], timeout=10).out.strip()
         print(f"reboot-persistence unit: {unit or 'not installed'}")
+        if not shown:
+            print(f"! kevward table not loaded (nft inet {TABLE} is absent).")
+            if unit == "enabled":
+                print(f"  the boot unit is enabled, so its reload likely failed: "
+                      f"systemctl status {PERSIST_UNIT}")
+            print("  re-create it with: kevward firewall apply --yes")
+            return 1
         return 0
 
     if action == "flush":

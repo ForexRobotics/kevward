@@ -147,6 +147,17 @@ def render(result: RunResult) -> str:
             f"total <b>{total:,}</b> packets</p>"
         )
 
+    # Blocklist meant to be on (boot unit enabled) but the table is gone.
+    fw_state = att.get("firewall_state") or {}
+    if fw_state.get("table") is False and fw_state.get("unit") == "enabled":
+        fw_line += (
+            "<p style='margin-top:0;color:#b4232a'><b>⚠ kevward firewall not "
+            "loaded</b> — the boot unit is enabled but table <code>inet kevward"
+            "</code> is absent, so no IPs are being blocked. Check "
+            "<code>systemctl status kevward-firewall</code>, then run "
+            "<code>kevward firewall apply --yes</code>.</p>"
+        )
+
     # --- trend matches ---
     _va = bool(trends.get("version_aware"))
     _badge = {

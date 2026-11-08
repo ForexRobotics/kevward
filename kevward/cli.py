@@ -53,6 +53,7 @@ def _collect_attackers(include_trends: bool, host_terms=None) -> dict:
         "fail2ban": fail2ban.collect(),
         "logwatch": logwatch.collect(),
         "firewall": {k: list(v) for k, v in firewall.drop_counters().items()},
+        "firewall_state": firewall.table_state(),
     }
     if include_trends:
         from .integrations import trends as trends_mod
