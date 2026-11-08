@@ -29,8 +29,15 @@ def composer_audit(project_dir: str | Path) -> list[Finding]:
     project_dir = Path(project_dir)
     if not have("composer") or not (project_dir / "composer.lock").is_file():
         return []
+    # --working-dir: run() has no cwd, so without it composer audits whatever
+    # directory kevward was started from (usually not a project) and every
+    # app silently came back clean. --no-plugins/--no-scripts: kevward often
+    # runs as root, and must not execute code shipped in a project's vendor/.
     res = run(
-        ["composer", "audit", "--format=json", "--no-interaction"],
+        [
+            "composer", "audit", "--format=json", "--no-interaction",
+            "--no-plugins", "--no-scripts", f"--working-dir={project_dir}",
+        ],
         timeout=120,
     )
     # composer exits non-zero when advisories are found; parse stdout anyway.
