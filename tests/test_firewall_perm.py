@@ -108,3 +108,49 @@ if __name__ == "__main__":
             obj()
             print(f"ok  {name}")
     print("all firewall-perm tests passed")
+
+
+def test_covered_by_matches_v4_and_v6_cidrs_only_for_members():
+    cidrs = ["77.239.124.0/24", "109.160.32.0/24", "2001:db8::/32", "garbage"]
+    assert fw.covered_by("77.239.124.78", cidrs) == "77.239.124.0/24"
+    assert fw.covered_by("109.160.32.200", cidrs) == "109.160.32.0/24"
+    assert fw.covered_by("2001:db8::1", cidrs) == "2001:db8::/32"
+    assert fw.covered_by("77.239.125.1", cidrs) is None
+    assert fw.covered_by("185.244.235.133", cidrs) is None
+    assert fw.covered_by("not-an-ip", cidrs) is None
+    assert fw.covered_by("1.2.3.4", []) is None
+
+
+def test_plan_skips_candidates_inside_permanent_cidr(monkeypatch):
+    cands = [fw.Candidate("77.239.124.78", "sshd auth failures x100", 80),
+             fw.Candidate("185.244.235.133", "sshd auth failures x768", 80),
+             fw.Candidate("109.160.32.30", "sshd auth failures x50", 50)]
+    monkeypatch.setattr(fw, "gather_candidates", lambda n: list(cands))
+    monkeypatch.setattr(fw, "current_admin_ips", lambda: set())
+    monkeypatch.setattr(fw, "nft_available", lambda: True)
+    monkeypatch.setattr(fw, "is_root", lambda: True)
+    monkeypatch.setattr(fw, "current_set_ips", lambda: set())
+    # one CIDR from config, one only in the live table
+    monkeypatch.setattr(fw, "current_block_cidrs", lambda: ["109.160.32.0/24"])
+    data = fw._plan_data(20, [], ["77.239.124.0/24"])
+    assert [c.ip for c in data["to_add"]] == ["185.244.235.133"]
+    assert data["cidr_covered"] == {"77.239.124.78": "77.239.124.0/24",
+                                    "109.160.32.30": "109.160.32.0/24"}
+
+
+def test_prune_covered_deletes_only_covered_evidence(monkeypatch):
+    from types import SimpleNamespace as NS
+    calls = []
+    sets = {fw.SET4: {"77.239.124.78", "77.239.124.32", "185.244.235.133"},
+            fw.SET6: set()}
+    monkeypatch.setattr(fw, "_set_elements", lambda name: sets.get(name, set()))
+
+    def fake_nft(args, input_=None):
+        calls.append(args)
+        return NS(ok=True, out="", err="")
+
+    monkeypatch.setattr(fw, "_nft", fake_nft)
+    removed, errors = fw.prune_covered(["77.239.124.0/24"])
+    assert (removed, errors) == (2, [])
+    assert calls == [["delete", "element", "inet", fw.TABLE, fw.SET4,
+                      "{ 77.239.124.32, 77.239.124.78 }"]]
