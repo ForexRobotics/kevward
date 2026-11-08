@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12.3
+
+- **Fix: the kevward firewall blocklist no longer disappears on reboot.**
+  When saving the table for reboot-persistence, the `expires` cleanup also
+  removed the comma after every element, so `/etc/kevward/firewall.nft`
+  could not be loaded and `kevward-firewall.service` failed at boot with a
+  syntax error. The table was missing until the next `firewall apply`. Seen on
+  both Ubuntu 24.04 hosts after a kernel reboot; every host that had saved a
+  multi-element blocklist was affected on its next reboot. The saved file is
+  now validated with `nft -c` before the boot unit is enabled. (#77)
+- `kevward firewall list` now says when kevward's table is not loaded (and
+  points at the boot unit if it is enabled) and exits 1, instead of printing
+  only the unit state.
+- The HTML report shows a red "kevward firewall not loaded" warning in Attack
+  sources when the boot unit is enabled but the table is absent.
+
+After upgrading, run `sudo kevward firewall apply --yes` once on each host to
+re-create a missing table and rewrite a valid saved ruleset.
+
 ## 0.12.2
 
 Fixes found by the first automated morning summary.
