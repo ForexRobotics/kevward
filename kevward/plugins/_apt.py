@@ -102,16 +102,27 @@ def change_finding(service: str, change: dict) -> Finding:
             "(typically a new kernel). Apply with "
             f"`sudo apt-get install {change['pkg']}` or `sudo apt full-upgrade`."
         )
+    reboot = change_needs_reboot(change["pkg"])
+    if security:
+        severity = Severity.HIGH
+    elif kept and reboot:
+        # A kept-back kernel never lands via `apt upgrade` (nor a typical
+        # unattended run), so the host keeps booting the old kernel until
+        # someone acts. Not "low", even when it came from -updates.
+        severity = Severity.MEDIUM
+        detail += "; the new kernel will not be installed until you do this."
+    else:
+        severity = Severity.LOW
     return Finding(
         service=service,
         kind=FindingKind.SECURITY_UPDATE if security else FindingKind.MINOR_UPGRADE,
-        severity=Severity.HIGH if security else Severity.LOW,
+        severity=severity,
         title=title,
         detail=detail,
         current_version=change["cur"],
         fixed_version=change["new"],
         # Only the kernel image (incl. its metapackages) and glibc imply a reboot.
-        reboot_required=change_needs_reboot(change["pkg"]),
+        reboot_required=reboot,
         ref=change["pkg"],
     )
 

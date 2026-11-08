@@ -16,6 +16,7 @@ from . import __version__
 from .config import Config
 from .model import Finding, ServiceReport
 from .plugin import load
+from .util import reboot_pending
 
 
 @dataclass
@@ -28,10 +29,20 @@ class RunResult:
     # Host compromise indicators (`kevward audit`). None = not run; [] = run,
     # nothing found; a list = indicators to review. Set by `report --audit`.
     audit: list[Finding] | None = None
+    # The host already asks for a reboot (/run/reboot-required is set), as
+    # opposed to "applying the pending updates will need one".
+    reboot_pending: bool = False
 
     @property
     def reboot_required(self) -> bool:
-        return any(s.reboot_required for s in self.services)
+        return self.reboot_pending or any(s.reboot_required for s in self.services)
+
+    @property
+    def reboot_status(self) -> str:
+        """'now' | 'after-updates' | 'no' (for display)."""
+        if self.reboot_pending:
+            return "now"
+        return "after-updates" if self.reboot_required else "no"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,6 +51,7 @@ class RunResult:
             "generated_at": self.generated_at,
             "os": self.os,
             "reboot_required": self.reboot_required,
+            "reboot_pending": self.reboot_pending,
             "services": [s.to_dict() for s in self.services],
             "attackers": self.attackers,
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
@@ -56,6 +68,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         host=socket.gethostname(),
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         os=f"{platform.system()} {platform.release()}",
+        reboot_pending=reboot_pending(),
     )
     for p in plugins:
         sp = cfg.policy.for_service(p.name)
