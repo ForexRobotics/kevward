@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.4
+
+Precision and clarity fixes from the 2026-11-08 morning reports.
+
+- **KEV matching is now whole-word, with optional vendor pinning.** Host terms
+  were matched as substrings, so `php` listed ThinkPHP, phpMyAdmin and PHPUnit
+  CVEs, and the apache plugin's `http server` listed Oracle HTTP Server
+  (CVE-2026-21962). Terms now match whole words in the KEV vendor/product, and
+  `vendor:product` pins both (apache uses `apache:http server`). On a 22.04
+  host this removed exactly those 5 false positives (51 -> 46 matches). (#80)
+- **USN cache lasts 36h instead of 24h.** Daily reports run at the same time,
+  so a 24h TTL expired the whole cache just before every run and the report hit
+  its time budget, leaving CVEs `unchecked` (23 on one host). (#80)
+- **Report: header counts say when they include audit indicators**, and an
+  empty Findings table points to the audit section instead of saying
+  "No findings." next to `low: 1`. (#80)
+- **`firewall apply` skips IPs a permanent CIDR already blocks** and prunes
+  such entries from the evidence set (they stay blocked by the CIDR), so
+  `firewall list` shows what is actually new. `plan` reports
+  `covered by permanent CIDR: N`; JSON adds `cidr_covered`. (#79)
+
 ## 0.12.3
 
 - **Fix: the kevward firewall blocklist no longer disappears on reboot.**
