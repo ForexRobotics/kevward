@@ -61,3 +61,18 @@ def test_firewall_not_loaded_warning_only_when_unit_enabled():
     assert "kevward firewall not loaded" not in render(never)
     unknown = _base(attackers={"firewall_state": {"table": None, "unit": "enabled"}})
     assert "kevward firewall not loaded" not in render(unknown)
+
+
+def test_header_says_counts_include_audit_and_findings_table_explains():
+    f = Finding(service="audit", kind=FindingKind.CONFIG, severity=Severity.LOW,
+                title="authorized_keys has 1 forced-command key(s)", detail="")
+    html = render(_base(audit=[f]))
+    assert "counts include 1 audit indicator " in html
+    assert "audit indicators are listed below" in html
+    assert "No findings." not in html
+
+
+def test_no_audit_note_without_audit_items():
+    html = render(_base(audit=[]))
+    assert "counts include" not in html
+    assert "No findings." in html

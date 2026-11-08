@@ -19,6 +19,7 @@ No credentials, no outbound host data: this only downloads a public catalog.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -90,6 +91,24 @@ _HOST_KEYWORDS = [
     "nodejs", "laravel", "linux", "ubuntu", "mysql", "mariadb", "postgres",
     "redis", "docker", "fortinet", "cisco", "citrix", "vmware",
 ]
+
+
+def term_matches(term: str, vendor: str, product: str) -> bool:
+    """Does a host term name this KEV entry's vendor/product?
+
+    Terms match as whole words, so ``php`` no longer hits ThinkPHP, phpMyAdmin
+    or PHPUnit. ``vendor:product`` pins both sides, e.g. ``apache:http server``
+    matches Apache HTTP Server but not Oracle HTTP Server.
+    """
+    def word(t: str, hay: str) -> bool:
+        t = t.strip().lower()
+        return bool(t) and re.search(
+            rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", hay.lower()) is not None
+
+    if ":" in term:
+        v, p = term.split(":", 1)
+        return word(v, vendor) and word(p, product)
+    return word(term, f"{vendor} {product}")
 
 
 def _applicability(
@@ -164,8 +183,7 @@ def matching_trends(
         # Match only on vendor/product, never the free-text vulnerability name:
         # a name like "...PHP Remote File Inclusion" for a Zimbra/Juniper CVE
         # would otherwise false-match a host that merely runs PHP.
-        hay = f"{e.vendor} {e.product}".lower()
-        if any(t in hay for t in terms):
+        if any(term_matches(t, e.vendor, e.product) for t in terms):
             hits.append(e)
     hits.sort(key=lambda e: e.date_added, reverse=True)
 
