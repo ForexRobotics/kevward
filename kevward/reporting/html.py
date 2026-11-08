@@ -238,7 +238,9 @@ def render(result: RunResult) -> str:
         </section>"""
 
     generated = _esc(result.generated_at)
-    reboot = "YES" if result.reboot_required else "no"
+    reboot = {"now": "YES", "after-updates": "after pending updates"}.get(
+        result.reboot_status, "no"
+    )
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

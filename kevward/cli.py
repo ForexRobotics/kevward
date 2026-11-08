@@ -82,8 +82,10 @@ def _print_findings(result, use_json: bool) -> int:
                     worst = f.severity
             if not svc.findings:
                 print("  ok")
-        if result.reboot_required:
+        if result.reboot_status == "now":
             print("\n** reboot required **")
+        elif result.reboot_status == "after-updates":
+            print("\n** reboot needed after applying pending updates **")
     # exit code reflects worst severity for CI/cron use
     return 0
 

@@ -63,6 +63,20 @@ def test_kept_back_kernel_security_finding():
     assert by["linux-libc-dev"].reboot_required is False
 
 
+def test_kept_back_kernel_from_updates_is_medium():
+    # hokaku/hokaku3 on 2026-11-09: linux-generic 5.15.0-203 from
+    # jammy-updates only, kept back -> was LOW and easy to overlook.
+    c = {"pkg": "linux-generic", "cur": "5.15.0.202.174", "new": "5.15.0.203.175",
+         "origin": "Ubuntu:22.04/jammy-updates [amd64]", "security": False,
+         "kept_back": True}
+    f = _apt.change_finding("apt", c)
+    assert f.severity is Severity.MEDIUM and f.reboot_required is True
+    assert "will not be installed" in f.detail
+    # same package, not kept back -> ordinary low minor upgrade
+    f2 = _apt.change_finding("apt", dict(c, kept_back=False))
+    assert f2.severity is Severity.LOW
+
+
 def test_nothing_kept_back_is_unchanged():
     up = _apt.parse_inst(UPGRADE)
     assert _apt.merge_kept_back(up, _apt.parse_inst(UPGRADE)) == up
