@@ -140,6 +140,26 @@ def gather_candidates(min_sshd_failures: int = 20) -> list[Candidate]:
     return list(cands.values())
 
 
+def covered_by(ip: str, cidrs: list[str]) -> str | None:
+    """The first permanent-block CIDR that already contains ``ip``, else None.
+
+    Pure. An IP inside an operator ``blockcidr`` is already dropped, so adding
+    it to the TTL'd evidence set too only clutters ``firewall list``.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    for c in cidrs:
+        try:
+            net = ipaddress.ip_network(c, strict=False)
+        except ValueError:
+            continue
+        if addr.version == net.version and addr in net:
+            return c
+    return None
+
+
 def select(candidates: list[Candidate], allow: Allowlist) -> list[Candidate]:
     """Candidates that are not allowlisted. This is the self-block guard."""
     return [c for c in candidates if not allow.allows(c.ip)]
@@ -437,6 +457,32 @@ def remove_persistence() -> None:
     run(["systemctl", "daemon-reload"], timeout=20)
 
 
+def current_block_cidrs() -> list[str]:
+    """Operator permanent blocks currently in kevward's table (read-only)."""
+    return sorted(_set_elements(BLOCKCIDR4) | _set_elements(BLOCKCIDR6))
+
+
+def prune_covered(cidrs: list[str]) -> tuple[int, list[str]]:
+    """Remove evidence IPs that a permanent-block CIDR already covers.
+
+    Housekeeping only: the CIDR keeps dropping them, so nothing is unblocked.
+    Returns (removed, errors).
+    """
+    removed = 0
+    errors: list[str] = []
+    for setname in (SET4, SET6):
+        stale = sorted(ip for ip in _set_elements(setname) if covered_by(ip, cidrs))
+        if not stale:
+            continue
+        r = _nft(["delete", "element", "inet", TABLE, setname,
+                  "{ " + ", ".join(stale) + " }"])
+        if r.ok:
+            removed += len(stale)
+        else:
+            errors.append(r.err.strip() or f"failed pruning {setname}")
+    return removed, errors
+
+
 def add_elements(ips: list[str], ttl_s: int) -> tuple[int, list[str]]:
     """Add IPs to the appropriate set with a timeout. Returns (added, errors)."""
     errors: list[str] = []
@@ -470,17 +516,23 @@ def flush_table() -> tuple[bool, str]:
 # --------------------------------------------------------------------------- #
 # CLI orchestration (kept here so cli.py stays thin)
 # --------------------------------------------------------------------------- #
-def _plan_data(min_sshd: int, extra_allow: list[str]) -> dict:
+def _plan_data(min_sshd: int, extra_allow: list[str],
+               block: list[str] | None = None) -> dict:
     allow = Allowlist.build(extra_allow, current_admin_ips())
     candidates = gather_candidates(min_sshd)
     selected = select(candidates, allow)
     skipped = [c for c in candidates if allow.allows(c.ip)]
     present: set[str] = set()
+    cidrs = list(block or [])
     nft_ok = nft_available() and is_root()
     if nft_ok:
         present = current_set_ips()
-    to_add = [c for c in selected if c.ip not in present]
+        cidrs += [c for c in current_block_cidrs() if c not in cidrs]
+    covered = {c.ip: cov for c in selected if (cov := covered_by(c.ip, cidrs))}
+    to_add = [c for c in selected if c.ip not in present and c.ip not in covered]
     return {
+        "block_cidrs": cidrs,
+        "cidr_covered": covered,
         "nft_available": nft_available(),
         "root": is_root(),
         "candidates": len(candidates),
@@ -645,7 +697,7 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
             dnsbl_top_n: int = 10, dnsbl_cache_days: float = 7.0) -> int:
     block = list(block or [])
     if action in ("plan", "apply"):
-        data = _plan_data(min_sshd, extra_allow)
+        data = _plan_data(min_sshd, extra_allow, block)
         to_add = data["to_add"]
         rep: dict[str, str] = {}
         if check_dnsbl:
@@ -664,6 +716,7 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 "to_add": [vars(c) for c in to_add],
                 "already_present": data["already_present"],
                 "allowlisted_skipped": data["allowlisted_skipped"],
+                "cidr_covered": data["cidr_covered"],
                 "permanent_blocks": block,
                 "persist": persist,
                 "dnsbl": {"enabled": check_dnsbl,
@@ -683,7 +736,8 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                       f"{dnsbl_zone} -- mode: {mode} (unknown never blocks)")
             print(f"candidates: {data['candidates']}  "
                   f"allowlisted (never blocked): {len(data['allowlisted_skipped'])}  "
-                  f"already in set: {len(data['already_present'])}")
+                  f"already in set: {len(data['already_present'])}  "
+                  f"covered by permanent CIDR: {len(data['cidr_covered'])}")
             print(f"would add {len(to_add)} IP(s)  (TTL {ttl_days:g}d):")
             for c in to_add[:100]:
                 tag = f"  [DNSBL: {rep[c.ip]}]" if c.ip in rep else ""
@@ -714,7 +768,13 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
         perm_added, perm_err = apply_blockset(block)
         added, errors = add_elements([c.ip for c in to_add], ttl_seconds(ttl_days))
         errors += perm_err
+        # Evidence entries a permanent CIDR now covers are redundant: drop them
+        # so `firewall list` shows what is actually new (still blocked by CIDR).
+        pruned, prune_err = prune_covered(sorted(set(block) | set(current_block_cidrs())))
+        errors += prune_err
         print(f"added {added} IP(s) to the kevward blocklist (nft inet {TABLE}).")
+        if pruned:
+            print(f"pruned {pruned} IP(s) already covered by a permanent CIDR block.")
         if block:
             print(f"permanent blocks: {perm_added} new, {len(block)} configured.")
         if persist:
