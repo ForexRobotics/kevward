@@ -48,3 +48,11 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # dnsbl_resolver = "1.2.3.4"        # query this resolver directly (recommended); unset = system resolver
 # dnsbl_top_n = 10
 # dnsbl_cache_days = 7
+
+# --------------------------------------------------------------------------- #
+# Host compromise indicators (`kevward audit`, `report --audit`)
+# --------------------------------------------------------------------------- #
+[audit]
+# authorized_keys forced commands you expect (glob on the command="..." value).
+# Matching keys are not reported; any other forced-command key still is.
+# allowed_forced_commands = ["/opt/kevward/bin/kevward report *", "rrsync *"]

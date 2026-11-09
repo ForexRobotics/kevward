@@ -258,6 +258,11 @@ Findings say *possible*, not *confirmed* — `audit` points you at what to look
 at. It never kills a process or deletes a file; remediation stays a human
 decision (and blocking stays with `firewall` / `harden`).
 
+Expected forced-command SSH keys (e.g. your own report-collection key) can
+be listed in `[audit] allowed_forced_commands` (globs on the `command="..."`
+value) so they stop showing up as indicators; any other forced command
+is still reported.
+
 To fold the audit into your daily HTML report (so one page shows posture,
 attackers *and* intrusion indicators), add `--audit` to `report`:
 
