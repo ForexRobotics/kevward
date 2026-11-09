@@ -207,6 +207,13 @@ def render(result: RunResult) -> str:
                     f" · <b style='color:#b8860b'>{trends['unchecked_count']}"
                     "</b> not checked"
                 )
+            _cc = trends.get("cve_cache") or {}
+            if _cc and not _cc.get("writable", True):
+                applic_line += (
+                    "<br><b style='color:#b8860b'>CVE cache not writable "
+                    f"({_esc(_cc.get('dir', ''))})</b> — run as root or set "
+                    "XDG_CACHE_HOME; 'not checked' CVEs will not resolve"
+                )
             note = (
                 "Name-matched against software on this host, then cross-checked "
                 "against installed versions via Ubuntu security data: "

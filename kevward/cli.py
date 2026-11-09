@@ -173,7 +173,15 @@ def cmd_trends(args) -> int:
         print(f"version-checked: {data.get('applicable_count', 0)} applicable here, "
               f"{data.get('fixed_count', 0)} already fixed, "
               f"{data.get('unchecked_count', 0)} not checked "
-              f"(rest: version not confirmed)\n")
+              f"(rest: version not confirmed)")
+        cc = data.get("cve_cache") or {}
+        if cc and not cc.get("writable", True):
+            print(f"warning: CVE cache not writable ({cc.get('dir')}) — run as "
+                  "root or set XDG_CACHE_HOME; 'not checked' CVEs will not resolve")
+        elif cc.get("fallback"):
+            print(f"note: using per-user CVE cache {cc.get('dir')} "
+                  "(system cache is root-only)")
+        print()
     else:
         print("note: name-level match — confirm version applicability per CVE.\n")
     limit = 25
