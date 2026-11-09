@@ -42,6 +42,7 @@ root (``sudo``).
 
 from __future__ import annotations
 
+import fnmatch
 import glob
 import ipaddress
 import os
@@ -419,25 +420,46 @@ def _check_rc() -> list[Finding]:
     return out
 
 
-def _check_authkeys() -> list[Finding]:
+# The `command="..."` option of an authorized_keys line (\" escapes allowed).
+_FORCED_CMD = re.compile(r'(?:^|,)\s*command="((?:[^"\\]|\\.)*)"')
+
+
+def forced_commands(line: str) -> list[str]:
+    """The forced command(s) on one authorized_keys line (usually 0 or 1)."""
+    return [m.replace('\\"', '"') for m in _FORCED_CMD.findall(line)]
+
+
+def _is_allowed(cmd: str, allow: list[str]) -> bool:
+    return any(fnmatch.fnmatchcase(cmd, pat) for pat in allow)
+
+
+def _check_authkeys(allow_forced: list[str] | None = None,
+                    paths: list[str] | None = None) -> list[Finding]:
     """Only emit when something is off (world-writable or a forced command);
-    an ordinary authorized_keys is not a finding."""
+    an ordinary authorized_keys is not a finding. Forced commands matching
+    ``allow_forced`` (``[audit] allowed_forced_commands``) are expected and
+    not reported (#87)."""
+    allow = allow_forced or []
     out: list[Finding] = []
-    paths = ["/root/.ssh/authorized_keys"]
-    for home in _home_dirs():
-        paths.append(os.path.join(home, ".ssh", "authorized_keys"))
+    if paths is None:
+        paths = ["/root/.ssh/authorized_keys"]
+        for home in _home_dirs():
+            paths.append(os.path.join(home, ".ssh", "authorized_keys"))
     for p in paths:
         try:
             st = os.stat(p)
         except OSError:
             continue
-        forced = 0
+        unexpected: list[str] = []
         try:
             with open(p, errors="replace") as fh:
                 for ln in fh:
                     s = ln.strip()
-                    if s and not s.startswith("#") and re.search(r'\bcommand="', s):
-                        forced += 1
+                    if not s or s.startswith("#"):
+                        continue
+                    for cmd in forced_commands(s):
+                        if not _is_allowed(cmd, allow):
+                            unexpected.append(cmd)
         except OSError:
             continue
         world_writable = bool(st.st_mode & 0o022)
@@ -445,15 +467,19 @@ def _check_authkeys() -> list[Finding]:
             out.append(_f(Severity.MEDIUM,
                           f"authorized_keys is group/world-writable: {p}",
                           detail=f"mode {oct(st.st_mode & 0o777)}"))
-        if forced:
+        if unexpected:
+            shown = "; ".join(c[:80] for c in unexpected[:3])
             out.append(_f(Severity.LOW,
-                          f"authorized_keys has {forced} forced-command key(s): {p}",
-                          detail="forced commands can be legitimate (backup/rsync) "
-                                 "but are worth confirming"))
+                          f"authorized_keys has {len(unexpected)} forced-command "
+                          f"key(s): {p}",
+                          detail=f"command: {shown} — forced commands can be "
+                                 "legitimate (backup/rsync) but are worth "
+                                 "confirming; list expected ones in [audit] "
+                                 "allowed_forced_commands"))
     return out
 
 
-def check_persistence() -> list[Finding]:
+def check_persistence(allow_forced: list[str] | None = None) -> list[Finding]:
     out: list[Finding] = []
     try:
         if os.path.getsize("/etc/ld.so.preload") > 0:
@@ -465,7 +491,7 @@ def check_persistence() -> list[Finding]:
     out += _check_cron()
     out += _check_units()
     out += _check_rc()
-    out += _check_authkeys()
+    out += _check_authkeys(allow_forced)
     out += _check_php_prepend()
     out += _check_rc_hijack()
     out += _check_at()
@@ -855,8 +881,9 @@ def _check_user_units() -> list[Finding]:
     return out
 
 
-def audit() -> list[Finding]:
-    findings = (check_reverse_ssh() + check_connections() + check_persistence()
+def audit(allow_forced: list[str] | None = None) -> list[Finding]:
+    findings = (check_reverse_ssh() + check_connections()
+                + check_persistence(allow_forced)
                 + _check_proc_origin() + _check_pkg_integrity()
                 + _check_accounts() + _check_suid())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
@@ -877,8 +904,8 @@ def _print_findings(findings: list[Finding]) -> None:
             print(f"            {f.detail}")
 
 
-def run_cli(use_json: bool) -> int:
-    findings = audit()
+def run_cli(use_json: bool, allow_forced: list[str] | None = None) -> int:
+    findings = audit(allow_forced)
     if use_json:
         import json
         print(json.dumps([f.to_dict() for f in findings], indent=2,

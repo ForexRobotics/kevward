@@ -79,6 +79,16 @@ class FirewallConfig:
 
 
 @dataclass
+class AuditConfig:
+    """`kevward audit` settings."""
+
+    # Glob patterns for authorized_keys `command="..."` values that are known
+    # and expected (e.g. your own report-collection key). Matching keys are not
+    # reported; any other forced-command key still is.
+    allowed_forced_commands: list[str] = field(default_factory=list)
+
+
+@dataclass
 class UpdateConfig:
     """Newer-release notice in reports (read-only; never upgrades)."""
 
@@ -90,6 +100,7 @@ class UpdateConfig:
 class Config:
     policy: Policy = field(default_factory=Policy)
     firewall: FirewallConfig = field(default_factory=FirewallConfig)
+    audit: AuditConfig = field(default_factory=AuditConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
     report_dir: Path = Path("/var/log/kevward")
 
@@ -110,6 +121,10 @@ class Config:
         fw = data.get("firewall", {})
         cfg.firewall = FirewallConfig(
             **{k: v for k, v in fw.items() if k in FirewallConfig.__annotations__}
+        )
+        au = data.get("audit", {})
+        cfg.audit = AuditConfig(
+            **{k: v for k, v in au.items() if k in AuditConfig.__annotations__}
         )
         up = data.get("update", {})
         cfg.update = UpdateConfig(
