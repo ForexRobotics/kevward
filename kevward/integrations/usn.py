@@ -28,6 +28,7 @@ is preferred when available.
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -183,8 +184,57 @@ def installed_source_versions() -> dict[str, str]:
 # --------------------------------------------------------------------------- #
 # Per-CVE Ubuntu security data (cached, fail-soft)
 # --------------------------------------------------------------------------- #
+def _user_cache_dir() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "kevward" / "usn"
+
+
+def _writable(d: Path) -> bool:
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return os.access(d, os.W_OK | os.X_OK)
+
+
+def cache_status() -> dict:
+    """Where this run writes Ubuntu CVE data, and whether it can (#65).
+
+    The system dir (``CACHE_DIR``) is root-only. A non-root run used to fail
+    every write silently, so each run started cold and the same CVEs stayed
+    'unchecked'. Now it falls back to a per-user cache; only when neither is
+    writable is ``writable`` False, which callers surface to the user."""
+    if _writable(CACHE_DIR):
+        return {"dir": str(CACHE_DIR), "writable": True, "fallback": False}
+    user = _user_cache_dir()
+    if _writable(user):
+        return {"dir": str(user), "writable": True, "fallback": True}
+    return {"dir": str(CACHE_DIR), "writable": False, "fallback": False}
+
+
+def _write_dir() -> Path | None:
+    st = cache_status()
+    return Path(st["dir"]) if st["writable"] else None
+
+
 def _cache_path(cve: str) -> Path:
-    return CACHE_DIR / f"{cve.upper()}.json"
+    """Newest existing cache file for ``cve`` across the write dir and the
+    system dir (a non-root run can still read what a root run cached), else
+    the path a write would use."""
+    name = f"{cve.upper()}.json"
+    wd = _write_dir()
+    dirs = [d for d in (wd, CACHE_DIR) if d is not None]
+    found = []
+    for d in dict.fromkeys(dirs):
+        f = d / name
+        try:
+            if f.is_file():
+                found.append((f.stat().st_mtime, f))
+        except OSError:
+            pass
+    if found:
+        return max(found)[1]
+    return (wd or CACHE_DIR) / name
 
 
 def cache_state(cve: str) -> str:
@@ -217,9 +267,11 @@ NOT_TRACKED = {"not_tracked_by_ubuntu": True, "packages": []}
 
 
 def _write_cache(cp: Path, data: dict) -> None:
+    wd = _write_dir()
+    if wd is None:
+        return  # reported once per run via cache_status(), not per CVE
     try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cp.write_text(json.dumps(data))
+        (wd / cp.name).write_text(json.dumps(data))
     except OSError:
         pass
 

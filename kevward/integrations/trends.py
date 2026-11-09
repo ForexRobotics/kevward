@@ -188,11 +188,18 @@ def matching_trends(
     hits.sort(key=lambda e: e.date_added, reverse=True)
 
     labels: dict[str, str] = {}
+    cache: dict | None = None
     if version_aware and hits:
         try:
             labels = _applicability(hits, max_version_checks, version_budget_s)
         except Exception:
             labels = {}  # never let the version layer break a report
+        if labels:
+            try:
+                from . import usn
+                cache = usn.cache_status()
+            except Exception:
+                cache = None
 
     def _match_dict(e: KevEntry) -> dict:
         d = dict(e.__dict__)
@@ -211,5 +218,6 @@ def matching_trends(
         "applicable_count": _count("applicable"),
         "fixed_count": _count("fixed"),
         "unchecked_count": _count("unchecked"),
+        "cve_cache": cache,
         "matches": [_match_dict(e) for e in hits[:100]],
     }
