@@ -48,3 +48,11 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # dnsbl_resolver = "1.2.3.4"        # query this resolver directly (recommended); unset = system resolver
 # dnsbl_top_n = 10
 # dnsbl_cache_days = 7
+
+# --------------------------------------------------------------------------- #
+# Newer-release notice (read-only: kevward never upgrades itself)
+# --------------------------------------------------------------------------- #
+[update]
+# Look up the latest kevward on PyPI once a day and show an INFO finding in the
+# report when a newer release exists. Set false on air-gapped hosts.
+# check = true
