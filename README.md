@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/kevward-logo.png" alt="kevward" align="right" width="100">
+<img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/kevward-logo.png" alt="kevward" align="right" width="72">
 
 # kevward
 
