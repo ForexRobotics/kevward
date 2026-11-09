@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.6
+
+- **CVE cache falls back to a per-user dir; warns when nothing is writable.**
+  A non-root `trends`/`report` could not write `/var/cache/kevward/usn` and
+  failed silently, so the same CVEs stayed "not checked" every run. It now uses
+  `$XDG_CACHE_HOME`/`~/.cache` and still reads the root-written cache; if no
+  cache is writable, the CLI and report say so. (#89, closes #65)
+- **`[audit] allowed_forced_commands`**: glob patterns for expected
+  authorized_keys forced commands (e.g. your report-collection key). Matching
+  keys are no longer reported; others still are, now with the command shown. (#90)
+- **Report shows when a newer kevward is on PyPI** (INFO finding with the
+  upgrade command; looked up once a day, fail-soft, read-only). Opt out with
+  `[update] check = false`. (#91, closes #70)
+
 ## 0.12.5
 
 Fixes from the 2026-11-09 morning reports.
