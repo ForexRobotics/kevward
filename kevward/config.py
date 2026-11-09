@@ -89,10 +89,19 @@ class AuditConfig:
 
 
 @dataclass
+class UpdateConfig:
+    """Newer-release notice in reports (read-only; never upgrades)."""
+
+    # Look up the latest kevward on PyPI (cached 24h). False for air-gapped hosts.
+    check: bool = True
+
+
+@dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
     firewall: FirewallConfig = field(default_factory=FirewallConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
+    update: UpdateConfig = field(default_factory=UpdateConfig)
     report_dir: Path = Path("/var/log/kevward")
 
     @classmethod
@@ -116,6 +125,10 @@ class Config:
         au = data.get("audit", {})
         cfg.audit = AuditConfig(
             **{k: v for k, v in au.items() if k in AuditConfig.__annotations__}
+        )
+        up = data.get("update", {})
+        cfg.update = UpdateConfig(
+            **{k: v for k, v in up.items() if k in UpdateConfig.__annotations__}
         )
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])

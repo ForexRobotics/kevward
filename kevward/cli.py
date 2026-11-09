@@ -130,6 +130,18 @@ def cmd_report(args) -> int:
     result = run_engine(cfg, do_apply=False, dry_run=True)
     host_terms = detected_kev_terms(cfg.policy.services or None)
     result.attackers = _collect_attackers(args.trends, host_terms)
+    if cfg.update.check:
+        try:
+            from .integrations.update_check import update_findings
+            from .model import ServiceReport
+
+            upd = update_findings()
+            if upd:
+                result.services.append(ServiceReport(
+                    service="kevward", present=True, version=upd[0].current_version,
+                    findings=upd))
+        except Exception:
+            pass  # a version notice must never break a report
     if args.audit:
         from . import audit as ad
         result.audit = ad.audit(cfg.audit.allowed_forced_commands)
