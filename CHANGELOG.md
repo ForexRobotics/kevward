@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.5
+
+Fixes from the 2026-11-09 morning reports.
+
+- **Fix: `composer audit` now audits the Laravel app, not kevward's cwd.** It
+  ran without a working directory, so every project came back clean. It now
+  passes `--working-dir`, and `--no-plugins --no-scripts` so a root run never
+  executes code from a project's `vendor/`. (#82)
+- **Laravel apps under `/home` are found.** The scan (depth-bounded, skipping
+  hidden dirs, `vendor/`, `node_modules/`) now covers per-user checkouts; on two
+  hosts this surfaced a second copy of an app on Laravel 11.9 / 11.11. Apps
+  reached via overlapping roots are reported once. (#82)
+- **Laravel end-of-security-support finding.** MEDIUM once a major's security
+  fixes have ended (Laravel 11: 2026-03), LOW within 6 months of it. (#82)
+- **Report: "reboot required" distinguishes now from later.** The header shows
+  `YES` only when `/run/reboot-required` is set, and `after pending updates`
+  when only a pending (e.g. kept-back) kernel would need one. JSON adds
+  `reboot_pending`. (#83)
+- **A kept-back kernel update is MEDIUM, not LOW**: `apt upgrade` never installs
+  it, so it previously sat unnoticed. (#83)
+
 ## 0.12.4
 
 Precision and clarity fixes from the 2026-11-08 morning reports.
