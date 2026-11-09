@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/kevward-logo.png" alt="kevward" width="140">
+</p>
+
 # kevward
 
 [![CI](https://github.com/ForexRobotics/kevward/actions/workflows/ci.yml/badge.svg)](https://github.com/ForexRobotics/kevward/actions/workflows/ci.yml)
