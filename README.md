@@ -308,6 +308,10 @@ Copy `config.example.toml` to `/etc/kevward/config.toml`. All defaults are
 conservative; see that file for every option, including where to point the
 Composer/Laravel/Node/WordPress scanners.
 
+Reports include an INFO finding when a newer kevward release is on PyPI
+(looked up once a day, read-only — kevward never upgrades itself). Turn it
+off on air-gapped hosts with `[update] check = false`.
+
 ## Scheduling
 
 Install the units in `systemd/`:
