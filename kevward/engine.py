@@ -14,7 +14,7 @@ from typing import Any
 
 from . import __version__
 from .config import Config
-from .model import Finding, ServiceReport
+from .model import Finding, FindingKind, ServiceReport, Severity
 from .plugin import load
 from .util import reboot_pending
 
@@ -32,6 +32,9 @@ class RunResult:
     # The host already asks for a reboot (/run/reboot-required is set), as
     # opposed to "applying the pending updates will need one".
     reboot_pending: bool = False
+    # Which config file was used (None = defaults) and why it was unusable.
+    config_source: str | None = None
+    config_error: str | None = None
 
     @property
     def reboot_required(self) -> bool:
@@ -52,6 +55,8 @@ class RunResult:
             "os": self.os,
             "reboot_required": self.reboot_required,
             "reboot_pending": self.reboot_pending,
+            "config_source": self.config_source,
+            "config_error": self.config_error,
             "services": [s.to_dict() for s in self.services],
             "attackers": self.attackers,
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
@@ -59,6 +64,26 @@ class RunResult:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+
+def config_error_report(cfg: Config) -> ServiceReport:
+    """A HIGH finding so an unreadable config is visible in every report."""
+    return ServiceReport(
+        service="kevward",
+        present=True,
+        findings=[
+            Finding(
+                service="kevward",
+                kind=FindingKind.CONFIG,
+                severity=Severity.HIGH,
+                title=f"config file could not be used; running with defaults: {cfg.source}",
+                detail=f"{cfg.load_error}. Settings in this file (allowlists, budgets, "
+                "policy overrides) are NOT in effect. Fix the file; side-effecting "
+                "commands (apply --yes, firewall apply/flush, schedule-reboot) refuse "
+                "to run until then.",
+            )
+        ],
+    )
 
 
 def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
@@ -69,7 +94,11 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         os=f"{platform.system()} {platform.release()}",
         reboot_pending=reboot_pending(),
+        config_source=str(cfg.source) if cfg.source else None,
+        config_error=cfg.load_error,
     )
+    if cfg.load_error:
+        result.services.append(config_error_report(cfg))
     claimed: set[str] = set()  # package refs already handed to apply() this run
     for p in plugins:
         sp = cfg.policy.for_service(p.name)
