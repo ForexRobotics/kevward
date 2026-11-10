@@ -176,7 +176,12 @@ def render(result: RunResult) -> str:
         "fixed": ("fixed", "#2f6f4f"),
         "possible": ("possible", "#50607a"),
         "unchecked": ("unchecked", "#b8860b"),
+        "not_applicable": ("n/a (config)", "#2f6f4f"),
     }
+    def _na_note(m: dict) -> str:
+        r = m.get("applicability_reason")
+        return f"<br><small>n/a on this host: {_esc(r)}</small>" if r else ""
+
     trend_rows = ""
     # Every match is listed: the table used to stop at 30 rows without saying
     # so, hiding e.g. 21 of 51 matches on a 22.04 host.
@@ -190,7 +195,7 @@ def render(result: RunResult) -> str:
             f"<tr><td class='cve'>{_esc(m.get('cve'))}{rw}</td>"
             f"{status_cell}"
             f"<td>{_esc(m.get('vendor'))}/{_esc(m.get('product'))}</td>"
-            f"<td>{_esc(m.get('name'))}</td>"
+            f"<td>{_esc(m.get('name'))}{_na_note(m)}</td>"
             f"<td>{_esc(m.get('date_added'))}</td></tr>"
         )
     trend_block = ""
@@ -202,6 +207,10 @@ def render(result: RunResult) -> str:
                 f" · <b>{trends.get('applicable_count', 0)}</b> applicable here"
                 f" · {trends.get('fixed_count', 0)} already fixed"
             )
+            if trends.get("not_applicable_count"):
+                applic_line += (
+                    f" · {trends['not_applicable_count']} n/a by host config"
+                )
             if trends.get("unchecked_count"):
                 applic_line += (
                     f" · <b style='color:#b8860b'>{trends['unchecked_count']}"
@@ -222,7 +231,9 @@ def render(result: RunResult) -> str:
                 "<b>possible</b> = looked up, but no installed package for this "
                 "release to judge (treat as name-level only), "
                 "<b>unchecked</b> = the lookup did not complete this run "
-                "(network or time budget) — re-run to resolve."
+                "(network or time budget) — re-run to resolve, "
+                "<b>n/a (config)</b> = exploitable only under a configuration "
+                "this host does not have (reason shown)."
             )
         else:
             applic_line = ""

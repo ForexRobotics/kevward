@@ -201,9 +201,24 @@ def matching_trends(
             except Exception:
                 cache = None
 
+    # Config-conditional rules (#86): a CVE that only applies under a host
+    # configuration this host does not have is shown as not applicable, with
+    # the reason. Never overrides 'fixed' or 'applicable' from version data.
+    config_na: dict[str, str] = {}
+    if hits:
+        try:
+            from . import conditions
+            config_na = conditions.evaluate([e.cve for e in hits])
+        except Exception:
+            config_na = {}
+
     def _match_dict(e: KevEntry) -> dict:
         d = dict(e.__dict__)
         d["applicability"] = labels.get(e.cve, "possible")
+        reason = config_na.get(e.cve)
+        if reason and d["applicability"] in ("possible", "unchecked", "not_applicable"):
+            d["applicability"] = "not_applicable"
+            d["applicability_reason"] = reason
         return d
 
     def _count(v: str) -> int:
@@ -218,6 +233,10 @@ def matching_trends(
         "applicable_count": _count("applicable"),
         "fixed_count": _count("fixed"),
         "unchecked_count": _count("unchecked"),
+        "not_applicable_count": sum(
+            1 for e in hits
+            if e.cve in config_na and labels.get(e.cve) not in ("fixed", "applicable")
+        ),
         "cve_cache": cache,
         "matches": [_match_dict(e) for e in hits[:100]],
     }
