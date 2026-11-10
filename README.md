@@ -343,6 +343,31 @@ sudo cp systemd/kevward-apply.* /etc/systemd/system/
 sudo systemctl enable --now kevward-apply.timer      # weekly security patching
 ```
 
+### Collecting reports from several hosts
+
+If you fetch `report.html` from each host (e.g. over SSH with a forced
+`cat /var/log/kevward/report.html`), check that it is *fresh*: a failed run
+leaves yesterday's file in place. Each report carries machine-readable
+metadata in `<head>`:
+
+```html
+<meta name="kevward-generated-at" content="2026-11-10T22:05:13+00:00">
+<meta name="kevward-version" content="0.12.8">
+<meta name="kevward-host" content="web-1">
+```
+
+and every `kevward report` run (successful or not) writes
+`last-run.json` next to it:
+
+```json
+{"started_at": "…", "finished_at": "…", "ok": false,
+ "error": "OSError: [Errno 28] No space left on device", "report": null}
+```
+
+Treat a report as **stale** when `kevward-generated-at` is older than about
+26 hours or `last-run.json` says `"ok": false`, and surface that instead of
+"OK".
+
 ## Adding a service
 
 Drop one file in `kevward/plugins/` — it is auto-discovered. See
