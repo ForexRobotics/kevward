@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.7
+
+Fixes and KEV-table cleanups from the 2026-11-10 morning check.
+
+- **Fix: `apply` installed minor upgrades without `--minor`.** Every pending
+  package change was handed to `apply()`; the policy only decided whether a
+  plugin applied at all. Security updates now follow `apply_security` and minor
+  upgrades `apply_minor` (default: security only, as documented). (#97, closes #96)
+- **`apply` lists and installs each package once.** A package owned by a
+  service plugin and the host-wide `apt` plugin (e.g. apache2) appeared twice in
+  the dry run. A dry run without root now notes that apt lists were not
+  refreshed. (#101, closes #99)
+- **KEV table: "n/a (config)" for CVEs this host's configuration rules out**,
+  with the reason shown. First rules: OpenSSH "SSHole" (CVE-2026-123158;
+  musl + PAM-disabled only, so n/a on glibc or `UsePAM yes`) and PHP-CGI
+  CVE-2024-4577 (Windows-only). Fail-soft; never overrides `fixed`/`applicable`.
+  (#98 closes #86, #100 part of #62)
+- **`[trends] version_budget_s` / `max_version_checks`** make the
+  version-aware KEV pass budget configurable (defaults unchanged: 45 s / 80), so
+  hosts with many "not checked" rows can resolve them faster. (#102, part of #66)
+
 ## 0.12.6
 
 - **CVE cache falls back to a per-user dir; warns when nothing is writable.**
