@@ -172,7 +172,8 @@ def cmd_trends(args) -> int:
     if data.get("version_aware"):
         print(f"version-checked: {data.get('applicable_count', 0)} applicable here, "
               f"{data.get('fixed_count', 0)} already fixed, "
-              f"{data.get('unchecked_count', 0)} not checked "
+              f"{data.get('unchecked_count', 0)} not checked, "
+              f"{data.get('not_applicable_count', 0)} n/a by host config "
               f"(rest: version not confirmed)")
         cc = data.get("cve_cache") or {}
         if cc and not cc.get("writable", True):
@@ -190,6 +191,8 @@ def cmd_trends(args) -> int:
         tag = f"[{m['applicability']}] " if data.get("version_aware") else ""
         print(f"  {tag}{m['cve']:18} {m['vendor']}/{m['product']}  "
               f"(added {m['date_added']}){rw}")
+        if m.get("applicability_reason"):
+            print(f"      n/a on this host: {m['applicability_reason']}")
     rest = len(data["matches"]) - limit
     if rest > 0:
         print(f"  ... and {rest} more (all matches: `kevward trends --json` "
