@@ -47,7 +47,14 @@ def _mkconfig(args) -> Config:
     return cfg
 
 
-def _collect_attackers(include_trends: bool, host_terms=None) -> dict:
+def _trends_kwargs(cfg: Config) -> dict:
+    return {
+        "version_budget_s": cfg.trends.version_budget_s,
+        "max_version_checks": cfg.trends.max_version_checks,
+    }
+
+
+def _collect_attackers(include_trends: bool, host_terms=None, cfg: Config | None = None) -> dict:
     from . import firewall
     data = {
         "fail2ban": fail2ban.collect(),
@@ -57,7 +64,9 @@ def _collect_attackers(include_trends: bool, host_terms=None) -> dict:
     }
     if include_trends:
         from .integrations import trends as trends_mod
-        data["trends"] = trends_mod.matching_trends(host_terms)
+        data["trends"] = trends_mod.matching_trends(
+            host_terms, **_trends_kwargs(cfg or Config())
+        )
     return data
 
 
@@ -129,7 +138,7 @@ def cmd_report(args) -> int:
     cfg = _mkconfig(args)
     result = run_engine(cfg, do_apply=False, dry_run=True)
     host_terms = detected_kev_terms(cfg.policy.services or None)
-    result.attackers = _collect_attackers(args.trends, host_terms)
+    result.attackers = _collect_attackers(args.trends, host_terms, cfg)
     if cfg.update.check:
         try:
             from .integrations.update_check import update_findings
@@ -159,7 +168,7 @@ def cmd_trends(args) -> int:
     cfg = _mkconfig(args)
     from .integrations import trends as trends_mod
     host_terms = detected_kev_terms(cfg.policy.services or None)
-    data = trends_mod.matching_trends(host_terms)
+    data = trends_mod.matching_trends(host_terms, **_trends_kwargs(cfg))
     data["kevward_version"] = __version__
     if args.json:
         import json

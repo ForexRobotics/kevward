@@ -58,6 +58,18 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # allowed_forced_commands = ["/opt/kevward/bin/kevward report *", "rrsync *"]
 
 # --------------------------------------------------------------------------- #
+# CISA KEV matching (`trends`, `report --trends`)
+# --------------------------------------------------------------------------- #
+[trends]
+# Time budget (seconds) for the version-aware pass that checks each KEV match
+# against Ubuntu's per-CVE data. Cached CVEs are free; an uncached kernel CVE
+# takes ~5s, so a host with many "not checked" rows resolves faster with a
+# larger budget (at the cost of a slower report). Clamped to 0..600.
+# version_budget_s = 45
+# Max network lookups per run (cached CVEs don't count). Clamped to 0..1000.
+# max_version_checks = 80
+
+# --------------------------------------------------------------------------- #
 # Newer-release notice (read-only: kevward never upgrades itself)
 # --------------------------------------------------------------------------- #
 [update]
