@@ -256,6 +256,13 @@ def render(result: RunResult) -> str:
         </section>"""
 
     generated = _esc(result.generated_at)
+    if getattr(result, "config_error", None):
+        config_cell = (f"<b style='color:#c0392b'>config: {_esc(result.config_source)} "
+                       "(UNREADABLE — using defaults)</b>")
+    elif getattr(result, "config_source", None):
+        config_cell = f"config: {_esc(result.config_source)}"
+    else:
+        config_cell = "config: defaults"
     reboot = {"now": "YES", "after-updates": "after pending updates"}.get(
         result.reboot_status, "no"
     )
@@ -304,7 +311,7 @@ def render(result: RunResult) -> str:
 <body><div class="wrap">
   <header>
     <h1>kevward — {_esc(result.host)}</h1>
-    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · kevward {_KW_VERSION}</p>
+    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · kevward {_KW_VERSION} · {config_cell}</p>
     <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
     {audit_note}
   </header>

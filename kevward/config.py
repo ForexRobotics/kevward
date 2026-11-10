@@ -121,13 +121,35 @@ class Config:
     update: UpdateConfig = field(default_factory=UpdateConfig)
     trends: TrendsConfig = field(default_factory=TrendsConfig)
     report_dir: Path = Path("/var/log/kevward")
+    # The file actually loaded (None = built-in defaults), for display (#105).
+    source: Path | None = None
+    # Why that file could not be used; the config is then all defaults (#104).
+    load_error: str | None = None
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
+        """Load the first config file found, or defaults.
+
+        Never raises on a bad file: a daily report must not silently stop
+        because of a typo (#104). On any read/parse/type error the result is
+        the built-in defaults with ``source`` set and ``load_error`` describing
+        the problem (line/column only, never file contents). Callers decide
+        what to do: read-only commands warn and continue, side-effecting
+        commands refuse.
+        """
         candidates = [Path(path)] if path else DEFAULT_PATHS
         for p in candidates:
             if p.is_file():
-                return cls._from_file(p)
+                try:
+                    cfg = cls._from_file(p)
+                except tomllib.TOMLDecodeError as exc:
+                    cfg = cls(load_error=f"not valid TOML: {exc}")
+                except (TypeError, ValueError) as exc:
+                    cfg = cls(load_error=f"invalid value: {type(exc).__name__}")
+                except OSError as exc:
+                    cfg = cls(load_error=f"cannot read: {exc.strerror or type(exc).__name__}")
+                cfg.source = p
+                return cfg
         return cls()
 
     @classmethod

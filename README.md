@@ -315,6 +315,13 @@ Copy `config.example.toml` to `/etc/kevward/config.toml`. All defaults are
 conservative; see that file for every option, including where to point the
 Composer/Laravel/Node/WordPress scanners.
 
+The report header shows which config file is in use (`config: /etc/kevward/config.toml`,
+or `config: defaults`). If the file cannot be parsed, read-only commands warn
+and run on defaults, and the report carries a HIGH finding saying so;
+side-effecting commands (`apply --yes`, `firewall apply|flush --yes`,
+`schedule-reboot`) refuse until it is fixed. Check a file with
+`kevward check -s none -c /etc/kevward/config.toml`.
+
 Reports include an INFO finding when a newer kevward release is on PyPI
 (looked up once a day, read-only — kevward never upgrades itself). Turn it
 off on air-gapped hosts with `[update] check = false`.

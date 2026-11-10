@@ -41,8 +41,18 @@ def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--json", action="store_true", help="emit JSON")
 
 
-def _mkconfig(args) -> Config:
+def _mkconfig(args, side_effects: bool = False) -> Config:
+    """Load config. A broken file never crashes the CLI (#104): read-only
+    commands warn and continue on defaults; side-effecting ones refuse, since
+    defaults could change what they do (e.g. drop a firewall allowlist)."""
     cfg = Config.load(getattr(args, "config", None))
+    if cfg.load_error:
+        msg = f"config {cfg.source}: {cfg.load_error}"
+        if side_effects:
+            print(f"refused: {msg}\nfix the file before running this command.",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        print(f"warning: {msg} — running with built-in defaults", file=sys.stderr)
     if getattr(args, "services", None):
         cfg.policy.services = args.services
     return cfg
@@ -107,7 +117,7 @@ def cmd_check(args) -> int:
 
 
 def cmd_apply(args) -> int:
-    cfg = _mkconfig(args)
+    cfg = _mkconfig(args, side_effects=args.yes)
     if args.minor:
         cfg.policy.apply_minor = True
     dry = not args.yes
@@ -215,7 +225,7 @@ def cmd_trends(args) -> int:
 
 
 def cmd_schedule_reboot(args) -> int:
-    cfg = _mkconfig(args)
+    cfg = _mkconfig(args, side_effects=True)
     if not cfg.policy.allow_reboot:
         print("refused: policy.allow_reboot is false. Set it to true to permit reboots.")
         return 2
@@ -225,7 +235,7 @@ def cmd_schedule_reboot(args) -> int:
 
 
 def cmd_firewall(args) -> int:
-    cfg = _mkconfig(args)
+    cfg = _mkconfig(args, side_effects=args.action in ("apply", "flush") and args.yes)
     from . import firewall as fw
     ttl_days = cfg.firewall.ttl_days
     if args.ttl:
