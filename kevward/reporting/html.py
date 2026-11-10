@@ -263,6 +263,9 @@ def render(result: RunResult) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="kevward-generated-at" content="{_esc(result.generated_at)}">
+<meta name="kevward-version" content="{_esc(_KW_VERSION)}">
+<meta name="kevward-host" content="{_esc(result.host)}">
 <title>kevward report — {_esc(result.host)}</title>
 <style>
   :root {{

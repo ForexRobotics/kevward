@@ -139,7 +139,53 @@ def cmd_apply(args) -> int:
     return 1 if failed else 0
 
 
+def _write_last_run(report_dir: Path, record: dict) -> None:
+    """Best-effort ``last-run.json`` beside the report (#106). Never raises."""
+    import json
+
+    try:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        tmp = report_dir / ".last-run.json.tmp"
+        tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(report_dir / "last-run.json")
+    except OSError:
+        pass
+
+
 def cmd_report(args) -> int:
+    """Write the HTML report, plus ``last-run.json`` recording success or the
+    one-line failure, so a collector can tell a fresh report from a stale one
+    left behind by a failed run (#106)."""
+    import socket
+    from datetime import datetime, timezone
+
+    def _now() -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    record = {"started_at": _now(), "host": socket.gethostname(),
+              "kevward_version": __version__}
+    if args.output:
+        report_dir = Path(args.output).parent
+    else:
+        try:
+            report_dir = Config.load(getattr(args, "config", None)).report_dir
+        except Exception:
+            report_dir = Config().report_dir
+    try:
+        out = _cmd_report(args)
+    except BaseException as exc:
+        if isinstance(exc, SystemExit) and not exc.code:
+            raise
+        err = f"{type(exc).__name__}: {exc}".splitlines()[0][:300]
+        record.update(finished_at=_now(), ok=False, error=err, report=None)
+        _write_last_run(report_dir, record)
+        raise
+    record.update(finished_at=_now(), ok=True, error=None, report=str(out))
+    _write_last_run(out.parent, record)
+    return 0
+
+
+def _cmd_report(args) -> Path:
     cfg = _mkconfig(args)
     result = run_engine(cfg, do_apply=False, dry_run=True)
     host_terms = detected_kev_terms(cfg.policy.services or None)
@@ -166,7 +212,7 @@ def cmd_report(args) -> int:
     print(f"wrote {out}")
     if args.json:
         print(result.to_json())
-    return 0
+    return out
 
 
 def cmd_trends(args) -> int:
