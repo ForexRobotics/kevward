@@ -16,7 +16,7 @@ import importlib
 import pkgutil
 from collections.abc import Iterable
 
-from .model import ActionResult, Finding, ServiceReport
+from .model import ActionResult, Finding, FindingKind, ServiceReport
 
 
 class ServicePlugin(abc.ABC):
@@ -59,18 +59,44 @@ class ServicePlugin(abc.ABC):
         return []
 
     # --- convenience, used by the engine ---------------------------------
-    def report(self, do_apply: bool, dry_run: bool) -> ServiceReport:
+    def report(
+        self,
+        do_apply: bool,
+        dry_run: bool,
+        apply_security: bool = True,
+        apply_minor: bool = False,
+    ) -> ServiceReport:
         if not self.detect():
             return ServiceReport(service=self.name, present=False)
         rep = ServiceReport(service=self.name, present=True, version=self.version())
         try:
             rep.findings = self.check()
             if do_apply and self.supports_apply:
-                actionable = [f for f in rep.findings if f.ref is not None]
-                rep.actions = self.apply(actionable, dry_run=dry_run)
+                actionable = select_actionable(
+                    rep.findings, apply_security=apply_security, apply_minor=apply_minor
+                )
+                if actionable:
+                    rep.actions = self.apply(actionable, dry_run=dry_run)
         except Exception as exc:  # pragma: no cover - defensive
             rep.error = f"{type(exc).__name__}: {exc}"
         return rep
+
+
+def select_actionable(
+    findings: Iterable[Finding], apply_security: bool, apply_minor: bool
+) -> list[Finding]:
+    """Findings that policy allows ``apply()`` to act on.
+
+    Only package changes are actionable (they carry a ``ref``), and each kind is
+    gated by its own policy switch: security updates by ``apply_security``,
+    minor upgrades by ``apply_minor``. Anything else is never applied.
+    """
+    allowed: set[FindingKind] = set()
+    if apply_security:
+        allowed.add(FindingKind.SECURITY_UPDATE)
+    if apply_minor:
+        allowed.add(FindingKind.MINOR_UPGRADE)
+    return [f for f in findings if f.ref is not None and f.kind in allowed]
 
 
 # ---------------------------------------------------------------------------
