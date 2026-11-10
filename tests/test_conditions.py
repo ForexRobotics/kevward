@@ -95,3 +95,11 @@ def test_html_shows_badge_and_reason():
     assert "n/a (config)" in out
     assert "glibc &lt;host&gt;" in out
     assert "1 n/a by host config" in out
+
+
+def test_php_cgi_best_fit_is_windows_only(monkeypatch):
+    monkeypatch.setattr(conditions.sys, "platform", "linux")
+    out = conditions.evaluate(["CVE-2024-4577"], HostFacts())
+    assert "Windows-only" in out["CVE-2024-4577"]
+    monkeypatch.setattr(conditions.sys, "platform", "win32")
+    assert conditions.evaluate(["CVE-2024-4577"], HostFacts()) == {}

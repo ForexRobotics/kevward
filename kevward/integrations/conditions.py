@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import glob
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -40,6 +41,14 @@ class HostFacts:
         if "libc" not in self._cache:
             self._cache["libc"] = _detect_libc()
         return self._cache["libc"]
+
+    def os_family(self) -> str:
+        """'linux' | 'windows' | other ``sys.platform`` prefix. Always known."""
+        if sys.platform.startswith("win"):
+            return "windows"
+        if sys.platform.startswith("linux"):
+            return "linux"
+        return sys.platform
 
     def sshd(self, key: str) -> str | None:
         """Effective ``sshd -T`` value (lower-cased), or None if unreadable."""
@@ -92,8 +101,17 @@ def _sshole(f: HostFacts) -> str | None:
     return None
 
 
+def _windows_only(f: HostFacts) -> str | None:
+    """CVEs that can only be exploited on Windows hosts."""
+    if f.os_family() != "windows":
+        return f"Windows-only vulnerability; host is {f.os_family()}"
+    return None
+
+
 RULES: dict[str, Rule] = {
     "CVE-2026-123158": _sshole,
+    # PHP-CGI argument injection via Windows "Best-Fit" charset mapping.
+    "CVE-2024-4577": _windows_only,
 }
 
 
