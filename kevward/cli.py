@@ -31,6 +31,7 @@ from .engine import run as run_engine
 from .integrations import fail2ban, logwatch
 from .model import Severity
 from .plugin import detected_kev_terms, discover
+from .util import have, is_root
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -102,7 +103,11 @@ def cmd_apply(args) -> int:
         cfg.policy.apply_minor = True
     dry = not args.yes
     if dry:
-        print("DRY RUN (pass --yes to actually apply)\n")
+        print("DRY RUN (pass --yes to actually apply)")
+        if not is_root() and have("apt-get"):
+            print("note: not root — apt package lists were not refreshed; "
+                  "run with sudo for an up-to-date plan")
+        print()
     result = run_engine(cfg, do_apply=True, dry_run=dry)
     failed = False
     for svc in result.services:

@@ -70,6 +70,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         os=f"{platform.system()} {platform.release()}",
         reboot_pending=reboot_pending(),
     )
+    claimed: set[str] = set()  # package refs already handed to apply() this run
     for p in plugins:
         sp = cfg.policy.for_service(p.name)
         # Respect per-service apply gating by temporarily narrowing intent.
@@ -80,6 +81,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
                 dry_run=dry_run,
                 apply_security=sp.apply_security,
                 apply_minor=sp.apply_minor,
+                claimed=claimed if apply_this else None,
             )
         )
     return result

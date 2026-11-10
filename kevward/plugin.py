@@ -65,7 +65,15 @@ class ServicePlugin(abc.ABC):
         dry_run: bool,
         apply_security: bool = True,
         apply_minor: bool = False,
+        claimed: set[str] | None = None,
     ) -> ServiceReport:
+        """Check, then (optionally) apply what policy allows.
+
+        ``claimed`` is shared across plugins within one run: package refs an
+        earlier plugin already handed to ``apply()`` are skipped here and the
+        refs this plugin applies are added, so a package owned by two plugins
+        (e.g. ``apache`` and the host-wide ``apt``) is listed and installed once.
+        """
         if not self.detect():
             return ServiceReport(service=self.name, present=False)
         rep = ServiceReport(service=self.name, present=True, version=self.version())
@@ -75,6 +83,9 @@ class ServicePlugin(abc.ABC):
                 actionable = select_actionable(
                     rep.findings, apply_security=apply_security, apply_minor=apply_minor
                 )
+                if claimed is not None:
+                    actionable = [f for f in actionable if f.ref not in claimed]
+                    claimed.update(f.ref for f in actionable if f.ref)
                 if actionable:
                     rep.actions = self.apply(actionable, dry_run=dry_run)
         except Exception as exc:  # pragma: no cover - defensive
