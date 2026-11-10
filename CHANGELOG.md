@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.8
+
+A broken config or a failed run can no longer go unnoticed.
+
+- **Fix: a malformed `config.toml` no longer crashes kevward.** It used to
+  make every command (including the scheduled report) exit with a traceback.
+  Read-only commands now warn and run on defaults, and the report carries a
+  HIGH finding; `apply --yes`, `firewall apply|flush --yes` and
+  `schedule-reboot` refuse until the file is fixed. (#107, closes #104)
+- **Report shows the config in use**: `config: /etc/kevward/config.toml`,
+  `config: defaults`, or UNREADABLE in red; JSON gains `config_source` /
+  `config_error`. (#107, closes #105)
+- **Stale reports are detectable**: `<meta name="kevward-generated-at">`
+  (+ version, host) in the HTML head, and `last-run.json` written next to the
+  report on every run, including failures. README explains how collectors
+  should flag a stale report. (#108, closes #106)
+
 ## 0.12.7
 
 Fixes and KEV-table cleanups from the 2026-11-10 morning check.
