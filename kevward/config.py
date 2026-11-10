@@ -97,11 +97,29 @@ class UpdateConfig:
 
 
 @dataclass
+class TrendsConfig:
+    """CISA KEV matching (`trends`, `report --trends`)."""
+
+    # Wall-clock budget (seconds) for the version-aware pass that looks CVEs up
+    # in Ubuntu's security data. Cached CVEs cost nothing; uncached kernel CVEs
+    # take ~5s each, so a cold host resolves only a handful per run at 45s.
+    version_budget_s: float = 45.0
+    # Upper bound on network lookups per run (cached CVEs are not counted).
+    max_version_checks: int = 80
+
+    def __post_init__(self) -> None:
+        # Keep a typo from hanging the daily report or disabling the pass.
+        self.version_budget_s = min(max(float(self.version_budget_s), 0.0), 600.0)
+        self.max_version_checks = min(max(int(self.max_version_checks), 0), 1000)
+
+
+@dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
     firewall: FirewallConfig = field(default_factory=FirewallConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
+    trends: TrendsConfig = field(default_factory=TrendsConfig)
     report_dir: Path = Path("/var/log/kevward")
 
     @classmethod
@@ -129,6 +147,10 @@ class Config:
         up = data.get("update", {})
         cfg.update = UpdateConfig(
             **{k: v for k, v in up.items() if k in UpdateConfig.__annotations__}
+        )
+        tr = data.get("trends", {})
+        cfg.trends = TrendsConfig(
+            **{k: v for k, v in tr.items() if k in TrendsConfig.__annotations__}
         )
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])

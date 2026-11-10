@@ -319,6 +319,11 @@ Reports include an INFO finding when a newer kevward release is on PyPI
 (looked up once a day, read-only — kevward never upgrades itself). Turn it
 off on air-gapped hosts with `[update] check = false`.
 
+The KEV table's version check is time-boxed (45 s, 80 lookups per run) so the
+daily report stays fast; CVEs it could not reach show as *not checked* and
+resolve over later runs from the cache. On a host with many such rows, raise
+`[trends] version_budget_s` (and `max_version_checks`) in the config.
+
 ## Scheduling
 
 Install the units in `systemd/`:
