@@ -104,3 +104,31 @@ if __name__ == "__main__":
             obj()
             print(f"ok  {name}")
     print("all laravel tests passed")
+
+
+def test_multi_framework_finding_flags_differing_versions():
+    from kevward.plugins.laravel import multi_framework_finding
+
+    dets = [
+        (Path("/var/www/hokaku-app"), "v11.57.0"),
+        (Path("/home/old/hokaku-app"), "v11.9.2"),
+    ]
+    f = multi_framework_finding("laravel", dets)
+    assert f is not None
+    assert f.severity is Severity.MEDIUM
+    # both paths and versions are named so the stale copy can be located
+    assert "/var/www/hokaku-app" in f.detail and "v11.57.0" in f.detail
+    assert "/home/old/hokaku-app" in f.detail and "v11.9.2" in f.detail
+
+
+def test_multi_framework_finding_quiet_for_single_version():
+    from kevward.plugins.laravel import multi_framework_finding
+
+    assert multi_framework_finding("laravel", []) is None
+    assert (
+        multi_framework_finding(
+            "laravel",
+            [(Path("/a"), "v11.57.0"), (Path("/b"), "v11.57.0")],
+        )
+        is None
+    )
