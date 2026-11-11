@@ -100,21 +100,56 @@ class LaravelPlugin(ServicePlugin):
 
     def check(self) -> list[Finding]:
         findings: list[Finding] = []
+        detections: list[tuple[Path, str]] = []
         for app in _find_laravel_apps(self.roots):
             findings.extend(composer_audit(app))
-            findings.extend(self._framework_version(app))
+            ver = _framework_version(app)
+            if ver:
+                findings.extend(framework_findings(self.name, app, ver))
+                detections.append((app, ver))
+        extra = multi_framework_finding(self.name, detections)
+        if extra:
+            findings.append(extra)
         return findings
 
-    def _framework_version(self, app: Path) -> list[Finding]:
-        lock = app / "composer.lock"
-        try:
-            data = json.loads(lock.read_text())
-        except Exception:
-            return []
-        for pkg in data.get("packages", []):
-            if pkg.get("name") == "laravel/framework":
-                return framework_findings(self.name, app, pkg.get("version", "?"))
-        return []
+
+def _framework_version(app: Path) -> str | None:
+    """The laravel/framework version in an app's composer.lock, or None."""
+    try:
+        data = json.loads((app / "composer.lock").read_text())
+    except Exception:
+        return None
+    for pkg in data.get("packages", []):
+        if pkg.get("name") == "laravel/framework":
+            return pkg.get("version", "?")
+    return None
+
+
+def multi_framework_finding(
+    service: str, detections: list[tuple[Path, str]]
+) -> Finding | None:
+    """Flag when laravel/framework is present at more than one version on a host.
+
+    Two installs of the same framework at different versions usually means a
+    stale vendor copy or backup left under a web root. As separate INFO rows
+    that is easy to miss, so surface it once as a path-labelled MEDIUM. Pure
+    (no I/O) so it can be unit-tested.
+    """
+    versions = {ver for _app, ver in detections}
+    if len(versions) < 2:
+        return None
+    where = "; ".join(
+        f"{app}: {ver}" for app, ver in sorted(detections, key=lambda d: str(d[0]))
+    )
+    return Finding(
+        service=service,
+        kind=FindingKind.CONFIG,
+        severity=Severity.MEDIUM,
+        title=f"laravel/framework found at {len(versions)} versions (possible stale copy)",
+        detail="Multiple laravel/framework installations with different versions "
+        f"were found on this host: {where}. Confirm whether one is an old vendor "
+        "copy or backup left under a web root, and remove it if so.",
+    )
 
 
 def framework_findings(service: str, app: Path, ver: str, today=None) -> list[Finding]:
