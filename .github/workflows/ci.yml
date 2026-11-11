@@ -32,6 +32,11 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Tests (pytest)
+        run: |
+          pip install pytest
+          pytest -q
+
       - name: Smoke test
         run: |
           kevward --version
