@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: `report --json` stdout is now pure JSON.** The `wrote <path>` line
+  went to stdout before the JSON, so `kevward report --trends --json >
+  posture.json` (as in the README) did not produce a valid JSON file. With
+  `--json` it now goes to stderr; without `--json` nothing changes. (closes #113)
+
 ## 0.12.8
 
 A broken config or a failed run can no longer go unnoticed.

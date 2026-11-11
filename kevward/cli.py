@@ -219,9 +219,12 @@ def _cmd_report(args) -> Path:
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render(result), encoding="utf-8")
-    print(f"wrote {out}")
     if args.json:
+        # keep stdout pure JSON so `report --json > posture.json` is valid (#113)
+        print(f"wrote {out}", file=sys.stderr)
         print(result.to_json())
+    else:
+        print(f"wrote {out}")
     return out
 
 
