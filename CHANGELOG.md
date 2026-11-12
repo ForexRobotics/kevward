@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Release integrity (#115).** GitHub Actions in CI and the publish workflow
+  are pinned to full commit SHAs (Dependabot keeps them current) and moved to
+  their Node 24 majors; checkouts no longer keep the token on disk.
+  SECURITY.md now explains how to verify a PyPI file's provenance.
+
 ## 0.12.10
 
 Less noise in the KEV table, and numbers you can compare across hosts.
