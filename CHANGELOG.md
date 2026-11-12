@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **apt findings are grouped by source package (#143).** One advisory that
+  touches several binary packages (e.g. glibc: libc6, libc-bin, locales, ...)
+  is now one finding, `glibc 2.35-0ubuntu3.15 → 2.35-0ubuntu3.18 (6 packages)`,
+  instead of one per package, so the severity counts reflect things to act on.
+  `apply` still installs every package. Security findings link to the Ubuntu
+  Security Notices for that source package. **JSON:** findings gain
+  `packages` (all binary packages, empty for single-package findings) and
+  `url`; finding counts drop accordingly.
 - **Release integrity (#115).** GitHub Actions in CI and the publish workflow
   are pinned to full commit SHAs (Dependabot keeps them current) and moved to
   their Node 24 majors; checkouts no longer keep the token on disk.

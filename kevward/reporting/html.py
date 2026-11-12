@@ -79,6 +79,20 @@ def _fw_window(since, generated_at: str) -> str:
     span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
     return f"{label}, {span}"
 
+def _finding_extra(f) -> str:
+    """Package list for grouped apt findings and a link to the advisories (#143)."""
+    bits = []
+    pkgs = getattr(f, "packages", None) or []
+    if len(pkgs) > 1:
+        bits.append(_esc(", ".join(pkgs)))
+    url = getattr(f, "url", None)
+    if url and url.startswith("https://"):
+        bits.append(f"<a href='{_esc(url)}' rel='noopener'>advisories</a>")
+    if not bits:
+        return ""
+    return "<br><span class='muted'>" + " · ".join(bits) + "</span>"
+
+
 def render(result: RunResult) -> str:
     att = result.attackers or {}
     f2b = att.get("fail2ban", {})
@@ -98,7 +112,7 @@ def render(result: RunResult) -> str:
             rows.append(
                 f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
                 f"{_esc(sev)}</span></td><td>{_esc(f.service)}</td>"
-                f"<td>{_esc(kind)}</td><td>{_esc(f.title)}</td>"
+                f"<td>{_esc(kind)}</td><td>{_esc(f.title)}{_finding_extra(f)}</td>"
                 f"<td class='cve'>{_esc(f.cve or '')}</td></tr>"
             )
 
