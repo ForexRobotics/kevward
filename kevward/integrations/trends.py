@@ -226,6 +226,26 @@ def matching_trends(
         except Exception:
             config_na = {}
 
+    # Composer-ecosystem CVEs (#62): Ubuntu does not track these, so decide
+    # them from the host's composer.lock files. Only replaces labels the USN
+    # layer could not settle.
+    version_aware_ran = bool(labels)
+    composer_reason: dict[str, str] = {}
+    if hits:
+        try:
+            from . import composer_rules
+            decided = composer_rules.evaluate([e.cve for e in hits])
+        except Exception:
+            decided = {}
+        for cve, (lab, why) in decided.items():
+            if labels.get(cve, "possible") not in ("possible", "unchecked", "na_release"):
+                continue
+            if lab == "not_applicable":
+                config_na.setdefault(cve, why)
+            else:
+                labels[cve] = lab
+                composer_reason[cve] = why
+
     def _match_dict(e: KevEntry) -> dict:
         d = dict(e.__dict__)
         d["applicability"] = labels.get(e.cve, "possible")
@@ -237,6 +257,8 @@ def matching_trends(
             d["applicability_reason"] = reason
         elif d["applicability"] == "na_release" and e.cve in release_na:
             d["applicability_reason"] = release_na[e.cve]
+        elif e.cve in composer_reason:
+            d["applicability_reason"] = composer_reason[e.cve]
         return d
 
     def _count(v: str) -> int:
@@ -247,7 +269,7 @@ def matching_trends(
         "cache_fresh": _cache_fresh(),
         "match_count": len(hits),
         "ransomware_linked": sum(1 for e in hits if e.ransomware),
-        "version_aware": bool(labels),
+        "version_aware": version_aware_ran,
         "applicable_count": _count("applicable"),
         "fixed_count": _count("fixed"),
         "unchecked_count": _count("unchecked"),
