@@ -11,6 +11,14 @@
   longer tested. CI now pins 24.04 for the Python matrix and adds a
   `distro-smoke` job on 22.04, 24.04 and 26.04 using each release's own
   python3 in a venv.
+- **harden on kernels without MPTCP** (e.g. WSL2, some custom kernels):
+  `harden apply --mptcp-off` now says there is nothing to disable instead of
+  reporting success, writes no drop-in, and reports a failed `sysctl -w`.
+  `harden list` shows `n/a (not in this kernel)` rather than "unknown (run as
+  root)" when already root; its JSON gains `mptcp_supported`.
+- **"Public TCP listeners" ignores addresses on the loopback interface**
+  (`127.0.0.53%lo`, WSL2's `10.255.255.254`), which are not reachable from
+  outside.
 
 ## 0.12.10
 

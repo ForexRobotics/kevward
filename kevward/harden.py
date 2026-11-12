@@ -36,6 +36,9 @@ NFT_TABLE = "kevward_harden"
 NFT_FILE = "/etc/kevward/harden.nft"
 UNIT_FILE = "/etc/systemd/system/kevward-harden.service"
 UNIT_NAME = "kevward-harden.service"
+#: Present only when the running kernel was built with MPTCP. Some kernels
+#: (e.g. WSL2's, or custom builds) are not, and then there is nothing to disable.
+MPTCP_PROC = "/proc/sys/net/mptcp/enabled"
 
 # sysctls we check, with the value we consider hardened.
 _RECOMMENDED = {
@@ -51,6 +54,11 @@ _RECOMMENDED = {
 def _sysctl(key: str) -> str | None:
     r = run(["sysctl", "-n", key], timeout=10)
     return r.out.strip() if r.ok else None
+
+
+def mptcp_supported() -> bool:
+    """Whether the running kernel has MPTCP at all (readable without root)."""
+    return os.path.exists(MPTCP_PROC)
 
 
 def _nft_table_exists(name: str) -> bool | None:
@@ -121,23 +129,53 @@ def livepatch_status() -> str:
     return parse_livepatch(r.out) if r.ok else "unknown"
 
 
-def public_listeners() -> list[str]:
-    """Ports listening on a non-loopback address (can complete a handshake)."""
-    r = run(["ss", "-tlnH"], timeout=10)
-    out: list[str] = []
-    if not r.ok:
-        return out
-    for line in r.out.splitlines():
+def parse_lo_addrs(ip_out: str) -> set[str]:
+    """Addresses assigned to the loopback interface, from ``ip -o addr show dev lo``.
+
+    Besides 127.0.0.1 / ::1 this can include e.g. WSL2's DNS-tunnelling address
+    10.255.255.254, which is not reachable from outside the host. Pure.
+    """
+    addrs: set[str] = set()
+    for line in ip_out.splitlines():
+        toks = line.split()
+        for i, tok in enumerate(toks[:-1]):
+            if tok in ("inet", "inet6"):
+                addrs.add(toks[i + 1].split("/", 1)[0].lower())
+    return addrs
+
+
+def parse_public_ports(ss_out: str, lo_addrs: set[str] | frozenset[str] = frozenset()) -> list[str]:
+    """Ports from ``ss -tlnH`` bound to an address reachable from outside. Pure.
+
+    Skips 127.0.0.0/8, ::1, sockets scoped to the loopback interface
+    (``127.0.0.53%lo``) and any address assigned to ``lo``.
+    """
+    out: set[str] = set()
+    for line in ss_out.splitlines():
         parts = line.split()
         if len(parts) < 4:
             continue
         local = parts[3]
-        if local.startswith(("127.", "[::1]")):
+        addr, _, port = local.rpartition(":")
+        if not port.isdigit():
             continue
-        port = local.rsplit(":", 1)[-1]
-        if port.isdigit():
-            out.append(port)
-    return sorted(set(out), key=int)
+        addr = addr.strip("[]")
+        addr, _, scope = addr.partition("%")
+        if scope == "lo" or addr.startswith("127.") or addr == "::1":
+            continue
+        if addr.lower() in lo_addrs:
+            continue
+        out.add(port)
+    return sorted(out, key=int)
+
+
+def public_listeners() -> list[str]:
+    """Ports listening on a non-loopback address (can complete a handshake)."""
+    r = run(["ss", "-tlnH"], timeout=10)
+    if not r.ok:
+        return []
+    lo = run(["ip", "-o", "addr", "show", "dev", "lo"], timeout=10)
+    return parse_public_ports(r.out, parse_lo_addrs(lo.out) if lo.ok else set())
 
 
 def check() -> list[Finding]:
@@ -223,6 +261,10 @@ def _unit_file() -> str:
 
 def apply_mptcp_off() -> list[str]:
     msgs = []
+    if not mptcp_supported():
+        # No drop-in either: systemd-sysctl would log an error for the
+        # unknown key on every boot.
+        return ["mptcp: not available in this kernel — nothing to disable"]
     os.makedirs(os.path.dirname(SYSCTL_FILE), exist_ok=True)
     with open(SYSCTL_FILE, "w") as fh:
         fh.write(
@@ -230,8 +272,13 @@ def apply_mptcp_off() -> list[str]:
             "# removes the MPTCP code path.\n"
             "net.mptcp.enabled=0\n"
         )
-    run(["sysctl", "-w", "net.mptcp.enabled=0"], timeout=10)
-    msgs.append(f"mptcp disabled (persisted in {SYSCTL_FILE})")
+    r = run(["sysctl", "-w", "net.mptcp.enabled=0"], timeout=10)
+    if not r.ok:
+        msgs.append("FAILED to set net.mptcp.enabled=0 now: "
+                    f"{r.err.strip() or 'sysctl error'} "
+                    f"(drop-in written to {SYSCTL_FILE}; applies on next boot)")
+    else:
+        msgs.append(f"mptcp disabled (persisted in {SYSCTL_FILE})")
     return msgs
 
 
@@ -261,7 +308,11 @@ def revert() -> list[str]:
         # drop-in (e.g. a hand-written 99-disable-mptcp.conf) may still set it.
         run(["sysctl", "--system"], timeout=20)
         eff = _sysctl("net.mptcp.enabled")
-        if eff == "0":
+        if eff is None:
+            msgs.append("removed kevward mptcp drop-in; net.mptcp.enabled: "
+                        + ("n/a (not in this kernel)" if not mptcp_supported()
+                           else "could not be read"))
+        elif eff == "0":
             msgs.append("removed kevward mptcp drop-in; net.mptcp.enabled is "
                         "still 0 — another sysctl.d drop-in is disabling MPTCP")
         else:
@@ -279,6 +330,7 @@ def revert() -> list[str]:
 
 def state() -> dict:
     return {
+        "mptcp_supported": mptcp_supported(),
         "mptcp_enabled": _sysctl("net.mptcp.enabled"),
         "mptcp_dropin": os.path.exists(SYSCTL_FILE),
         "ip_options_table": _nft_table_exists(NFT_TABLE),
@@ -302,6 +354,16 @@ def _print_findings(findings: list[Finding]) -> None:
             print(f"            {f.detail}")
 
 
+def describe_state_value(key: str, value, st: dict, *, root: bool) -> str:
+    """Human text for one ``harden list`` value. ``None`` means "could not be
+    determined" - say why instead of always blaming missing root. Pure."""
+    if value is not None:
+        return str(value)
+    if key == "mptcp_enabled" and st.get("mptcp_supported") is False:
+        return "n/a (not in this kernel)"
+    return "unknown" if root else "unknown (run as root)"
+
+
 def run_cli(action: str, *, mptcp_off: bool, drop_ip_options: bool,
             persist: bool, yes: bool, use_json: bool) -> int:
     if action == "check":
@@ -321,8 +383,7 @@ def run_cli(action: str, *, mptcp_off: bool, drop_ip_options: bool,
             print(json.dumps(st, indent=2))
         else:
             for k, v in st.items():
-                shown = "unknown (run as root)" if v is None else v
-                print(f"  {k}: {shown}")
+                print(f"  {k}: {describe_state_value(k, v, st, root=is_root())}")
             if st.get("ip_options_table") is None and not is_root():
                 print("  note: querying nftables needs root — "
                       "re-run with sudo to resolve ip_options_table")
