@@ -9,8 +9,10 @@ permissions:
   contents: read
 
 jobs:
+  # Python-version matrix on the newest release we run in production. Job
+  # names are required status checks in the `protect main` ruleset - keep them.
   lint-and-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -46,4 +48,38 @@ jobs:
           # read-only run; must exit cleanly even on a bare CI runner
           kevward check
           kevward report -o /tmp/kevward-report.html
+          test -s /tmp/kevward-report.html
+
+  # Each supported Ubuntu release with its own system python3 in a venv - the
+  # same way kevward is deployed (/opt/kevward). ubuntu-latest is not used so
+  # the tested releases never change silently.
+  distro-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install into a venv with the distro python3
+        run: |
+          . /etc/os-release && echo "$PRETTY_NAME"
+          python3 --version
+          python3 -m venv /tmp/kv
+          /tmp/kv/bin/pip install --upgrade pip
+          /tmp/kv/bin/pip install . pytest
+
+      - name: Tests (pytest)
+        run: /tmp/kv/bin/pytest -q
+
+      - name: Smoke test
+        run: |
+          K=/tmp/kv/bin/kevward
+          $K --version
+          $K list-plugins
+          $K check
+          $K report -o /tmp/kevward-report.html
           test -s /tmp/kevward-report.html

@@ -6,6 +6,11 @@
   are pinned to full commit SHAs (Dependabot keeps them current) and moved to
   their Node 24 majors; checkouts no longer keep the token on disk.
   SECURITY.md now explains how to verify a PyPI file's provenance.
+- **CI covers each supported Ubuntu release explicitly.** `ubuntu-latest` had
+  moved to 26.04, so 22.04 and 24.04 (what we run in production) were no
+  longer tested. CI now pins 24.04 for the Python matrix and adds a
+  `distro-smoke` job on 22.04, 24.04 and 26.04 using each release's own
+  python3 in a venv.
 
 ## 0.12.10
 
