@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Cold hosts resolve the KEV table in one run (#66).** Uncached Ubuntu CVE
+  lookups now run 4 at a time (`[trends] fetch_workers`, 1–16), still inside
+  the time budget, and `kevward trends --warm-cache` does one long pass (up to
+  10 min) to fill the cache after install. Exit code 1 if rows are still
+  unchecked or the cache is not writable.
 - **Release integrity (#115).** GitHub Actions in CI and the publish workflow
   are pinned to full commit SHAs (Dependabot keeps them current) and moved to
   their Node 24 majors; checkouts no longer keep the token on disk.

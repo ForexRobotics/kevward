@@ -68,6 +68,8 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # version_budget_s = 45
 # Max network lookups per run (cached CVEs don't count). Clamped to 0..1000.
 # max_version_checks = 80
+# Lookups run this many at a time (1 = one by one). Clamped to 1..16.
+# fetch_workers = 4
 
 # --------------------------------------------------------------------------- #
 # Newer-release notice (read-only: kevward never upgrades itself)

@@ -106,11 +106,14 @@ class TrendsConfig:
     version_budget_s: float = 45.0
     # Upper bound on network lookups per run (cached CVEs are not counted).
     max_version_checks: int = 80
+    # Lookups run this many at a time (#66). 1 restores the old sequential pass.
+    fetch_workers: int = 4
 
     def __post_init__(self) -> None:
         # Keep a typo from hanging the daily report or disabling the pass.
         self.version_budget_s = min(max(float(self.version_budget_s), 0.0), 600.0)
         self.max_version_checks = min(max(int(self.max_version_checks), 0), 1000)
+        self.fetch_workers = min(max(int(self.fetch_workers), 1), 16)
 
 
 @dataclass
