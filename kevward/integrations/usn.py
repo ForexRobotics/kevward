@@ -361,3 +361,84 @@ def classify_cve(data: dict | None, codename: str, installed: dict[str, str]) ->
             return "applicable"
         # not-affected / DNE / ignored / unknown -> leave verdict unchanged
     return verdict
+
+
+# --------------------------------------------------------------------------- #
+# Release-level "not applicable" (#74): conservative, Ubuntu-data-only.
+# --------------------------------------------------------------------------- #
+# Statuses that, on an *older* release, mean the fix question was settled
+# without leaving that release exposed. "ignored" (often: end of life, never
+# fixed) and the vulnerable statuses deliberately disqualify.
+_SETTLED_STATUSES = {"released", "not-affected", "dne"}
+
+
+def _kernel_series(v: str) -> tuple[int, int] | None:
+    """Upstream major.minor of an Ubuntu kernel version (``5.15.0-203.213`` ->
+    ``(5, 15)``), or None when it does not look like one."""
+    _epoch, rest = _split_epoch(v.strip())
+    head = rest.split("-", 1)[0].split(".")
+    if len(head) < 2 or not (head[0].isdigit() and head[1].isdigit()):
+        return None
+    return int(head[0]), int(head[1])
+
+
+def release_na_reason(
+    data: dict | None, codename: str, installed: dict[str, str]
+) -> str | None:
+    """Why a CVE that ``classify_cve`` left as ``possible`` cannot apply to
+    this release, or None. Only two cases, both read from Ubuntu's own data:
+
+    1. Ubuntu marks an installed package ``not-affected`` on this release.
+    2. Kernel only: Ubuntu does not track this release for the CVE at all
+       (it predates the release), every release it does track is settled
+       (released / not-affected / DNE — no needed, pending, deferred or
+       ignored), and the newest released fix is on an older upstream kernel
+       series than the one installed here, e.g. fixed in 4.4 / 4.15 while
+       this host runs 5.15. The fix was upstream before this branch existed.
+
+    Anything else stays ``possible``. Never consulted for a CVE that version
+    data already labels ``applicable`` or ``fixed``. Pure (no I/O).
+    """
+    if not data or not codename:
+        return None
+    for p in data.get("packages") or []:
+        name = (p.get("name") or "").strip()
+        inst = installed.get(name)
+        if not inst:
+            continue
+        st = _status_for(p, codename)
+        if st is not None:
+            if (st.get("status") or "").lower() == "not-affected":
+                desc = (st.get("description") or "").strip()
+                return (f"Ubuntu marks {name} not affected on {codename}"
+                        + (f" ({desc})" if desc else ""))
+            continue
+        if not name.startswith("linux"):
+            continue
+        here = _kernel_series(inst)
+        statuses = p.get("statuses") or []
+        if here is None or not statuses:
+            continue
+        newest: tuple[tuple[int, int], str, str] | None = None
+        settled = True
+        for s in statuses:
+            status = (s.get("status") or "").lower()
+            if status not in _SETTLED_STATUSES:
+                settled = False
+                break
+            if status != "released":
+                continue
+            fixed = ((s.get("description") or "").strip()
+                     or (s.get("fixed_version") or "").strip())
+            series = _kernel_series(fixed) if fixed else None
+            if series is None:
+                settled = False  # a fix we cannot place: do not guess
+                break
+            rel = (s.get("release_codename") or s.get("release") or "?")
+            if newest is None or series > newest[0]:
+                newest = (series, fixed, rel)
+        if settled and newest is not None and newest[0] < here:
+            return (f"fixed upstream before linux {here[0]}.{here[1]} "
+                    f"(newest Ubuntu fix {newest[1]} on {newest[2]}); "
+                    f"{codename} not tracked for this CVE")
+    return None

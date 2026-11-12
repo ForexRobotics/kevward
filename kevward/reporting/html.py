@@ -177,27 +177,35 @@ def render(result: RunResult) -> str:
         "possible": ("possible", "#50607a"),
         "unchecked": ("unchecked", "#b8860b"),
         "not_applicable": ("n/a (config)", "#2f6f4f"),
+        "na_release": ("n/a (release)", "#2f6f4f"),
     }
     def _na_note(m: dict) -> str:
         r = m.get("applicability_reason")
         return f"<br><small>n/a on this host: {_esc(r)}</small>" if r else ""
 
-    trend_rows = ""
-    # Every match is listed: the table used to stop at 30 rows without saying
-    # so, hiding e.g. 21 of 51 matches on a 22.04 host.
-    for m in (trends.get("matches") or []):
+    def _trend_row(m: dict) -> str:
         rw = " \U0001F512" if m.get("ransomware") else ""
         status_cell = ""
         if _va:
             label, color = _badge.get(m.get("applicability", "possible"), _badge["possible"])
             status_cell = f"<td><span class='pill' style='background:{color}'>{label}</span></td>"
-        trend_rows += (
+        return (
             f"<tr><td class='cve'>{_esc(m.get('cve'))}{rw}</td>"
             f"{status_cell}"
             f"<td>{_esc(m.get('vendor'))}/{_esc(m.get('product'))}</td>"
             f"<td>{_esc(m.get('name'))}{_na_note(m)}</td>"
             f"<td>{_esc(m.get('date_added'))}</td></tr>"
         )
+
+    # Every match is listed: the table used to stop at 30 rows without saying
+    # so, hiding e.g. 21 of 51 matches on a 22.04 host. Rows Ubuntu's release
+    # data rules out (#74) are still listed, but in a collapsed table below so
+    # decade-old kernel CVEs do not bury the rows that need a look.
+    _all = trends.get("matches") or []
+    trend_rows = "".join(
+        _trend_row(m) for m in _all if m.get("applicability") != "na_release"
+    )
+    _na_rel = [m for m in _all if m.get("applicability") == "na_release"]
     trend_block = ""
     if trends:
         _status_th = "<th>Status</th>" if _va else ""
@@ -210,6 +218,10 @@ def render(result: RunResult) -> str:
             if trends.get("not_applicable_count"):
                 applic_line += (
                     f" · {trends['not_applicable_count']} n/a by host config"
+                )
+            if trends.get("na_release_count"):
+                applic_line += (
+                    f" · {trends['na_release_count']} n/a for this release"
                 )
             if trends.get("unchecked_count"):
                 applic_line += (
@@ -233,7 +245,10 @@ def render(result: RunResult) -> str:
                 "<b>unchecked</b> = the lookup did not complete this run "
                 "(network or time budget) — re-run to resolve, "
                 "<b>n/a (config)</b> = exploitable only under a configuration "
-                "this host does not have (reason shown)."
+                "this host does not have (reason shown), "
+                "<b>n/a (release)</b> = Ubuntu's data shows it cannot affect "
+                "this release, e.g. fixed upstream before this kernel series "
+                "(reason shown; listed separately below)."
             )
         else:
             applic_line = ""
@@ -241,6 +256,14 @@ def render(result: RunResult) -> str:
                 "Matched by product name against software detected on this host. "
                 "This flags <em>possible</em> exposure — confirm version-level "
                 "applicability for each CVE before acting."
+            )
+        _na_release_block = ""
+        if _na_rel:
+            _na_release_block = (
+                f"<details style='margin-top:10px'><summary class='muted'>"
+                f"{len(_na_rel)} n/a for this release (Ubuntu data)</summary>"
+                f"<table><tbody>{''.join(_trend_row(m) for m in _na_rel)}"
+                "</tbody></table></details>"
             )
         trend_block = f"""
         <section>
@@ -253,6 +276,7 @@ def render(result: RunResult) -> str:
           <table><thead><tr><th>CVE</th>{_status_th}<th>Vendor/Product</th>
           <th>Name</th><th>Added</th></tr></thead>
           <tbody>{trend_rows or f"<tr><td colspan={_ncols} class='muted'>No matches.</td></tr>"}</tbody></table>
+          {_na_release_block}
         </section>"""
 
     generated = _esc(result.generated_at)

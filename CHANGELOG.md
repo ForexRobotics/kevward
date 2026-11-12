@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **KEV table: "n/a (release)" for rows Ubuntu's data rules out for this
+  release.** A `possible` row becomes `na_release` only when Ubuntu marks an
+  installed package `not-affected` on this release, or — kernel only — when
+  this release is not tracked for the CVE, every tracked release is settled
+  (released / not-affected / DNE) and the newest fix is on an older upstream
+  kernel series than the one running (e.g. fixed in 4.4 while the host runs
+  5.15). These rows move to a collapsed table with the reason; the summary
+  shows the count separately, and JSON gains `na_release_count`. `applicable`
+  and `fixed` are never changed. (closes #74)
 - **Fix: `report --json` stdout is now pure JSON.** The `wrote <path>` line
   went to stdout before the JSON, so `kevward report --trends --json >
   posture.json` (as in the README) did not produce a valid JSON file. With
