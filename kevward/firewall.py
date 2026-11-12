@@ -48,6 +48,9 @@ CHAIN = "input"
 PERSIST_FILE = "/etc/kevward/firewall.nft"
 PERSIST_UNIT = "kevward-firewall.service"
 PERSIST_UNIT_FILE = "/etc/systemd/system/kevward-firewall.service"
+# Written (apply path only) whenever kevward's drop rules are (re)created, which
+# resets their counters. Read by the report to say "since <when>".
+COUNTERS_STAMP = "/var/lib/kevward/firewall-counters-reset"
 _UNIT_TEMPLATE = """\
 [Unit]
 Description=kevward: reapply active-defense firewall blocklist on boot
@@ -289,7 +292,20 @@ def ensure_table() -> tuple[bool, str]:
             extra = ["counter"] if verdict == "drop" else []
             _nft(["add", "rule", "inet", TABLE, CHAIN, proto, "saddr",
                   f"@{setname}", *extra, verdict])
+    # Both paths above recreate the counted drop rules, so their counters now
+    # start from zero. Record when, so the report can say "since <when>".
+    _stamp_counter_reset()
     return True, "ok"
+
+
+def _stamp_counter_reset() -> None:
+    """Best-effort: record the time the drop counters were reset."""
+    try:
+        os.makedirs(os.path.dirname(COUNTERS_STAMP), exist_ok=True)
+        with open(COUNTERS_STAMP, "w") as fh:
+            fh.write(f"{int(time.time())}\n")
+    except OSError:
+        pass
 
 
 def _set_elements(setname: str) -> set[str]:
@@ -344,6 +360,39 @@ def drop_counters() -> dict[str, tuple[int, int]]:
     if not r.ok:
         return {}
     return parse_drop_counters(r.out)
+
+
+def parse_unit_timestamp(out: str) -> int | None:
+    """Epoch seconds from ``systemctl show -p X --timestamp=unix`` output
+    (``X=@1731380401``), or None when unset/unparseable. Pure."""
+    _, _, val = out.strip().partition("=")
+    val = val.strip()
+    if val.startswith("@") and val[1:].isdigit():
+        return int(val[1:]) or None
+    return None
+
+
+def counters_since() -> int | None:
+    """When kevward's drop counters were last reset (epoch seconds), or None.
+
+    Read-only. The counters reset whenever the drop rules are recreated: by
+    ``kevward firewall apply`` (which writes COUNTERS_STAMP) or by the boot
+    unit reloading the saved ruleset (its ActiveEnterTimestamp). The later of
+    the two is the start of the window the report's numbers cover.
+    """
+    times: list[int] = []
+    try:
+        with open(COUNTERS_STAMP) as fh:
+            times.append(int(fh.read().strip()))
+    except (OSError, ValueError):
+        pass
+    r = run(["systemctl", "show", "-p", "ActiveEnterTimestamp",
+             "--timestamp=unix", PERSIST_UNIT], timeout=10)
+    if r.ok:
+        ts = parse_unit_timestamp(r.out)
+        if ts:
+            times.append(ts)
+    return max(times) if times else None
 
 
 def table_state() -> dict:

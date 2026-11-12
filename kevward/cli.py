@@ -72,6 +72,7 @@ def _collect_attackers(include_trends: bool, host_terms=None, cfg: Config | None
         "logwatch": logwatch.collect(),
         "firewall": {k: list(v) for k, v in firewall.drop_counters().items()},
         "firewall_state": firewall.table_state(),
+        "firewall_since": firewall.counters_since(),
     }
     if include_trends:
         from .integrations import trends as trends_mod
