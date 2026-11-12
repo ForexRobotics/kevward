@@ -1,7 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.12.10
 
+Less noise in the KEV table, and numbers you can compare across hosts.
+
+(There is no 0.12.9 release. The `v0.12.9` tag was pushed by mistake on a
+commit that still carried version 0.12.8; release tags are protected and
+cannot be moved, so the version was skipped. Nothing was published to PyPI
+as 0.12.9.)
+
+- **Laravel: one MEDIUM when laravel/framework is installed at more than one
+  version** on a host, naming each path and version. Usually a stale vendor
+  copy or a backup left under a web root; it was easy to miss across separate
+  INFO rows. (#111)
 - **Report: firewall drops show their time window.** The counters reset
   whenever the drop rules are recreated (every `kevward firewall apply`, and
   the boot-time reload), so a bare "since last ruleset load" made hosts hard
@@ -22,6 +33,8 @@
   went to stdout before the JSON, so `kevward report --trends --json >
   posture.json` (as in the README) did not produce a valid JSON file. With
   `--json` it now goes to stderr; without `--json` nothing changes. (closes #113)
+- **Internal: CI now runs the test suite (pytest)**, not only ruff and a
+  smoke test. (#120, closes #112)
 
 ## 0.12.8
 
