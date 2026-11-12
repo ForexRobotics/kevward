@@ -112,7 +112,8 @@ def term_matches(term: str, vendor: str, product: str) -> bool:
 
 
 def _applicability(
-    hits: list[KevEntry], max_checks: int, budget_s: float
+    hits: list[KevEntry], max_checks: int, budget_s: float,
+    reasons: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Label each name-matched CVE 'applicable' / 'fixed' / 'possible' /
     'unchecked' using the version-aware USN layer.
@@ -128,6 +129,9 @@ def _applicability(
     - each fetch's timeout is capped by the remaining budget;
     - once the budget is spent, remaining CVEs fall back to any cached entry,
       however old, before being reported 'unchecked'.
+    A 'possible' CVE that Ubuntu's data shows cannot apply to this release
+    becomes 'na_release' (#74), with the reason put in ``reasons`` when given.
+
     Fail-soft: an empty dict means the layer did not run at all."""
     from . import usn
 
@@ -150,10 +154,17 @@ def _applicability(
             data = usn.fetch_cve(e.cve, timeout=min(8.0, left))
         else:
             data = usn.cached_cve(e.cve)
-        labels[e.cve] = (
-            "unchecked" if data is None
-            else usn.classify_cve(data, codename, installed)
-        )
+        if data is None:
+            labels[e.cve] = "unchecked"
+            continue
+        label = usn.classify_cve(data, codename, installed)
+        if label == "possible":
+            why = usn.release_na_reason(data, codename, installed)
+            if why:
+                label = "na_release"
+                if reasons is not None:
+                    reasons[e.cve] = why
+        labels[e.cve] = label
     return labels
 
 
@@ -172,8 +183,9 @@ def matching_trends(
     When ``version_aware`` is set (default), each name-matched CVE is further
     cross-referenced against this host's installed versions via Ubuntu's
     per-CVE security data, labelling it 'applicable' (unpatched here), 'fixed',
-    'possible' (looked up, nothing installed to judge) or 'unchecked' (lookup
-    failed or budget reached). The pass is bounded by ``max_version_checks``
+    'possible' (looked up, nothing installed to judge), 'na_release' (Ubuntu's
+    data rules it out for this release, #74) or 'unchecked' (lookup failed or
+    budget reached). The pass is bounded by ``max_version_checks``
     and ``version_budget_s`` and fails soft to name-level labelling.
     """
     catalog = _load_catalog(url)
@@ -188,10 +200,12 @@ def matching_trends(
     hits.sort(key=lambda e: e.date_added, reverse=True)
 
     labels: dict[str, str] = {}
+    release_na: dict[str, str] = {}
     cache: dict | None = None
     if version_aware and hits:
         try:
-            labels = _applicability(hits, max_version_checks, version_budget_s)
+            labels = _applicability(hits, max_version_checks, version_budget_s,
+                                    reasons=release_na)
         except Exception:
             labels = {}  # never let the version layer break a report
         if labels:
@@ -216,9 +230,13 @@ def matching_trends(
         d = dict(e.__dict__)
         d["applicability"] = labels.get(e.cve, "possible")
         reason = config_na.get(e.cve)
-        if reason and d["applicability"] in ("possible", "unchecked", "not_applicable"):
+        if reason and d["applicability"] in (
+            "possible", "unchecked", "not_applicable", "na_release"
+        ):
             d["applicability"] = "not_applicable"
             d["applicability_reason"] = reason
+        elif d["applicability"] == "na_release" and e.cve in release_na:
+            d["applicability_reason"] = release_na[e.cve]
         return d
 
     def _count(v: str) -> int:
@@ -233,6 +251,12 @@ def matching_trends(
         "applicable_count": _count("applicable"),
         "fixed_count": _count("fixed"),
         "unchecked_count": _count("unchecked"),
+        # Not counted in not_applicable_count (config): a separate number so a
+        # reader can see how many rows Ubuntu's release data ruled out (#74).
+        "na_release_count": sum(
+            1 for e in hits
+            if labels.get(e.cve) == "na_release" and e.cve not in config_na
+        ),
         "not_applicable_count": sum(
             1 for e in hits
             if e.cve in config_na and labels.get(e.cve) not in ("fixed", "applicable")

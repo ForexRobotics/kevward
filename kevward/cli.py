@@ -246,7 +246,8 @@ def cmd_trends(args) -> int:
         print(f"version-checked: {data.get('applicable_count', 0)} applicable here, "
               f"{data.get('fixed_count', 0)} already fixed, "
               f"{data.get('unchecked_count', 0)} not checked, "
-              f"{data.get('not_applicable_count', 0)} n/a by host config "
+              f"{data.get('not_applicable_count', 0)} n/a by host config, "
+              f"{data.get('na_release_count', 0)} n/a for this release "
               f"(rest: version not confirmed)")
         cc = data.get("cve_cache") or {}
         if cc and not cc.get("writable", True):
