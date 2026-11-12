@@ -59,6 +59,26 @@ def _bar(label: str, value: int, maximum: int, color: str) -> str:
     )
 
 
+
+def _fw_window(since, generated_at: str) -> str:
+    """'since 2026-11-11 22:00 UTC, 9.3 h' for the drop counters' window, so
+    hosts can be compared; falls back to the old wording when unknown."""
+    import datetime as _dt
+    try:
+        start = _dt.datetime.fromtimestamp(int(since), tz=_dt.timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return "since last ruleset load"
+    label = f"since {start:%Y-%m-%d %H:%M} UTC"
+    try:
+        now = _dt.datetime.fromisoformat(generated_at)
+        hours = (now - start).total_seconds() / 3600
+    except (TypeError, ValueError):
+        return label
+    if hours < 0:
+        return label
+    span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
+    return f"{label}, {span}"
+
 def render(result: RunResult) -> str:
     att = result.attackers or {}
     f2b = att.get("fail2ban", {})
@@ -152,7 +172,7 @@ def render(result: RunResult) -> str:
         total = evidence + cidr
         fw_line = (
             "<p class='muted' style='margin-top:0'>firewall drops "
-            "<span style='font-size:12px'>(since last ruleset load)</span>: "
+            f"<span style='font-size:12px'>({_fw_window(att.get('firewall_since'), result.generated_at)})</span>: "
             f"evidence blocklist <b>{evidence:,}</b> · "
             f"operator CIDR blocks <b>{cidr:,}</b> · "
             f"total <b>{total:,}</b> packets</p>"

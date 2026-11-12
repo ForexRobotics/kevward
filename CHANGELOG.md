@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Report: firewall drops show their time window.** The counters reset
+  whenever the drop rules are recreated (every `kevward firewall apply`, and
+  the boot-time reload), so a bare "since last ruleset load" made hosts hard
+  to compare. The line now reads e.g. `since 2026-11-11 13:13 UTC, 9.0 h`:
+  the later of the boot unit's start time and a stamp `firewall apply` writes
+  to `/var/lib/kevward/firewall-counters-reset`. JSON gains
+  `attackers.firewall_since` (epoch seconds or null).
 - **KEV table: "n/a (release)" for rows Ubuntu's data rules out for this
   release.** A `possible` row becomes `na_release` only when Ubuntu marks an
   installed package `not-affected` on this release, or — kernel only — when
