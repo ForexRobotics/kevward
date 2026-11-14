@@ -10,6 +10,8 @@ serve read-only. Renders in both light and dark.
 from __future__ import annotations
 
 import html
+import re
+from dataclasses import replace
 from datetime import datetime
 
 from .. import __version__ as _KW_VERSION
@@ -80,15 +82,34 @@ def _fw_window(since, generated_at: str) -> str:
     span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
     return f"{label}, {span}"
 
+def _finding_extra(f) -> str:
+    """Package list for grouped apt findings and a link to the advisories (#143)."""
+    bits = []
+    pkgs = getattr(f, "packages", None) or []
+    if len(pkgs) > 1:
+        bits.append(_esc(", ".join(pkgs)))
+    url = getattr(f, "url", None)
+    if url and url.startswith("https://"):
+        bits.append(f"<a href='{_esc(url)}' rel='noopener'>advisories</a>")
+    if not bits:
+        return ""
+    return "<br><span class='muted'>" + " · ".join(bits) + "</span>"
+
+
 _PKG_KINDS = ("security_update", "minor_upgrade")
 
 
-def _pkg_key(f) -> tuple | None:
-    """(package, new version) for a package-change finding, else None."""
+def _refs(f) -> list[str]:
+    pkgs = getattr(f, "packages", None) or []
+    return list(pkgs) if pkgs else ([f.ref] if f.ref else [])
+
+
+def _pkg_keys(f) -> list[tuple]:
+    """(package, new version) for each package a package-change finding covers."""
     kind = f.kind if isinstance(f.kind, str) else f.kind.value
-    if kind not in _PKG_KINDS or not f.ref:
-        return None
-    return (f.ref, f.fixed_version)
+    if kind not in _PKG_KINDS:
+        return []
+    return [(p, f.fixed_version) for p in _refs(f)]
 
 
 def _service_pkg_keys(result: RunResult) -> set:
@@ -98,8 +119,26 @@ def _service_pkg_keys(result: RunResult) -> set:
         for svc in result.services
         if svc.present and svc.service != "apt"
         for f in svc.findings
-        if (k := _pkg_key(f)) is not None
+        for k in _pkg_keys(f)
     }
+
+
+def _without_owned(f, owned: set):
+    """An apt finding minus the packages a service plugin already lists.
+
+    None when nothing is left. A grouped finding (#143) that loses only some
+    packages keeps the rest, with its "(N packages)" count corrected."""
+    keys = _pkg_keys(f)
+    if not keys:
+        return f
+    left = [p for p, v in keys if (p, v) not in owned]
+    if not left:
+        return None
+    if len(left) == len(keys) or not getattr(f, "packages", None):
+        return f
+    n = len(left)
+    title = re.sub(r"\(\d+ packages\)", f"({n} package{'s' if n != 1 else ''})", f.title)
+    return replace(f, packages=left, ref=left[0], title=title)
 
 
 def render(result: RunResult) -> str:
@@ -117,18 +156,22 @@ def render(result: RunResult) -> str:
         if not svc.present:
             continue
         for f in svc.findings:
-            if svc.service == "apt" and _pkg_key(f) in owned:
+            if svc.service == "apt":
                 # Same package change already listed under its service plugin
-                # (e.g. apache2 under "apache"): show and count it once.
-                hidden_dupes += 1
-                continue
+                # (e.g. apache2 under "apache"): show and count it once. A
+                # grouped row keeps the packages no service plugin owns.
+                trimmed = _without_owned(f, owned)
+                if trimmed is None:
+                    hidden_dupes += 1
+                    continue
+                f = trimmed
             sev = f.severity if isinstance(f.severity, str) else f.severity.value
             sev_counts[sev] = sev_counts.get(sev, 0) + 1
             kind = f.kind if isinstance(f.kind, str) else f.kind.value
             rows.append(
                 f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
                 f"{_esc(sev)}</span></td><td>{_esc(f.service)}</td>"
-                f"<td>{_esc(kind)}</td><td>{_esc(f.title)}</td>"
+                f"<td>{_esc(kind)}</td><td>{_esc(f.title)}{_finding_extra(f)}</td>"
                 f"<td class='cve'>{_esc(f.cve or '')}</td></tr>"
             )
 

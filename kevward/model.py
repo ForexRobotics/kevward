@@ -66,6 +66,19 @@ class Finding:
     # An opaque, plugin-specific handle used by apply() to action this finding
     # (e.g. a package name). Not shown to users.
     ref: str | None = None
+    # Every package this finding covers when it groups several binary packages
+    # built from one source package (e.g. glibc -> libc6, libc-bin, locales).
+    # Empty for single-package and non-package findings; then ``ref`` is used.
+    packages: list[str] = field(default_factory=list)
+    # A web page with the advisories for this finding (e.g. Ubuntu notices).
+    url: str | None = None
+
+    @property
+    def refs(self) -> list[str]:
+        """Packages ``apply()`` should act on for this finding."""
+        if self.packages:
+            return list(self.packages)
+        return [self.ref] if self.ref else []
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)

@@ -44,3 +44,28 @@ def test_different_target_version_is_not_a_duplicate():
 def test_json_keeps_every_finding():
     d = _hokaku3().to_dict()
     assert sum(len(s["findings"]) for s in d["services"]) == 7
+
+
+def test_grouped_apt_row_keeps_only_unowned_packages():
+    # #143: apt groups apache2* into one row; apache owns two of the four.
+    r = _hokaku3()
+    grouped = Finding(service="apt", kind=FindingKind.SECURITY_UPDATE, severity=Severity.HIGH,
+                      title="apache2 2.4.52-1ubuntu4.26 → 2.4.52-1ubuntu4.27 (4 packages)",
+                      ref="apache2", current_version="2.4.52-1ubuntu4.26",
+                      fixed_version="2.4.52-1ubuntu4.27",
+                      packages=["apache2", "apache2-bin", "apache2-data", "apache2-utils"])
+    r.services[1].findings = [grouped, r.services[1].findings[-1]]
+    html = render(r)
+    assert "high: <b>3</b>" in html   # 2 under apache + 1 grouped apt row
+    assert "(2 packages)" in html and "apache2-data, apache2-utils" in html
+    assert "apt rows not repeated" not in html  # the row was trimmed, not hidden
+
+
+def test_grouped_apt_row_fully_owned_is_hidden():
+    r = _hokaku3()
+    grouped = Finding(service="apt", kind=FindingKind.SECURITY_UPDATE, severity=Severity.HIGH,
+                      title="apache2 x → 2.4.52-1ubuntu4.27 (2 packages)", ref="apache2",
+                      fixed_version="2.4.52-1ubuntu4.27", packages=["apache2", "apache2-bin"])
+    r.services[1].findings = [grouped]
+    html = render(r)
+    assert "high: <b>2</b>" in html and "1 apt row not repeated" in html

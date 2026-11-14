@@ -12,7 +12,7 @@ from __future__ import annotations
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
 from ..util import format_pkgs, have, reboot_kind, reboot_pending, reboot_pending_pkgs
-from ._apt import AptServicePlugin, _simulate_upgrade, change_finding
+from ._apt import AptServicePlugin, _simulate_upgrade, change_findings
 
 
 @register
@@ -28,8 +28,7 @@ class AptPlugin(AptServicePlugin):
 
     def check(self) -> list[Finding]:
         findings: list[Finding] = []
-        for change in _simulate_upgrade():
-            findings.append(change_finding(self.name, change))
+        findings.extend(change_findings(self.name, _simulate_upgrade()))
         if reboot_pending():
             findings.append(reboot_finding(self.name, reboot_pending_pkgs()))
         return findings

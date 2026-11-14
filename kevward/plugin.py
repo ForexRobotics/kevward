@@ -15,6 +15,7 @@ import abc
 import importlib
 import pkgutil
 from collections.abc import Iterable
+from dataclasses import replace
 
 from .model import ActionResult, Finding, FindingKind, ServiceReport
 
@@ -69,10 +70,12 @@ class ServicePlugin(abc.ABC):
     ) -> ServiceReport:
         """Check, then (optionally) apply what policy allows.
 
-        ``claimed`` is shared across plugins within one run: package refs an
+        ``claimed`` is shared across plugins within one run: packages an
         earlier plugin already handed to ``apply()`` are skipped here and the
-        refs this plugin applies are added, so a package owned by two plugins
+        packages this plugin applies are added, so a package owned by two plugins
         (e.g. ``apache`` and the host-wide ``apt``) is listed and installed once.
+        Grouped findings (several packages, #143) are trimmed to the packages
+        not yet claimed.
         """
         if not self.detect():
             return ServiceReport(service=self.name, present=False)
@@ -84,13 +87,26 @@ class ServicePlugin(abc.ABC):
                     rep.findings, apply_security=apply_security, apply_minor=apply_minor
                 )
                 if claimed is not None:
-                    actionable = [f for f in actionable if f.ref not in claimed]
-                    claimed.update(f.ref for f in actionable if f.ref)
+                    actionable = claim_packages(actionable, claimed)
                 if actionable:
                     rep.actions = self.apply(actionable, dry_run=dry_run)
         except Exception as exc:  # pragma: no cover - defensive
             rep.error = f"{type(exc).__name__}: {exc}"
         return rep
+
+
+def claim_packages(findings: list[Finding], claimed: set[str]) -> list[Finding]:
+    """Drop packages already in ``claimed`` and claim the rest. Mutates ``claimed``."""
+    out: list[Finding] = []
+    for f in findings:
+        left = [p for p in f.refs if p not in claimed]
+        if not left:
+            continue
+        claimed.update(left)
+        if f.packages:
+            f = replace(f, packages=left, ref=left[0])
+        out.append(f)
+    return out
 
 
 def select_actionable(

@@ -18,6 +18,7 @@ Concrete plugins typically only declare ``name``, ``packages`` and
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from ..model import ActionResult, Finding, FindingKind, Severity
 from ..plugin import ServicePlugin
@@ -127,6 +128,108 @@ def change_finding(service: str, change: dict) -> Finding:
     )
 
 
+def source_packages(pkgs: list[str]) -> dict[str, str]:
+    """Binary package -> source package for the given installed packages.
+
+    ``${source:Package}`` is empty when the source has the binary's name, so
+    that falls back to the binary name. Packages dpkg doesn't know map to
+    themselves.
+    """
+    if not pkgs or not have("dpkg-query"):
+        return {p: p for p in pkgs}
+    r = run(["dpkg-query", "-W", "-f=${Package}\\t${source:Package}\\n", *pkgs])
+    return parse_source_map(r.out, pkgs)
+
+
+def parse_source_map(text: str, pkgs: list[str]) -> dict[str, str]:
+    """Parse ``dpkg-query -W -f='${Package}\\t${source:Package}\\n'``. Pure."""
+    out = {p: p for p in pkgs}
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 2:
+            continue
+        pkg, src = parts[0].strip().split(":", 1)[0], parts[1].strip()
+        if pkg in out and src:
+            out[pkg] = src
+    return out
+
+
+def notices_url(source: str, codename: str) -> str | None:
+    """Ubuntu Security Notices for this source package and release."""
+    if not codename:
+        return None
+    return (
+        "https://ubuntu.com/security/notices"
+        f"?release={codename}&details={source}"
+    )
+
+
+def group_findings(
+    changes: list[dict], service: str, src_map: dict[str, str], codename: str = ""
+) -> list[Finding]:
+    """One finding per (source package, kind, kept-back) instead of per binary.
+
+    A single advisory such as a glibc update touches several binary packages
+    (libc6, libc-bin, locales, ...). Listing each as its own HIGH inflates the
+    counts and hides that there is one thing to act on (#143). Grouping keeps
+    every package in ``Finding.packages`` so ``apply()`` still installs all of
+    them. Pure apart from what the caller passes in.
+    """
+    groups: dict[tuple, list[dict]] = {}
+    for c in changes:
+        key = (src_map.get(c["pkg"], c["pkg"]), c["security"], c.get("kept_back", False))
+        groups.setdefault(key, []).append(c)
+
+    out: list[Finding] = []
+    for (src, security, kept), members in groups.items():
+        singles = [change_finding(service, c) for c in members]
+        if len(singles) == 1:
+            f = singles[0]
+            if security:
+                f = replace(f, url=notices_url(src, codename))
+            out.append(f)
+            continue
+        worst = max(singles, key=lambda f: f.severity.rank)
+        pkgs = [c["pkg"] for c in members]
+        cur = {c["cur"] for c in members}
+        new = {c["new"] for c in members}
+        span = (
+            f"{next(iter(cur))} → {next(iter(new))}"
+            if len(cur) == 1 and len(new) == 1
+            else "→ " + ", ".join(sorted(new))
+        )
+        title = f"{src} {span} ({len(pkgs)} packages)"
+        if kept:
+            title += " (kept back)"
+        detail = "packages: " + ", ".join(pkgs) + "; " + worst.detail
+        out.append(
+            Finding(
+                service=service,
+                kind=worst.kind,
+                severity=worst.severity,
+                title=title,
+                detail=detail,
+                current_version=next(iter(cur)) if len(cur) == 1 else None,
+                fixed_version=next(iter(new)) if len(new) == 1 else None,
+                reboot_required=any(f.reboot_required for f in singles),
+                ref=pkgs[0],
+                packages=pkgs,
+                url=notices_url(src, codename) if security else None,
+            )
+        )
+    return out
+
+
+def change_findings(service: str, changes: list[dict]) -> list[Finding]:
+    """Grouped findings for planned changes (looks up source packages)."""
+    if not changes:
+        return []
+    from ..integrations.usn import host_codename
+
+    src_map = source_packages(sorted({c["pkg"] for c in changes}))
+    return group_findings(changes, service, src_map, host_codename())
+
+
 class AptServicePlugin(ServicePlugin):
     #: apt package names this plugin owns.
     packages: list[str] = []
@@ -146,14 +249,12 @@ class AptServicePlugin(ServicePlugin):
     def check(self) -> list[Finding]:
         findings: list[Finding] = []
         owned = set(self.packages)
-        for change in _simulate_upgrade():
-            if change["pkg"] not in owned:
-                continue
-            findings.append(change_finding(self.name, change))
+        mine = [c for c in _simulate_upgrade() if c["pkg"] in owned]
+        findings.extend(change_findings(self.name, mine))
         return findings
 
     def apply(self, findings: list[Finding], dry_run: bool) -> list[ActionResult]:
-        pkgs = sorted({f.ref for f in findings if f.ref})
+        pkgs = sorted({p for f in findings for p in f.refs})
         if not pkgs:
             return []
         desc = "install: " + ", ".join(pkgs)
