@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -374,39 +375,66 @@ _SETTLED_STATUSES = {"released", "not-affected", "dne"}
 
 def _kernel_series(v: str) -> tuple[int, int] | None:
     """Upstream major.minor of an Ubuntu kernel version (``5.15.0-203.213`` ->
-    ``(5, 15)``), or None when it does not look like one."""
+    ``(5, 15)``), or of an upstream tag (``3.9~rc8`` -> ``(3, 9)``), or None
+    when it does not look like one."""
     _epoch, rest = _split_epoch(v.strip())
-    head = rest.split("-", 1)[0].split(".")
-    if len(head) < 2 or not (head[0].isdigit() and head[1].isdigit()):
+    m = re.match(r"^(\d+)\.(\d+)(?:$|[.~-])", rest)
+    if not m:
         return None
-    return int(head[0]), int(head[1])
+    return int(m.group(1)), int(m.group(2))
+
+
+#: Upstream fix versions for KEV CVEs whose Ubuntu entry never gained a usable
+#: upstream row (``needs-triage``) and does not track newer releases (#62).
+#: CVE -> (Ubuntu source package, first fixed upstream version, product name).
+#: Only consulted when this release is untracked for that package; then an
+#: installed upstream version at or past the fix rules the CVE out.
+UPSTREAM_FIXED: dict[str, tuple[str, str, str]] = {
+    # Apache HTTP Server 2.4.17-2.4.38 scoreboard privilege escalation
+    # ("CARPE (DIEM)"); fixed in 2.4.39. Ubuntu tracks only bionic.
+    "CVE-2019-0211": ("apache2", "2.4.39", "Apache HTTP Server"),
+}
+
+
+def _upstream_part(v: str) -> str:
+    _epoch, rest = _split_epoch(v.strip())
+    return _split_upstream_rev(rest)[0]
 
 
 def release_na_reason(
-    data: dict | None, codename: str, installed: dict[str, str]
+    data: dict | None, codename: str, installed: dict[str, str], cve: str = ""
 ) -> str | None:
     """Why a CVE that ``classify_cve`` left as ``possible`` cannot apply to
     this release, or None. Only two cases, both read from Ubuntu's own data:
 
     1. Ubuntu marks an installed package ``not-affected`` on this release.
-    2. Kernel only: Ubuntu does not track this release for the CVE at all
-       (it predates the release), every release it does track is settled
-       (released / not-affected / DNE — no needed, pending, deferred or
-       ignored), and the newest released fix is on an older upstream kernel
-       series than the one installed here, e.g. fixed in 4.4 / 4.15 while
-       this host runs 5.15. The fix was upstream before this branch existed.
+    2. Kernel only, and Ubuntu does not track this release for the CVE at
+       all (it predates the release). Either
+       a. Ubuntu's ``upstream`` row is released in an older kernel series
+          than the one installed here (e.g. 4.9~rc2 vs 5.15), or
+       b. every Ubuntu release it does track is settled (released /
+          not-affected / DNE — no needed, pending, deferred or ignored) and
+          the newest released fix is on an older series, e.g. fixed in
+          4.4 / 4.15 while this host runs 5.15.
+       Either way the fix was upstream before this branch existed.
 
     Anything else stays ``possible``. Never consulted for a CVE that version
     data already labels ``applicable`` or ``fixed``. Pure (no I/O).
     """
     if not data or not codename:
         return None
+    known = UPSTREAM_FIXED.get((cve or data.get("id") or "").upper())
     for p in data.get("packages") or []:
         name = (p.get("name") or "").strip()
         inst = installed.get(name)
         if not inst:
             continue
         st = _status_for(p, codename)
+        if st is None and known and known[0] == name:
+            up = _upstream_part(inst)
+            if deb_compare(up, known[1]) >= 0:
+                return (f"fixed upstream in {known[2]} {known[1]}; installed {name} "
+                        f"{inst}; {codename} not tracked for this CVE")
         if st is not None:
             if (st.get("status") or "").lower() == "not-affected":
                 desc = (st.get("description") or "").strip()
@@ -419,9 +447,32 @@ def release_na_reason(
         statuses = p.get("statuses") or []
         if here is None or not statuses:
             continue
+        # (a) Ubuntu records the upstream fix, and it landed in an earlier
+        # kernel series than this host's (e.g. Dirty COW: 4.9~rc2 < 5.15).
+        # This release's kernel was branched from an upstream that already
+        # contained the fix (#62: the rule below missed these because the
+        # "upstream" entry's version, e.g. "3.9~rc8", did not parse).
+        up = next((s for s in statuses
+                   if (s.get("release_codename") or s.get("release") or "").lower()
+                   == "upstream"), None)
+        if up is not None and (up.get("status") or "").lower() == "released":
+            fixed = ((up.get("description") or "").strip()
+                     or (up.get("fixed_version") or "").strip())
+            series = _kernel_series(fixed) if fixed else None
+            if series is not None and series < here:
+                return (f"fixed upstream in {fixed}, before linux {here[0]}.{here[1]}; "
+                        f"{codename} not tracked for this CVE")
+            if series is not None:
+                continue  # upstream fixed it in this series or later: keep possible
+        # (b) Every Ubuntu release that is tracked is settled and the newest
+        # fix is on an older series. The "upstream" row is left out here: it
+        # is often never updated for decade-old CVEs ("needed" next to fixed
+        # releases), and (a) already used it when it says something useful.
         newest: tuple[tuple[int, int], str, str] | None = None
         settled = True
         for s in statuses:
+            if (s.get("release_codename") or s.get("release") or "").lower() == "upstream":
+                continue
             status = (s.get("status") or "").lower()
             if status not in _SETTLED_STATUSES:
                 settled = False
@@ -435,7 +486,7 @@ def release_na_reason(
                 settled = False  # a fix we cannot place: do not guess
                 break
             rel = (s.get("release_codename") or s.get("release") or "?")
-            if newest is None or series > newest[0]:
+            if newest is None or series >= newest[0]:
                 newest = (series, fixed, rel)
         if settled and newest is not None and newest[0] < here:
             return (f"fixed upstream before linux {here[0]}.{here[1]} "

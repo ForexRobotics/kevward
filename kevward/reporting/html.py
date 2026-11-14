@@ -289,7 +289,11 @@ def render(result: RunResult) -> str:
     }
     def _na_note(m: dict) -> str:
         r = m.get("applicability_reason")
-        return f"<br><small>n/a on this host: {_esc(r)}</small>" if r else ""
+        if not r:
+            return ""
+        lead = ("n/a on this host" if m.get("applicability") in ("not_applicable", "na_release")
+                else "why")
+        return f"<br><small>{lead}: {_esc(r)}</small>"
 
     def _trend_row(m: dict) -> str:
         rw = " \U0001F512" if m.get("ransomware") else ""

@@ -305,7 +305,9 @@ def cmd_trends(args) -> int:
         print(f"  {tag}{m['cve']:18} {m['vendor']}/{m['product']}  "
               f"(added {m['date_added']}){rw}")
         if m.get("applicability_reason"):
-            print(f"      n/a on this host: {m['applicability_reason']}")
+            lead = ("n/a on this host"
+                    if m["applicability"] in ("not_applicable", "na_release") else "why")
+            print(f"      {lead}: {m['applicability_reason']}")
     rest = len(data["matches"]) - limit
     if rest > 0:
         print(f"  ... and {rest} more (all matches: `kevward trends --json` "

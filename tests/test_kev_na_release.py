@@ -147,3 +147,100 @@ def test_html_puts_na_release_rows_in_collapsed_block():
     main, _, folded = out.partition("<details")
     assert "CVE-2022-0185" in main and "CVE-2016-5195" not in main
     assert "CVE-2016-5195" in folded
+
+
+# --- #62: real Ubuntu data from hokaku (2026-11-14) that #74 left 'possible' --
+def _S(*rows):
+    return _linux(*rows)
+
+
+HOKAKU_1114 = {
+    # upstream row never updated ("needed"); every Ubuntu release settled.
+    "CVE-2010-3904": _S(("jaunty", "not-affected", ""), ("dapper", "DNE", ""),
+                        ("hardy", "not-affected", ""), ("karmic", "released", "2.6.31-22.67"),
+                        ("lucid", "released", "2.6.32-25.45"),
+                        ("maverick", "released", "2.6.35-22.35"), ("upstream", "needed", "")),
+    "CVE-2013-2094": _S(("upstream", "released", "3.9~rc8"), ("lucid", "not-affected", ""),
+                        ("precise", "released", "3.2.0-43.68"),
+                        ("xenial", "not-affected", "4.2.0-16.19")),
+    "CVE-2013-2596": _S(("upstream", "released", "3.9~rc8"),
+                        ("trusty", "not-affected", "3.11.0-12.19"),
+                        ("focal", "not-affected", "5.4.0-9.12")),
+    # "ignored" (end of life) on lucid used to block it; upstream says 3.6.
+    "CVE-2013-6282": _S(("lucid", "ignored", ""), ("precise", "not-affected", "arm only"),
+                        ("upstream", "released", "3.6~rc6"),
+                        ("zesty", "not-affected", "4.8.0-22.24")),
+    "CVE-2014-0196": _S(("lucid", "released", "2.6.32-58.121"),
+                        ("trusty", "released", "3.13.0-24.47"),
+                        ("upstream", "released", "3.15~rc5")),
+    "CVE-2016-5195": _S(("upstream", "released", "4.9~rc2"),
+                        ("xenial", "released", "4.4.0-45.66"),
+                        ("zesty", "not-affected", "4.8.0-26.28")),
+    "CVE-2017-1000253": _S(("bionic", "not-affected", "4.13.0-16.19"),
+                           ("upstream", "released", "4.1~rc1"),
+                           ("trusty", "released", "3.13.0-57.95")),
+}
+
+
+def test_upstream_tag_series():
+    assert usn._kernel_series("3.9~rc8") == (3, 9)
+    assert usn._kernel_series("4.1~rc1") == (4, 1)
+    assert usn._kernel_series("2.6.32-25.45") == (2, 6)
+
+
+def test_hokaku_old_kernel_cves_are_na_release_on_jammy_and_noble():
+    for codename, kern in (("jammy", JAMMY_KERNEL), ("noble", {"linux": "6.8.0-149.149"})):
+        for cve, data in HOKAKU_1114.items():
+            assert usn.classify_cve(data, codename, kern) == "possible", cve
+            why = usn.release_na_reason(data, codename, kern)
+            assert why, (codename, cve)
+    why = usn.release_na_reason(HOKAKU_1114["CVE-2016-5195"], "jammy", JAMMY_KERNEL)
+    assert why.startswith("fixed upstream in 4.9~rc2, before linux 5.15")
+    why = usn.release_na_reason(HOKAKU_1114["CVE-2010-3904"], "jammy", JAMMY_KERNEL)
+    assert "2.6.35-22.35" in why and "maverick" in why
+
+
+def test_upstream_fix_in_this_or_newer_series_keeps_possible():
+    d = _S(("upstream", "released", "5.15~rc3"), ("focal", "needed", ""))
+    assert usn.release_na_reason(d, "jammy", JAMMY_KERNEL) is None
+    d = _S(("upstream", "released", "6.1"), ("focal", "released", "5.4.0-1.1"))
+    assert usn.release_na_reason(d, "jammy", JAMMY_KERNEL) is None
+
+
+def test_upstream_needed_alone_never_rules_out():
+    d = _S(("upstream", "needed", ""), ("focal", "needed", ""))
+    assert usn.release_na_reason(d, "jammy", JAMMY_KERNEL) is None
+
+
+def test_tracked_release_still_wins_over_upstream():
+    # jammy itself tracked as needed -> never n/a, whatever upstream says.
+    d = _S(("upstream", "released", "3.9~rc8"), ("jammy", "needed", ""))
+    assert usn.release_na_reason(d, "jammy", JAMMY_KERNEL) is None
+
+
+# --- #62: Apache CVE-2019-0211, real Ubuntu data from hokaku (2026-11-14) -----
+_APACHE_0211 = {"packages": [{"name": "apache2", "statuses": [
+    {"release_codename": "bionic", "status": "released", "description": "2.4.29-1ubuntu4.6"},
+    {"release_codename": "upstream", "status": "needs-triage", "description": ""},
+]}]}
+
+
+def test_apache_0211_na_when_upstream_past_fix():
+    for codename, ver in (("jammy", "2.4.52-1ubuntu4.27"), ("noble", "2.4.58-1ubuntu8.8")):
+        inst = {"apache2": ver}
+        assert usn.classify_cve(_APACHE_0211, codename, inst) == "possible"
+        why = usn.release_na_reason(_APACHE_0211, codename, inst, "CVE-2019-0211")
+        assert why and "2.4.39" in why and ver in why
+
+
+def test_apache_0211_old_upstream_keeps_possible():
+    inst = {"apache2": "2.4.38-3+deb10u1"}
+    assert usn.release_na_reason(_APACHE_0211, "jammy", inst, "CVE-2019-0211") is None
+
+
+def test_upstream_table_ignored_when_release_tracked_or_other_cve():
+    tracked = {"packages": [{"name": "apache2", "statuses": [
+        {"release_codename": "jammy", "status": "needed", "description": ""}]}]}
+    inst = {"apache2": "2.4.52-1ubuntu4.27"}
+    assert usn.release_na_reason(tracked, "jammy", inst, "CVE-2019-0211") is None
+    assert usn.release_na_reason(_APACHE_0211, "jammy", inst, "CVE-2099-0001") is None
