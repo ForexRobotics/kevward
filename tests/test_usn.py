@@ -173,8 +173,13 @@ def test_fresh_cache_first_and_counts(monkeypatch):
         return _FIXED
 
     monkeypatch.setattr(usn, "fetch_cve", fake_fetch)
-    tr._applicability(hits, max_checks=10, budget_s=30)
-    assert seen[0] == "CVE-2026-3"  # cached entry classified before network ones
+    # A fresh cache entry never uses a network slot: with room for just one
+    # lookup, the cached CVE is still classified, plus exactly one fetched one.
+    monkeypatch.setattr(usn, "cached_cve", lambda cve: None)
+    labels = tr._applicability(hits, max_checks=1, budget_s=30)
+    assert labels["CVE-2026-3"] == "fixed"
+    assert sorted(labels.values()) == ["fixed", "fixed", "unchecked"]
+    assert seen.count("CVE-2026-3") == 1 and len(seen) == 2
 
     monkeypatch.setattr(tr, "_load_catalog", lambda url=tr.KEV_URL: hits)
     monkeypatch.setattr(usn, "fetch_cve",

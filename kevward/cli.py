@@ -62,7 +62,38 @@ def _trends_kwargs(cfg: Config) -> dict:
     return {
         "version_budget_s": cfg.trends.version_budget_s,
         "max_version_checks": cfg.trends.max_version_checks,
+        "fetch_workers": cfg.trends.fetch_workers,
     }
+
+
+#: `trends --warm-cache`: one long pass that fills the Ubuntu CVE cache so the
+#: daily report (45s budget) starts warm on a new or long-idle host (#66).
+WARM_BUDGET_S = 600.0
+WARM_MAX_CHECKS = 1000
+
+
+def _warm_cache(cfg: Config, host_terms) -> int:
+    from .integrations import trends as trends_mod
+    from .util import is_root
+    kw = _trends_kwargs(cfg)
+    kw.update(version_budget_s=WARM_BUDGET_S, max_version_checks=WARM_MAX_CHECKS)
+    print(f"warming the Ubuntu CVE cache (up to {int(WARM_BUDGET_S)}s, "
+          f"{kw['fetch_workers']} at a time) ...", flush=True)
+    data = trends_mod.matching_trends(host_terms, **kw)
+    cc = data.get("cve_cache") or {}
+    if not data.get("version_aware"):
+        print("version-aware pass did not run (no Ubuntu codename or dpkg data).")
+        return 1
+    print(f"KEV matches: {data['match_count']}; "
+          f"still unchecked: {data.get('unchecked_count', 0)}; "
+          f"cache: {cc.get('dir', '?')}")
+    if cc and not cc.get("writable", True):
+        print("warning: cache not writable — nothing was saved; run with sudo")
+        return 1
+    if cc.get("fallback") and not is_root():
+        print("note: per-user cache; the root daily report uses /var/cache/kevward "
+              "— run `sudo kevward trends --warm-cache` to warm that one")
+    return 0 if not data.get("unchecked_count") else 1
 
 
 def _collect_attackers(include_trends: bool, host_terms=None, cfg: Config | None = None) -> dict:
@@ -238,6 +269,8 @@ def cmd_trends(args) -> int:
     cfg = _mkconfig(args)
     from .integrations import trends as trends_mod
     host_terms = detected_kev_terms(cfg.policy.services or None)
+    if getattr(args, "warm_cache", False):
+        return _warm_cache(cfg, host_terms)
     data = trends_mod.matching_trends(host_terms, **_trends_kwargs(cfg))
     data["kevward_version"] = __version__
     if args.json:
@@ -374,6 +407,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     t = sub.add_parser("trends", help="actively-exploited CVEs relevant to host")
     _add_common(t)
+    t.add_argument("--warm-cache", action="store_true",
+                   help="one long pass (up to 10 min) that fills the Ubuntu CVE "
+                        "cache so daily reports start warm; prints a summary only")
     t.set_defaults(func=cmd_trends)
 
     sr = sub.add_parser("schedule-reboot", help="schedule a maintenance-window reboot")

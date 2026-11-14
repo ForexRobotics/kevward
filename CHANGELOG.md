@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Cold hosts resolve the KEV table in one run (#66).** Uncached Ubuntu CVE
+  lookups now run 4 at a time (`[trends] fetch_workers`, 1–16), still inside
+  the time budget, and `kevward trends --warm-cache` does one long pass (up to
+  10 min) to fill the cache after install. Exit code 1 if rows are still
+  unchecked or the cache is not writable.
+
 ## 0.12.11
 
 Reports that say why: the reboot reason, block-set sizes, the drop window on
