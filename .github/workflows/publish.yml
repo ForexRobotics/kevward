@@ -17,6 +17,8 @@ name: Publish & announce
 
 # Third-party actions are pinned to full commit SHAs (issue #115) so a moved
 # or hijacked tag cannot change what runs here; Dependabot proposes updates.
+# Runners are pinned too (ubuntu-latest moved to 26.04 on 2026-10-19), so a
+# label change cannot alter the release build silently.
 
 on:
   push:
@@ -28,7 +30,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,7 +53,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: pypi
     permissions:
       id-token: write   # required for Trusted Publishing (OIDC)
@@ -65,7 +67,7 @@ jobs:
 
   announce:
     needs: publish          # only announce once the package is actually live
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write       # create the GitHub Release
     steps:
