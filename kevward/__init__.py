@@ -11,4 +11,4 @@ This is a *defensive* tool. It never touches remote hosts and contains
 no offensive capability.
 """
 
-__version__ = "0.12.11"
+__version__ = "0.13.0"

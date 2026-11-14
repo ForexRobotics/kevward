@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.13.0
+
+Signal accuracy: the KEV table and the findings list now say what there is to
+act on. Old kernel, PHP, Laravel-ecosystem, node and Apache rows that stayed
+"possible" are decided from evidence on the host; one advisory is one finding;
+a cold host fills its CVE cache in one run.
 
 - **Fewer "possible" KEV rows (#62).** On hokaku (jammy) all 15 rows that
   stayed "possible" are now decided from evidence on the host:
