@@ -104,6 +104,7 @@ def _collect_attackers(include_trends: bool, host_terms=None, cfg: Config | None
         "firewall": {k: list(v) for k, v in firewall.drop_counters().items()},
         "firewall_state": firewall.table_state(),
         "firewall_since": firewall.counters_since(),
+        "firewall_sizes": firewall.set_sizes(),
     }
     if include_trends:
         from .integrations import trends as trends_mod
@@ -135,7 +136,11 @@ def _print_findings(result, use_json: bool) -> int:
             if not svc.findings:
                 print("  ok")
         if result.reboot_status == "now":
-            print("\n** reboot required **")
+            why = ""
+            if result.reboot_packages:
+                from .util import format_pkgs
+                why = f" ({format_pkgs(result.reboot_packages)})"
+            print(f"\n** reboot required{why} **")
         elif result.reboot_status == "after-updates":
             print("\n** reboot needed after applying pending updates **")
     # exit code reflects worst severity for CI/cron use
