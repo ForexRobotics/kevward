@@ -14,6 +14,7 @@ from datetime import datetime
 
 from .. import __version__ as _KW_VERSION
 from ..engine import RunResult
+from ..util import format_pkgs
 
 _SEV_COLOR = {
     "critical": "#b4232a",
@@ -320,6 +321,8 @@ def render(result: RunResult) -> str:
     reboot = {"now": "YES", "after-updates": "after pending updates"}.get(
         result.reboot_status, "no"
     )
+    if result.reboot_status == "now" and result.reboot_packages:
+        reboot += f" ({_esc(format_pkgs(result.reboot_packages))})"
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

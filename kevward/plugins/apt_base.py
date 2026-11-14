@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
-from ..util import have, reboot_pending
+from ..util import format_pkgs, have, reboot_kind, reboot_pending, reboot_pending_pkgs
 from ._apt import AptServicePlugin, _simulate_upgrade, change_finding
 
 
@@ -31,15 +31,32 @@ class AptPlugin(AptServicePlugin):
         for change in _simulate_upgrade():
             findings.append(change_finding(self.name, change))
         if reboot_pending():
-            findings.append(
-                Finding(
-                    service=self.name,
-                    kind=FindingKind.CONFIG,
-                    severity=Severity.MEDIUM,
-                    title="Reboot required",
-                    detail="/run/reboot-required is set; a reboot is needed to "
-                    "finish applying prior updates.",
-                    reboot_required=True,
-                )
-            )
+            findings.append(reboot_finding(self.name, reboot_pending_pkgs()))
         return findings
+
+
+def reboot_finding(service: str, pkgs: list[str]) -> Finding:
+    """The "Reboot required" finding, saying which packages asked for it.
+
+    Kernel/firmware/microcode (or unknown) -> medium: nothing changes until the
+    reboot. Userspace only (e.g. libc6) -> low: needrestart has already
+    restarted the services; the reboot replaces the remaining processes."""
+    kind = reboot_kind(pkgs)
+    title = "Reboot required"
+    detail = ("/run/reboot-required is set; a reboot is needed to finish "
+              "applying prior updates.")
+    if pkgs:
+        title += f" ({format_pkgs(pkgs)})"
+        detail += " Requested by: " + ", ".join(pkgs) + "."
+    if kind == "userspace":
+        detail += (" Only userspace packages: services were restarted by "
+                   "needrestart; reboot to replace the remaining processes.")
+    return Finding(
+        service=service,
+        kind=FindingKind.CONFIG,
+        severity=Severity.LOW if kind == "userspace" else Severity.MEDIUM,
+        title=title,
+        detail=detail,
+        reboot_required=True,
+    )
+

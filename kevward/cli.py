@@ -105,7 +105,11 @@ def _print_findings(result, use_json: bool) -> int:
             if not svc.findings:
                 print("  ok")
         if result.reboot_status == "now":
-            print("\n** reboot required **")
+            why = ""
+            if result.reboot_packages:
+                from .util import format_pkgs
+                why = f" ({format_pkgs(result.reboot_packages)})"
+            print(f"\n** reboot required{why} **")
         elif result.reboot_status == "after-updates":
             print("\n** reboot needed after applying pending updates **")
     # exit code reflects worst severity for CI/cron use

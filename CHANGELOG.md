@@ -27,6 +27,12 @@
   shows how many entries each set holds (`evidence blocklist 4 (51 entries)`),
   so a low drop count can be told apart from an emptied set. JSON: new
   `attackers.firewall_sizes` (needs root; omitted otherwise).
+- **Why a reboot is required (#144).** The header and the "Reboot required"
+  finding name the packages from `reboot-required.pkgs`
+  (`reboot required: YES (libc6)`). When only userspace packages asked
+  (no kernel, firmware or microcode), the finding drops from medium to low:
+  needrestart has already restarted the services. JSON: new
+  `reboot_packages` and `reboot_kind` (`kernel` / `userspace` / `""`).
 
 ## 0.12.10
 
