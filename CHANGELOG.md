@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.12.11
+
+Reports that say why: the reboot reason, block-set sizes, the drop window on
+Ubuntu 22.04, and one row per package update. CI now tests 22.04, 24.04 and
+26.04 explicitly.
 
 - **Release integrity (#115).** GitHub Actions in CI and the publish workflow
   are pinned to full commit SHAs (Dependabot keeps them current) and moved to
