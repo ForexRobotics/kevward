@@ -19,6 +19,10 @@
 - **"Public TCP listeners" ignores addresses on the loopback interface**
   (`127.0.0.53%lo`, WSL2's `10.255.255.254`), which are not reachable from
   outside.
+- **Firewall drop window on Ubuntu 22.04.** The report's "firewall drops
+  (since …)" fell back to "since last ruleset load" on jammy: systemd 249
+  rejects `systemctl show --timestamp=unix` (added in 251). kevward now falls
+  back to `ActiveEnterTimestampMonotonic` + the boot time from `/proc/stat`.
 
 ## 0.12.10
 
