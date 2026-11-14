@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import glob
 import os
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -50,6 +51,26 @@ class HostFacts:
             return "linux"
         return sys.platform
 
+    def php_branches(self) -> list[tuple[int, int]] | None:
+        """Installed PHP branches from dpkg source names (php8.1 -> (8, 1)).
+
+        Ubuntu ships PHP as versioned source packages (php7.4, php8.1, ...), so
+        a CVE that Ubuntu tracks under php7.x never matches a php8.x host by
+        name (#62). None when dpkg cannot be read; [] when no PHP is installed.
+        """
+        if "_php" not in self._cache:
+            try:
+                from .usn import installed_source_versions
+                srcs = installed_source_versions()
+            except Exception:
+                srcs = None
+            self._cache["_php"] = None if srcs is None else ",".join(
+                f"{a}.{b}" for a, b in parse_php_branches(srcs))
+        raw = self._cache["_php"]
+        if raw is None:
+            return None
+        return [tuple(int(x) for x in s.split(".")) for s in raw.split(",") if s]
+
     def sshd(self, key: str) -> str | None:
         """Effective ``sshd -T`` value (lower-cased), or None if unreadable."""
         if "_sshd_read" not in self._cache:
@@ -57,6 +78,16 @@ class HostFacts:
             for k, v in _read_sshd_t().items():
                 self._cache[f"sshd:{k}"] = v
         return self._cache.get(f"sshd:{key.lower()}")
+
+
+def parse_php_branches(sources) -> list[tuple[int, int]]:
+    """(major, minor) for each ``phpX.Y`` / ``php5`` source package. Pure."""
+    out = set()
+    for name in sources:
+        m = re.match(r"^php(\d)(?:\.(\d+))?$", name)
+        if m:
+            out.add((int(m.group(1)), int(m.group(2) or 0)))
+    return sorted(out)
 
 
 def _detect_libc() -> str | None:
@@ -108,10 +139,27 @@ def _windows_only(f: HostFacts) -> str | None:
     return None
 
 
+def _php_all_at_least(branch: tuple[int, int], fixed_in: str) -> Rule:
+    """n/a when every installed PHP branch is ``branch`` or newer."""
+    def rule(f: HostFacts) -> str | None:
+        have_ = f.php_branches()
+        if not have_ or min(have_) < branch:
+            return None
+        shown = ", ".join(f"{a}.{b}" for a, b in have_)
+        return (f"installed PHP {shown}; fixed upstream in {fixed_in}, "
+                f"PHP {branch[0]}.{branch[1]}+ never affected")
+    return rule
+
+
 RULES: dict[str, Rule] = {
     "CVE-2026-123158": _sshole,
     # PHP-CGI argument injection via Windows "Best-Fit" charset mapping.
     "CVE-2024-4577": _windows_only,
+    # PHP-FPM env_path_info underflow: fixed in 7.1.33 / 7.2.24 / 7.3.11,
+    # 7.4.0 shipped with the fix.
+    "CVE-2019-11043": _php_all_at_least((7, 4), "7.1.33 / 7.2.24 / 7.3.11"),
+    # PHP-CGI query-string argument injection: fixed in 5.3.12 / 5.4.2.
+    "CVE-2012-1823": _php_all_at_least((5, 5), "5.3.12 / 5.4.2"),
 }
 
 

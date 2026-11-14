@@ -98,3 +98,56 @@ def test_matching_trends_applies_composer_labels(monkeypatch):
     assert m["CVE-2016-5195"]["applicability"] == "possible"
     assert d["fixed_count"] == 1 and d["not_applicable_count"] == 1
     assert d["version_aware"] is True
+
+
+# --- PHPMailer (WordPress guard) and npm systeminformation -------------------
+def _npm(tmp_path, name, pkgs, v2=True):
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    if v2:
+        body = {"lockfileVersion": 3, "packages": {
+            "": {"name": name}, **{f"node_modules/{n}": {"version": v} for n, v in pkgs}}}
+    else:
+        body = {"lockfileVersion": 1, "dependencies": {n: {"version": v} for n, v in pkgs}}
+    (d / "package-lock.json").write_text(json.dumps(body))
+    return d
+
+
+def test_phpmailer_absent_is_na_unless_wordpress_present(tmp_path):
+    _lock(tmp_path, "app", [("laravel/framework", "v11.0.0")])
+    got = cr.evaluate(["CVE-2016-10033"], roots=[str(tmp_path)])
+    assert got["CVE-2016-10033"][0] == "not_applicable"
+    (tmp_path / "blog" / "wp-includes").mkdir(parents=True)
+    assert cr.evaluate(["CVE-2016-10033"], roots=[str(tmp_path)]) == {}
+
+
+def test_phpmailer_versions(tmp_path):
+    _lock(tmp_path, "app", [("phpmailer/phpmailer", "v6.9.1")])
+    assert cr.evaluate(["CVE-2016-10033"], roots=[str(tmp_path)])["CVE-2016-10033"][0] == "fixed"
+
+
+def test_systeminformation_from_package_locks(tmp_path):
+    _npm(tmp_path, "hokaku_server", [("vite", "5.4.0")])
+    _npm(tmp_path, "old", [("axios", "1.0.0")], v2=False)
+    got = cr.evaluate(["CVE-2021-21315"], roots=[str(tmp_path)], npm_global=[])
+    assert got["CVE-2021-21315"][0] == "not_applicable"
+    assert "package-lock.json" in got["CVE-2021-21315"][1]
+    _npm(tmp_path, "tool", [("systeminformation", "5.2.0")], v2=False)
+    assert cr.evaluate(["CVE-2021-21315"], roots=[str(tmp_path)],
+                       npm_global=[])["CVE-2021-21315"][0] == "applicable"
+
+
+def test_systeminformation_global_install(tmp_path):
+    _npm(tmp_path / "www", "app", [("vite", "5.4.0")])
+    g = tmp_path / "global"
+    (g / "systeminformation").mkdir(parents=True)
+    (g / "systeminformation" / "package.json").write_text(
+        json.dumps({"name": "systeminformation", "version": "5.21.7"}))
+    got = cr.evaluate(["CVE-2021-21315"], roots=[str(tmp_path / "www")], npm_global=[str(g)])
+    assert got["CVE-2021-21315"][0] == "fixed" and "5.21.7" in got["CVE-2021-21315"][1]
+
+
+def test_node_modules_without_lock_blocks_na(tmp_path):
+    _npm(tmp_path, "app", [("vite", "5.4.0")])
+    (tmp_path / "loose" / "node_modules").mkdir(parents=True)
+    assert cr.evaluate(["CVE-2021-21315"], roots=[str(tmp_path)], npm_global=[]) == {}
