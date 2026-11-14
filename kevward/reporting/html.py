@@ -165,6 +165,16 @@ def render(result: RunResult) -> str:
     def _fw_pkts(*sets: str) -> int:
         return sum(int(fw[s][0]) for s in sets if s in fw)
 
+    sizes = att.get("firewall_sizes") or {}
+
+    def _fw_size(*sets: str) -> str:
+        """' (51 entries)' when the set sizes are known, else ''."""
+        if not any(s in sizes for s in sets):
+            return ""
+        n = sum(int(sizes.get(s, 0)) for s in sets)
+        return (f" <span style='font-size:12px'>({n:,} "
+                f"entr{'y' if n == 1 else 'ies'})</span>")
+
     fw_line = ""
     if fw:
         evidence = _fw_pkts("blocklist4", "blocklist6")
@@ -173,8 +183,8 @@ def render(result: RunResult) -> str:
         fw_line = (
             "<p class='muted' style='margin-top:0'>firewall drops "
             f"<span style='font-size:12px'>({_fw_window(att.get('firewall_since'), result.generated_at)})</span>: "
-            f"evidence blocklist <b>{evidence:,}</b> · "
-            f"operator CIDR blocks <b>{cidr:,}</b> · "
+            f"evidence blocklist <b>{evidence:,}</b>{_fw_size('blocklist4', 'blocklist6')} · "
+            f"operator CIDR blocks <b>{cidr:,}</b>{_fw_size('blockcidr4', 'blockcidr6')} · "
             f"total <b>{total:,}</b> packets</p>"
         )
 

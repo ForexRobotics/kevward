@@ -23,6 +23,10 @@
   (since …)" fell back to "since last ruleset load" on jammy: systemd 249
   rejects `systemctl show --timestamp=unix` (added in 251). kevward now falls
   back to `ActiveEnterTimestampMonotonic` + the boot time from `/proc/stat`.
+- **Block-set sizes next to the drop counts.** The "firewall drops" line now
+  shows how many entries each set holds (`evidence blocklist 4 (51 entries)`),
+  so a low drop count can be told apart from an emptied set. JSON: new
+  `attackers.firewall_sizes` (needs root; omitted otherwise).
 
 ## 0.12.10
 

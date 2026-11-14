@@ -323,6 +323,20 @@ def _set_elements(setname: str) -> set[str]:
     return out
 
 
+def set_sizes() -> dict[str, int]:
+    """How many entries each kevward block set holds (read-only, fail-soft).
+
+    Lets the report tell "few drops because few entries / little traffic from
+    them" apart from "the sets were emptied" (e.g. after a failed reload).
+    Empty when nft is unavailable or not root."""
+    if not (nft_available() and is_root()):
+        return {}
+    if not _nft(["list", "table", "inet", TABLE]).ok:
+        return {}
+    return {name: len(_set_elements(name))
+            for name in (SET4, SET6, BLOCKCIDR4, BLOCKCIDR6)}
+
+
 def current_set_ips() -> set[str]:
     """Evidence-based host IPs currently in the TTL'd blocklist (for dedup)."""
     return _set_elements(SET4) | _set_elements(SET6)
