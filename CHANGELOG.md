@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- **Fewer "possible" KEV rows (#62).** On hokaku (jammy) the 14 of 15 rows
-  that stayed "possible" are now decided from evidence on the host:
+- **Fewer "possible" KEV rows (#62).** On hokaku (jammy) all 15 rows that
+  stayed "possible" are now decided from evidence on the host:
   - Decade-old kernel CVEs (Dirty COW, CVE-2013-2094, ...) become
     `n/a (release)` when Ubuntu records the upstream fix in an older kernel
     series than the running one (`fixed upstream in 4.9~rc2, before linux
@@ -17,6 +17,10 @@
   - PHP-FPM CVE-2019-11043 and PHP-CGI CVE-2012-1823 are `n/a (config)` when
     every installed PHP branch is 7.4+ / 5.5+ (Ubuntu tracks them under
     php7.x / php5, which never matched a php8.x host).
+  - Apache CVE-2019-0211 (Ubuntu tracks only bionic, upstream
+    "needs-triage") is `n/a (release)` when the installed apache2 is at or
+    past the upstream fix 2.4.39. Such CVEs live in a small, sourced
+    `UPSTREAM_FIXED` table, used only when this release is untracked.
   - The reason line reads "why:" for fixed/applicable rows.
 - **apt findings are grouped by source package (#143).** One advisory that
   touches several binary packages (e.g. glibc: libc6, libc-bin, locales, ...)

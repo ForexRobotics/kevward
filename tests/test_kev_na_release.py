@@ -216,3 +216,31 @@ def test_tracked_release_still_wins_over_upstream():
     # jammy itself tracked as needed -> never n/a, whatever upstream says.
     d = _S(("upstream", "released", "3.9~rc8"), ("jammy", "needed", ""))
     assert usn.release_na_reason(d, "jammy", JAMMY_KERNEL) is None
+
+
+# --- #62: Apache CVE-2019-0211, real Ubuntu data from hokaku (2026-11-14) -----
+_APACHE_0211 = {"packages": [{"name": "apache2", "statuses": [
+    {"release_codename": "bionic", "status": "released", "description": "2.4.29-1ubuntu4.6"},
+    {"release_codename": "upstream", "status": "needs-triage", "description": ""},
+]}]}
+
+
+def test_apache_0211_na_when_upstream_past_fix():
+    for codename, ver in (("jammy", "2.4.52-1ubuntu4.27"), ("noble", "2.4.58-1ubuntu8.8")):
+        inst = {"apache2": ver}
+        assert usn.classify_cve(_APACHE_0211, codename, inst) == "possible"
+        why = usn.release_na_reason(_APACHE_0211, codename, inst, "CVE-2019-0211")
+        assert why and "2.4.39" in why and ver in why
+
+
+def test_apache_0211_old_upstream_keeps_possible():
+    inst = {"apache2": "2.4.38-3+deb10u1"}
+    assert usn.release_na_reason(_APACHE_0211, "jammy", inst, "CVE-2019-0211") is None
+
+
+def test_upstream_table_ignored_when_release_tracked_or_other_cve():
+    tracked = {"packages": [{"name": "apache2", "statuses": [
+        {"release_codename": "jammy", "status": "needed", "description": ""}]}]}
+    inst = {"apache2": "2.4.52-1ubuntu4.27"}
+    assert usn.release_na_reason(tracked, "jammy", inst, "CVE-2019-0211") is None
+    assert usn.release_na_reason(_APACHE_0211, "jammy", inst, "CVE-2099-0001") is None

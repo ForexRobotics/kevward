@@ -384,8 +384,25 @@ def _kernel_series(v: str) -> tuple[int, int] | None:
     return int(m.group(1)), int(m.group(2))
 
 
+#: Upstream fix versions for KEV CVEs whose Ubuntu entry never gained a usable
+#: upstream row (``needs-triage``) and does not track newer releases (#62).
+#: CVE -> (Ubuntu source package, first fixed upstream version, product name).
+#: Only consulted when this release is untracked for that package; then an
+#: installed upstream version at or past the fix rules the CVE out.
+UPSTREAM_FIXED: dict[str, tuple[str, str, str]] = {
+    # Apache HTTP Server 2.4.17-2.4.38 scoreboard privilege escalation
+    # ("CARPE (DIEM)"); fixed in 2.4.39. Ubuntu tracks only bionic.
+    "CVE-2019-0211": ("apache2", "2.4.39", "Apache HTTP Server"),
+}
+
+
+def _upstream_part(v: str) -> str:
+    _epoch, rest = _split_epoch(v.strip())
+    return _split_upstream_rev(rest)[0]
+
+
 def release_na_reason(
-    data: dict | None, codename: str, installed: dict[str, str]
+    data: dict | None, codename: str, installed: dict[str, str], cve: str = ""
 ) -> str | None:
     """Why a CVE that ``classify_cve`` left as ``possible`` cannot apply to
     this release, or None. Only two cases, both read from Ubuntu's own data:
@@ -406,12 +423,18 @@ def release_na_reason(
     """
     if not data or not codename:
         return None
+    known = UPSTREAM_FIXED.get((cve or data.get("id") or "").upper())
     for p in data.get("packages") or []:
         name = (p.get("name") or "").strip()
         inst = installed.get(name)
         if not inst:
             continue
         st = _status_for(p, codename)
+        if st is None and known and known[0] == name:
+            up = _upstream_part(inst)
+            if deb_compare(up, known[1]) >= 0:
+                return (f"fixed upstream in {known[2]} {known[1]}; installed {name} "
+                        f"{inst}; {codename} not tracked for this CVE")
         if st is not None:
             if (st.get("status") or "").lower() == "not-affected":
                 desc = (st.get("description") or "").strip()

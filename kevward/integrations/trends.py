@@ -202,7 +202,7 @@ def _applicability(
             continue
         label = usn.classify_cve(data, codename, installed)
         if label == "possible":
-            why = usn.release_na_reason(data, codename, installed)
+            why = usn.release_na_reason(data, codename, installed, e.cve)
             if why:
                 label = "na_release"
                 if reasons is not None:
