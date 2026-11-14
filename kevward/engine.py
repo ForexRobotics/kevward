@@ -16,7 +16,7 @@ from . import __version__
 from .config import Config
 from .model import Finding, FindingKind, ServiceReport, Severity
 from .plugin import load
-from .util import reboot_pending
+from .util import reboot_kind, reboot_pending, reboot_pending_pkgs
 
 
 @dataclass
@@ -32,6 +32,8 @@ class RunResult:
     # The host already asks for a reboot (/run/reboot-required is set), as
     # opposed to "applying the pending updates will need one".
     reboot_pending: bool = False
+    # Packages listed in reboot-required.pkgs (why the reboot is pending).
+    reboot_packages: list[str] = field(default_factory=list)
     # Which config file was used (None = defaults) and why it was unusable.
     config_source: str | None = None
     config_error: str | None = None
@@ -39,6 +41,11 @@ class RunResult:
     @property
     def reboot_required(self) -> bool:
         return self.reboot_pending or any(s.reboot_required for s in self.services)
+
+    @property
+    def reboot_kind(self) -> str:
+        """'kernel' | 'userspace' | '' -- see util.reboot_kind."""
+        return reboot_kind(self.reboot_packages) if self.reboot_pending else ""
 
     @property
     def reboot_status(self) -> str:
@@ -55,6 +62,8 @@ class RunResult:
             "os": self.os,
             "reboot_required": self.reboot_required,
             "reboot_pending": self.reboot_pending,
+            "reboot_packages": self.reboot_packages,
+            "reboot_kind": self.reboot_kind,
             "config_source": self.config_source,
             "config_error": self.config_error,
             "services": [s.to_dict() for s in self.services],
@@ -94,6 +103,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         os=f"{platform.system()} {platform.release()}",
         reboot_pending=reboot_pending(),
+        reboot_packages=reboot_pending_pkgs(),
         config_source=str(cfg.source) if cfg.source else None,
         config_error=cfg.load_error,
     )

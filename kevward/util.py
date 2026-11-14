@@ -63,6 +63,48 @@ def reboot_pending() -> bool:
     )
 
 
+REBOOT_PKGS_FILES = ("/run/reboot-required.pkgs", "/var/run/reboot-required.pkgs")
+
+
+def reboot_pending_pkgs() -> list[str]:
+    """Packages that asked for the pending reboot (``reboot-required.pkgs``),
+    de-duplicated in file order; [] when unknown. Read-only."""
+    for path in REBOOT_PKGS_FILES:
+        try:
+            with open(path) as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        seen: list[str] = []
+        for line in text.splitlines():
+            name = line.strip()
+            if name and name not in seen:
+                seen.append(name)
+        return seen
+    return []
+
+
+def format_pkgs(pkgs: list[str], limit: int = 3) -> str:
+    """'libc6, dbus' / 'a, b, c +2 more' for compact display."""
+    shown = ", ".join(pkgs[:limit])
+    if len(pkgs) > limit:
+        shown += f" +{len(pkgs) - limit} more"
+    return shown
+
+
+def reboot_kind(pkgs: list[str]) -> str:
+    """'kernel' if any package needs a reboot to take effect at all (kernel,
+    firmware, microcode); 'userspace' if only libraries/daemons asked (e.g.
+    libc6: running processes keep the old copy until restarted); '' if unknown.
+    """
+    if not pkgs:
+        return ""
+    for p in pkgs:
+        if p.startswith("linux-") or p.endswith("-microcode"):
+            return "kernel"
+    return "userspace"
+
+
 def pkg_needs_reboot(pkg: str) -> bool:
     """True if upgrading this package implies a reboot: the kernel image or the
     C runtime (glibc).

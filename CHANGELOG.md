@@ -19,6 +19,25 @@
 - **"Public TCP listeners" ignores addresses on the loopback interface**
   (`127.0.0.53%lo`, WSL2's `10.255.255.254`), which are not reachable from
   outside.
+- **Firewall drop window on Ubuntu 22.04.** The report's "firewall drops
+  (since …)" fell back to "since last ruleset load" on jammy: systemd 249
+  rejects `systemctl show --timestamp=unix` (added in 251). kevward now falls
+  back to `ActiveEnterTimestampMonotonic` + the boot time from `/proc/stat`.
+- **Block-set sizes next to the drop counts.** The "firewall drops" line now
+  shows how many entries each set holds (`evidence blocklist 4 (51 entries)`),
+  so a low drop count can be told apart from an emptied set. JSON: new
+  `attackers.firewall_sizes` (needs root; omitted otherwise).
+- **Why a reboot is required (#144).** The header and the "Reboot required"
+  finding name the packages from `reboot-required.pkgs`
+  (`reboot required: YES (libc6)`). When only userspace packages asked
+  (no kernel, firmware or microcode), the finding drops from medium to low:
+  needrestart has already restarted the services. JSON: new
+  `reboot_packages` and `reboot_kind` (`kernel` / `userspace` / `""`).
+- **One row per package update in the HTML report.** A package owned by a
+  service plugin (e.g. `apache2` under `apache`) was also listed by the
+  host-wide `apt` plugin, so one Apache update showed as `high: 6` instead of
+  4. The `apt` duplicate is no longer shown or counted; a note says how many
+  were folded. JSON and `apply` are unchanged.
 
 ## 0.12.10
 
