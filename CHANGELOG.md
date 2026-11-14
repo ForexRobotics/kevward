@@ -9,7 +9,16 @@
   `apply` still installs every package. Security findings link to the Ubuntu
   Security Notices for that source package. **JSON:** findings gain
   `packages` (all binary packages, empty for single-package findings) and
-  `url`; finding counts drop accordingly.
+  `url`; finding counts drop accordingly. In the HTML report a grouped apt
+  row drops the packages a service plugin already lists (0.12.11's
+  de-duplication), e.g. `apache2-data, apache2-utils (2 packages)`.
+
+## 0.12.11
+
+Reports that say why: the reboot reason, block-set sizes, the drop window on
+Ubuntu 22.04, and one row per package update. CI now tests 22.04, 24.04 and
+26.04 explicitly.
+
 - **Release integrity (#115).** GitHub Actions in CI and the publish workflow
   are pinned to full commit SHAs (Dependabot keeps them current) and moved to
   their Node 24 majors; checkouts no longer keep the token on disk.
@@ -27,6 +36,25 @@
 - **"Public TCP listeners" ignores addresses on the loopback interface**
   (`127.0.0.53%lo`, WSL2's `10.255.255.254`), which are not reachable from
   outside.
+- **Firewall drop window on Ubuntu 22.04.** The report's "firewall drops
+  (since …)" fell back to "since last ruleset load" on jammy: systemd 249
+  rejects `systemctl show --timestamp=unix` (added in 251). kevward now falls
+  back to `ActiveEnterTimestampMonotonic` + the boot time from `/proc/stat`.
+- **Block-set sizes next to the drop counts.** The "firewall drops" line now
+  shows how many entries each set holds (`evidence blocklist 4 (51 entries)`),
+  so a low drop count can be told apart from an emptied set. JSON: new
+  `attackers.firewall_sizes` (needs root; omitted otherwise).
+- **Why a reboot is required (#144).** The header and the "Reboot required"
+  finding name the packages from `reboot-required.pkgs`
+  (`reboot required: YES (libc6)`). When only userspace packages asked
+  (no kernel, firmware or microcode), the finding drops from medium to low:
+  needrestart has already restarted the services. JSON: new
+  `reboot_packages` and `reboot_kind` (`kernel` / `userspace` / `""`).
+- **One row per package update in the HTML report.** A package owned by a
+  service plugin (e.g. `apache2` under `apache`) was also listed by the
+  host-wide `apt` plugin, so one Apache update showed as `high: 6` instead of
+  4. The `apt` duplicate is no longer shown or counted; a note says how many
+  were folded. JSON and `apply` are unchanged.
 
 ## 0.12.10
 
