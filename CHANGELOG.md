@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Fewer "possible" KEV rows (#62).** On hokaku (jammy) the 14 of 15 rows
+  that stayed "possible" are now decided from evidence on the host:
+  - Decade-old kernel CVEs (Dirty COW, CVE-2013-2094, ...) become
+    `n/a (release)` when Ubuntu records the upstream fix in an older kernel
+    series than the running one (`fixed upstream in 4.9~rc2, before linux
+    5.15`). Ubuntu's upstream tags like `3.9~rc8` now parse.
+  - Laravel, Ignition, Livewire and PHPMailer rows are decided from every
+    `composer.lock` under the app roots, and node's systeminformation from
+    `package-lock.json` plus global npm modules: `fixed`, `applicable` or
+    `n/a` with the paths and versions as the reason. A WordPress
+    `wp-includes/` (bundled PHPMailer) or a `node_modules/` without a lock
+    file blocks `n/a`.
+  - PHP-FPM CVE-2019-11043 and PHP-CGI CVE-2012-1823 are `n/a (config)` when
+    every installed PHP branch is 7.4+ / 5.5+ (Ubuntu tracks them under
+    php7.x / php5, which never matched a php8.x host).
+  - The reason line reads "why:" for fixed/applicable rows.
 - **apt findings are grouped by source package (#143).** One advisory that
   touches several binary packages (e.g. glibc: libc6, libc-bin, locales, ...)
   is now one finding, `glibc 2.35-0ubuntu3.15 → 2.35-0ubuntu3.18 (6 packages)`,
