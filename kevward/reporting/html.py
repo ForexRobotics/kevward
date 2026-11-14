@@ -14,6 +14,7 @@ from datetime import datetime
 
 from .. import __version__ as _KW_VERSION
 from ..engine import RunResult
+from ..util import format_pkgs
 
 _SEV_COLOR = {
     "critical": "#b4232a",
@@ -79,6 +80,28 @@ def _fw_window(since, generated_at: str) -> str:
     span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
     return f"{label}, {span}"
 
+_PKG_KINDS = ("security_update", "minor_upgrade")
+
+
+def _pkg_key(f) -> tuple | None:
+    """(package, new version) for a package-change finding, else None."""
+    kind = f.kind if isinstance(f.kind, str) else f.kind.value
+    if kind not in _PKG_KINDS or not f.ref:
+        return None
+    return (f.ref, f.fixed_version)
+
+
+def _service_pkg_keys(result: RunResult) -> set:
+    """Package changes reported by a service plugin (anything but "apt")."""
+    return {
+        k
+        for svc in result.services
+        if svc.present and svc.service != "apt"
+        for f in svc.findings
+        if (k := _pkg_key(f)) is not None
+    }
+
+
 def render(result: RunResult) -> str:
     att = result.attackers or {}
     f2b = att.get("fail2ban", {})
@@ -88,10 +111,17 @@ def render(result: RunResult) -> str:
     # --- findings table ---
     sev_counts: dict[str, int] = {}
     rows = []
+    owned = _service_pkg_keys(result)
+    hidden_dupes = 0
     for svc in result.services:
         if not svc.present:
             continue
         for f in svc.findings:
+            if svc.service == "apt" and _pkg_key(f) in owned:
+                # Same package change already listed under its service plugin
+                # (e.g. apache2 under "apache"): show and count it once.
+                hidden_dupes += 1
+                continue
             sev = f.severity if isinstance(f.severity, str) else f.severity.value
             sev_counts[sev] = sev_counts.get(sev, 0) + 1
             kind = f.kind if isinstance(f.kind, str) else f.kind.value
@@ -135,6 +165,11 @@ def render(result: RunResult) -> str:
         f"{n_audit} audit indicator{'s' if n_audit != 1 else ''} "
         f"(see Host compromise indicators)</p>" if n_audit else ""
     )
+    dupe_note = (
+        f"<p class='muted' style='font-size:12px;margin:0 0 6px'>{hidden_dupes} "
+        f"apt row{'s' if hidden_dupes != 1 else ''} not repeated: the same package "
+        f"update is listed under its service (counted once)</p>" if hidden_dupes else ""
+    )
     no_findings = ("No package or config findings (audit indicators are listed "
                    "below)." if n_audit else "No findings.")
 
@@ -165,6 +200,16 @@ def render(result: RunResult) -> str:
     def _fw_pkts(*sets: str) -> int:
         return sum(int(fw[s][0]) for s in sets if s in fw)
 
+    sizes = att.get("firewall_sizes") or {}
+
+    def _fw_size(*sets: str) -> str:
+        """' (51 entries)' when the set sizes are known, else ''."""
+        if not any(s in sizes for s in sets):
+            return ""
+        n = sum(int(sizes.get(s, 0)) for s in sets)
+        return (f" <span style='font-size:12px'>({n:,} "
+                f"entr{'y' if n == 1 else 'ies'})</span>")
+
     fw_line = ""
     if fw:
         evidence = _fw_pkts("blocklist4", "blocklist6")
@@ -173,8 +218,8 @@ def render(result: RunResult) -> str:
         fw_line = (
             "<p class='muted' style='margin-top:0'>firewall drops "
             f"<span style='font-size:12px'>({_fw_window(att.get('firewall_since'), result.generated_at)})</span>: "
-            f"evidence blocklist <b>{evidence:,}</b> · "
-            f"operator CIDR blocks <b>{cidr:,}</b> · "
+            f"evidence blocklist <b>{evidence:,}</b>{_fw_size('blocklist4', 'blocklist6')} · "
+            f"operator CIDR blocks <b>{cidr:,}</b>{_fw_size('blockcidr4', 'blockcidr6')} · "
             f"total <b>{total:,}</b> packets</p>"
         )
 
@@ -314,6 +359,8 @@ def render(result: RunResult) -> str:
     reboot = {"now": "YES", "after-updates": "after pending updates"}.get(
         result.reboot_status, "no"
     )
+    if result.reboot_status == "now" and result.reboot_packages:
+        reboot += f" ({_esc(format_pkgs(result.reboot_packages))})"
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -371,6 +418,7 @@ def render(result: RunResult) -> str:
 
   <section>
     <h2>Findings</h2>
+    {dupe_note}
     <table><thead><tr><th>Sev</th><th>Service</th><th>Kind</th><th>Title</th><th>CVE</th></tr></thead>
     <tbody>{''.join(rows) or f"<tr><td colspan=5 class='muted'>{no_findings}</td></tr>"}</tbody></table>
   </section>

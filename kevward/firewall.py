@@ -323,6 +323,20 @@ def _set_elements(setname: str) -> set[str]:
     return out
 
 
+def set_sizes() -> dict[str, int]:
+    """How many entries each kevward block set holds (read-only, fail-soft).
+
+    Lets the report tell "few drops because few entries / little traffic from
+    them" apart from "the sets were emptied" (e.g. after a failed reload).
+    Empty when nft is unavailable or not root."""
+    if not (nft_available() and is_root()):
+        return {}
+    if not _nft(["list", "table", "inet", TABLE]).ok:
+        return {}
+    return {name: len(_set_elements(name))
+            for name in (SET4, SET6, BLOCKCIDR4, BLOCKCIDR6)}
+
+
 def current_set_ips() -> set[str]:
     """Evidence-based host IPs currently in the TTL'd blocklist (for dedup)."""
     return _set_elements(SET4) | _set_elements(SET6)
@@ -372,6 +386,49 @@ def parse_unit_timestamp(out: str) -> int | None:
     return None
 
 
+def parse_monotonic_timestamp(out: str, btime: int | None) -> int | None:
+    """Epoch seconds from ``systemctl show -p XMonotonic`` output
+    (``X=12345678``, microseconds since boot) and the boot time, or None. Pure.
+
+    ``--timestamp=unix`` only exists in systemd >= 251, so on Ubuntu 22.04
+    (systemd 249) this is the way to get a machine-readable unit timestamp."""
+    if not btime:
+        return None
+    _, _, val = out.strip().partition("=")
+    val = val.strip()
+    if not val.isdigit() or int(val) == 0:
+        return None
+    return btime + int(val) // 1_000_000
+
+
+def _boot_time() -> int | None:
+    """Boot time in epoch seconds from /proc/stat (``btime``), or None."""
+    try:
+        with open("/proc/stat") as fh:
+            for line in fh:
+                if line.startswith("btime "):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _unit_active_since(unit: str) -> int | None:
+    """When ``unit`` last entered the active state (epoch seconds), or None."""
+    r = run(["systemctl", "show", "-p", "ActiveEnterTimestamp",
+             "--timestamp=unix", unit], timeout=10)
+    if r.ok:
+        ts = parse_unit_timestamp(r.out)
+        if ts:
+            return ts
+    # systemd < 251 rejects --timestamp=unix: fall back to the monotonic value.
+    r = run(["systemctl", "show", "-p", "ActiveEnterTimestampMonotonic", unit],
+            timeout=10)
+    if r.ok:
+        return parse_monotonic_timestamp(r.out, _boot_time())
+    return None
+
+
 def counters_since() -> int | None:
     """When kevward's drop counters were last reset (epoch seconds), or None.
 
@@ -386,12 +443,9 @@ def counters_since() -> int | None:
             times.append(int(fh.read().strip()))
     except (OSError, ValueError):
         pass
-    r = run(["systemctl", "show", "-p", "ActiveEnterTimestamp",
-             "--timestamp=unix", PERSIST_UNIT], timeout=10)
-    if r.ok:
-        ts = parse_unit_timestamp(r.out)
-        if ts:
-            times.append(ts)
+    ts = _unit_active_since(PERSIST_UNIT)
+    if ts:
+        times.append(ts)
     return max(times) if times else None
 
 
