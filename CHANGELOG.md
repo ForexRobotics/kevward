@@ -12,6 +12,11 @@
   `url`; finding counts drop accordingly. In the HTML report a grouped apt
   row drops the packages a service plugin already lists (0.12.11's
   de-duplication), e.g. `apache2-data, apache2-utils (2 packages)`.
+- **Cold hosts resolve the KEV table in one run (#66).** Uncached Ubuntu CVE
+  lookups now run 4 at a time (`[trends] fetch_workers`, 1–16), still inside
+  the time budget, and `kevward trends --warm-cache` does one long pass (up to
+  10 min) to fill the cache after install. Exit code 1 if rows are still
+  unchecked or the cache is not writable.
 
 ## 0.12.11
 

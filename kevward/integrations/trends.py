@@ -22,6 +22,7 @@ import json
 import re
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -111,9 +112,50 @@ def term_matches(term: str, vendor: str, product: str) -> bool:
     return word(term, f"{vendor} {product}")
 
 
+#: Concurrent Ubuntu CVE lookups per run (#66). Kernel CVE JSONs are large and
+#: slow (~5s each); a few in parallel lets a cold host converge in one run.
+DEFAULT_FETCH_WORKERS = 4
+
+
+def _prefetch(cves: list[str], deadline: float, workers: int) -> dict[str, dict | None]:
+    """Fetch ``cves`` from Ubuntu concurrently until ``deadline`` (monotonic).
+
+    Each lookup's timeout is capped by the budget left when it starts, and a
+    lookup that would start with under half a second left is skipped, so the
+    whole pass ends within the budget (plus at most one in-flight timeout).
+    Results not back by the deadline are simply absent. Fail-soft.
+    """
+    from . import usn
+
+    def one(cve: str) -> tuple[str, dict | None, bool]:
+        left = deadline - time.monotonic()
+        if left <= 0.5:
+            return cve, None, False
+        return cve, usn.fetch_cve(cve, timeout=min(8.0, left)), True
+
+    out: dict[str, dict | None] = {}
+    if not cves:
+        return out
+    pool = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="kevward-usn")
+    try:
+        futs = [pool.submit(one, c) for c in cves]
+        done, _ = wait(futs, timeout=max(0.0, deadline - time.monotonic()) + 0.5)
+        for f in done:
+            try:
+                cve, data, ran = f.result()
+            except Exception:
+                continue
+            if ran:
+                out[cve] = data
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    return out
+
+
 def _applicability(
     hits: list[KevEntry], max_checks: int, budget_s: float,
     reasons: dict[str, str] | None = None,
+    workers: int = DEFAULT_FETCH_WORKERS,
 ) -> dict[str, str]:
     """Label each name-matched CVE 'applicable' / 'fixed' / 'possible' /
     'unchecked' using the version-aware USN layer.
@@ -126,7 +168,8 @@ def _applicability(
 
     To make results converge rather than depend on network speed:
     - CVEs with a fresh cache entry are classified first (zero network cost);
-    - each fetch's timeout is capped by the remaining budget;
+    - uncached CVEs (up to ``max_checks``) are fetched ``workers`` at a time
+      (#66), each fetch's timeout capped by the remaining budget;
     - once the budget is spent, remaining CVEs fall back to any cached entry,
       however old, before being reported 'unchecked'.
     A 'possible' CVE that Ubuntu's data shows cannot apply to this release
@@ -141,17 +184,17 @@ def _applicability(
         return {}
     labels: dict[str, str] = {}
     order = {"fresh": 0, "stale": 1, "none": 2}
-    queue = sorted(hits, key=lambda e: order[usn.cache_state(e.cve)])  # stable
+    states = {e.cve: usn.cache_state(e.cve) for e in hits}
+    queue = sorted(hits, key=lambda e: order[states[e.cve]])  # stable
     deadline = time.monotonic() + budget_s
-    fetched = 0
+    # Stale before never-cached (queue order), capped by max_checks.
+    to_fetch = [e.cve for e in queue if states[e.cve] != "fresh"][:max(0, max_checks)]
+    fetched = _prefetch(to_fetch, deadline, workers)
     for e in queue:
-        left = deadline - time.monotonic()
-        state = usn.cache_state(e.cve)
-        if state == "fresh":
+        if states[e.cve] == "fresh":
             data = usn.fetch_cve(e.cve)  # served from cache, no network
-        elif left > 0.5 and fetched < max_checks:
-            fetched += 1
-            data = usn.fetch_cve(e.cve, timeout=min(8.0, left))
+        elif fetched.get(e.cve) is not None:
+            data = fetched[e.cve]
         else:
             data = usn.cached_cve(e.cve)
         if data is None:
@@ -174,6 +217,7 @@ def matching_trends(
     version_aware: bool = True,
     max_version_checks: int = 80,
     version_budget_s: float = 45.0,
+    fetch_workers: int = DEFAULT_FETCH_WORKERS,
 ) -> dict:
     """Return KEV entries plausibly relevant to this host, plus summary stats.
 
@@ -205,7 +249,7 @@ def matching_trends(
     if version_aware and hits:
         try:
             labels = _applicability(hits, max_version_checks, version_budget_s,
-                                    reasons=release_na)
+                                    reasons=release_na, workers=fetch_workers)
         except Exception:
             labels = {}  # never let the version layer break a report
         if labels:
