@@ -33,6 +33,11 @@
   (no kernel, firmware or microcode), the finding drops from medium to low:
   needrestart has already restarted the services. JSON: new
   `reboot_packages` and `reboot_kind` (`kernel` / `userspace` / `""`).
+- **One row per package update in the HTML report.** A package owned by a
+  service plugin (e.g. `apache2` under `apache`) was also listed by the
+  host-wide `apt` plugin, so one Apache update showed as `high: 6` instead of
+  4. The `apt` duplicate is no longer shown or counted; a note says how many
+  were folded. JSON and `apply` are unchanged.
 
 ## 0.12.10
 

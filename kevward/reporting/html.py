@@ -80,6 +80,28 @@ def _fw_window(since, generated_at: str) -> str:
     span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
     return f"{label}, {span}"
 
+_PKG_KINDS = ("security_update", "minor_upgrade")
+
+
+def _pkg_key(f) -> tuple | None:
+    """(package, new version) for a package-change finding, else None."""
+    kind = f.kind if isinstance(f.kind, str) else f.kind.value
+    if kind not in _PKG_KINDS or not f.ref:
+        return None
+    return (f.ref, f.fixed_version)
+
+
+def _service_pkg_keys(result: RunResult) -> set:
+    """Package changes reported by a service plugin (anything but "apt")."""
+    return {
+        k
+        for svc in result.services
+        if svc.present and svc.service != "apt"
+        for f in svc.findings
+        if (k := _pkg_key(f)) is not None
+    }
+
+
 def render(result: RunResult) -> str:
     att = result.attackers or {}
     f2b = att.get("fail2ban", {})
@@ -89,10 +111,17 @@ def render(result: RunResult) -> str:
     # --- findings table ---
     sev_counts: dict[str, int] = {}
     rows = []
+    owned = _service_pkg_keys(result)
+    hidden_dupes = 0
     for svc in result.services:
         if not svc.present:
             continue
         for f in svc.findings:
+            if svc.service == "apt" and _pkg_key(f) in owned:
+                # Same package change already listed under its service plugin
+                # (e.g. apache2 under "apache"): show and count it once.
+                hidden_dupes += 1
+                continue
             sev = f.severity if isinstance(f.severity, str) else f.severity.value
             sev_counts[sev] = sev_counts.get(sev, 0) + 1
             kind = f.kind if isinstance(f.kind, str) else f.kind.value
@@ -135,6 +164,11 @@ def render(result: RunResult) -> str:
         f"<p class='muted' style='font-size:12px;margin:6px 0 0'>counts include "
         f"{n_audit} audit indicator{'s' if n_audit != 1 else ''} "
         f"(see Host compromise indicators)</p>" if n_audit else ""
+    )
+    dupe_note = (
+        f"<p class='muted' style='font-size:12px;margin:0 0 6px'>{hidden_dupes} "
+        f"apt row{'s' if hidden_dupes != 1 else ''} not repeated: the same package "
+        f"update is listed under its service (counted once)</p>" if hidden_dupes else ""
     )
     no_findings = ("No package or config findings (audit indicators are listed "
                    "below)." if n_audit else "No findings.")
@@ -380,6 +414,7 @@ def render(result: RunResult) -> str:
 
   <section>
     <h2>Findings</h2>
+    {dupe_note}
     <table><thead><tr><th>Sev</th><th>Service</th><th>Kind</th><th>Title</th><th>CVE</th></tr></thead>
     <tbody>{''.join(rows) or f"<tr><td colspan=5 class='muted'>{no_findings}</td></tr>"}</tbody></table>
   </section>
