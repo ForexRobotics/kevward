@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The publish workflow runs on `ubuntu-24.04` instead of `ubuntu-latest`,
+  like CI, so a runner-label change cannot alter the release build.
+
 ## 0.13.0
 
 Signal accuracy: the KEV table and the findings list now say what there is to
