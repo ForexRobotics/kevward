@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Processes still running replaced code.** The apt check now reads
+  `/proc/*/maps` and reports units whose processes still execute a library or
+  binary that an update has replaced on disk (e.g. `sshd` on the pre-update
+  `libssl.so.3` after a USN), with the restart that fixes each one
+  (`systemctl restart ssh`, `daemon-reexec` for PID 1, re-login for
+  sessions). Medium when a service still maps an old TLS library, low
+  otherwise. Catches what `reboot required: no` misses when needrestart did
+  not restart everything. Read-only; as non-root only the caller's own
+  processes are checked and the finding says so. Containers (other mount
+  namespaces) are skipped.
 - The publish workflow runs on `ubuntu-24.04` instead of `ubuntu-latest`,
   like CI, so a runner-label change cannot alter the release build.
 
