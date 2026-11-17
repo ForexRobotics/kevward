@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Release tags are created automatically (#88).** Merging a
+  `release/X.Y.Z` pull request runs `release-tag.yml`: it checks that the
+  branch name, `pyproject.toml`, `kevward/__init__.py` and a `## X.Y.Z`
+  CHANGELOG section agree, tags the merge commit `vX.Y.Z` (never an existing
+  tag) and starts `publish.yml` on it. Tagging by hand still works.
 - **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
   `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
   as "unexpected outbound" every run; they are counted in one `allowed
