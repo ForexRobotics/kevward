@@ -9,9 +9,15 @@ here runs unless the caller explicitly asks and policy permits it.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 
 from .util import have, is_root, run
+
+#: Where systemd-logind keeps a pending `shutdown -r HH:MM` (USEC=, MODE=).
+#: Readable without root. `shutdown --show` would be simpler, but it only
+#: exists from systemd 250 and Ubuntu 22.04 ships 249 (#114).
+SCHEDULED_FILE = "/run/systemd/shutdown/scheduled"
 
 
 def _next_window(now: datetime, hhmm: str) -> datetime:
@@ -22,33 +28,110 @@ def _next_window(now: datetime, hhmm: str) -> datetime:
     return target
 
 
-def schedule_reboot(window_start: str, message: str = "kevward maintenance") -> str:
+def schedule_reboot(window_start: str,
+                    message: str = "kevward maintenance") -> tuple[bool, str]:
     """Schedule a reboot at the next occurrence of ``window_start`` (HH:MM).
 
-    Returns a human-readable description of what was scheduled. Requires root.
+    Returns ``(ok, human-readable message)``. Requires root.
     """
     if not is_root():
-        return "skipped: scheduling a reboot requires root"
+        return False, "skipped: scheduling a reboot requires root"
     if not have("shutdown"):
-        return "skipped: `shutdown` not available"
+        return False, "skipped: `shutdown` not available"
     now = datetime.now()
     target = _next_window(now, window_start)
     # shutdown accepts an absolute HH:MM.
     res = run(["shutdown", "-r", target.strftime("%H:%M"), message])
     if res.ok:
-        return f"reboot scheduled for {target:%Y-%m-%d %H:%M} local"
-    return f"failed to schedule reboot: {res.err.strip() or res.out.strip()}"
+        return True, f"reboot scheduled for {target:%Y-%m-%d %H:%M} local"
+    return False, f"failed to schedule reboot: {res.err.strip() or res.out.strip()}"
 
 
-def cancel_reboot() -> str:
+def cancel_reboot() -> tuple[bool, str]:
+    """Cancel a pending scheduled shutdown/reboot (``shutdown -c``)."""
     if not is_root():
-        return "skipped: requires root"
+        return False, "skipped: cancelling a reboot requires root"
+    if not have("shutdown"):
+        return False, "skipped: `shutdown` not available"
+    before = scheduled_reboot()
     res = run(["shutdown", "-c"])
-    return "pending reboot cancelled" if res.ok else f"nothing to cancel: {res.err.strip()}"
+    if not res.ok:
+        return False, f"failed to cancel: {res.err.strip() or res.out.strip()}"
+    if before.get("state") == "none":
+        return True, "nothing was scheduled"
+    return True, "scheduled reboot cancelled"
 
 
-def reboot_now(message: str = "kevward immediate reboot") -> str:
-    if not is_root():
-        return "skipped: requires root"
-    res = run(["shutdown", "-r", "+1", message])
-    return "reboot in 1 minute" if res.ok else f"failed: {res.err.strip()}"
+def parse_scheduled(text: str) -> tuple[datetime, str] | None:
+    """``(when (UTC), mode)`` from logind's scheduled file, or None. Pure.
+
+    The file holds ``USEC=<realtime microseconds>`` and ``MODE=reboot`` (or
+    poweroff/halt/...).
+    """
+    fields = dict(
+        line.split("=", 1) for line in (text or "").splitlines() if "=" in line
+    )
+    usec = fields.get("USEC", "").strip()
+    if not usec.isdigit() or int(usec) == 0:
+        return None
+    when = datetime.fromtimestamp(int(usec) / 1_000_000, tz=timezone.utc)
+    return when, (fields.get("MODE", "").strip() or "reboot")
+
+
+def parse_busctl_scheduled(text: str) -> tuple[datetime, str] | None:
+    """Parse ``busctl get-property ... ScheduledShutdown``: ``(st) "reboot" 1731...``."""
+    m = re.search(r'"([^"]*)"\s+(\d+)', text or "")
+    if not m or int(m.group(2)) == 0:
+        return None
+    when = datetime.fromtimestamp(int(m.group(2)) / 1_000_000, tz=timezone.utc)
+    return when, (m.group(1) or "reboot")
+
+
+def scheduled_reboot(path: str | None = None) -> dict:
+    """Whether a shutdown/reboot is scheduled. Read-only, fail-soft.
+
+    Returns ``{"state": "scheduled", "at": <ISO 8601 UTC>, "mode": "reboot"}``,
+    ``{"state": "none"}``, or ``{"state": "unknown"}`` when neither the file
+    nor logind could be read.
+    """
+    p = path or SCHEDULED_FILE
+    try:
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            got = parse_scheduled(fh.read())
+        if got is None:
+            return {"state": "none"}
+        return {"state": "scheduled", "at": got[0].isoformat(), "mode": got[1]}
+    except FileNotFoundError:
+        if path is not None:
+            return {"state": "none"}
+    except OSError:
+        pass
+    if have("busctl"):
+        r = run(["busctl", "get-property", "org.freedesktop.login1",
+                 "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+                 "ScheduledShutdown"], timeout=10)
+        if r.ok:
+            got = parse_busctl_scheduled(r.out)
+            if got is None:
+                return {"state": "none"}
+            return {"state": "scheduled", "at": got[0].isoformat(), "mode": got[1]}
+    # No file and no logind answer: on a systemd host a missing file means
+    # nothing is scheduled.
+    return {"state": "none"} if path is None and _systemd_host() else {"state": "unknown"}
+
+
+def _systemd_host() -> bool:
+    import os
+    return os.path.isdir("/run/systemd/system")
+
+
+def describe(st: dict) -> str:
+    """``2026-11-13 21:00 JST (reboot)``, ``none`` or ``unknown``."""
+    if st.get("state") != "scheduled":
+        return st.get("state") or "unknown"
+    try:
+        when = datetime.fromisoformat(st["at"]).astimezone()
+    except (KeyError, ValueError):
+        return "unknown"
+    mode = st.get("mode") or "reboot"
+    return f"{when:%Y-%m-%d %H:%M %Z}" + ("" if mode == "reboot" else f" ({mode})")
