@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **audit: password logins that should be impossible (#87).** A `sshd ...
+  Accepted password for <user>` in the auth logs is HIGH when sshd has
+  `PasswordAuthentication no` or the account's password is locked (`!`/`*` in
+  /etc/shadow; hashes are never read out). `keyboard-interactive/pam` is
+  flagged only for locked accounts (PAM may run OTP). This is the shape of
+  auth-bypass bugs like SSHole (CVE-2026-123158). One finding per user and
+  source IP, with the count and the last log line.
 - **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
   `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
   as "unexpected outbound" every run; they are counted in one `allowed
