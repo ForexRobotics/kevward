@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
+  `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
+  as "unexpected outbound" every run; they are counted in one `allowed
+  outbound: N (tor:9001)` line (CLI, HTML; JSON `audit_allowed_outbound`). A
+  shell-owned socket is always reported. Malformed or too-broad entries
+  (`*:*`) are ignored with a LOW audit finding.
 - **Processes still running replaced code.** The apt check now reads
   `/proc/*/maps` and reports units whose processes still execute a library or
   binary that an update has replaced on disk (e.g. `sshd` on the pre-update

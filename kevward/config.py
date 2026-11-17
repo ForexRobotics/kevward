@@ -86,6 +86,11 @@ class AuditConfig:
     # and expected (e.g. your own report-collection key). Matching keys are not
     # reported; any other forced-command key still is.
     allowed_forced_commands: list[str] = field(default_factory=list)
+    # Expected outbound connections, e.g. ["tor:9001"] (#155). Format:
+    # "<process glob>:<port glob>" with an optional "@<cidr>". Matching
+    # connections are not listed as "unexpected outbound" (only counted);
+    # a shell-owned socket is always reported.
+    allowed_outbound: list[str] = field(default_factory=list)
 
 
 @dataclass

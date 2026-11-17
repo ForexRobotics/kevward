@@ -141,6 +141,16 @@ def _without_owned(f, owned: set):
     return replace(f, packages=left, ref=left[0], title=title)
 
 
+def _allowed_note(result: RunResult) -> str:
+    """One line for outbound connections silenced by [audit] allowed_outbound."""
+    from ..audit import allowed_summary
+    line = allowed_summary(getattr(result, "audit_allowed_outbound", None))
+    if not line:
+        return ""
+    return (f"<p class='muted' style='font-size:12px'>{_esc(line)} — "
+            "matched <code>[audit] allowed_outbound</code></p>")
+
+
 def render(result: RunResult) -> str:
     att = result.attackers or {}
     f2b = att.get("fail2ban", {})
@@ -197,7 +207,7 @@ def render(result: RunResult) -> str:
     flag <em>possible</em> indicators to review, not confirmed compromise; run as
     root for full visibility.</p>
     <table><thead><tr><th>Sev</th><th>Indicator</th><th>Detail</th></tr></thead>
-    <tbody>{audit_rows or "<tr><td colspan=3 class='muted'>No compromise indicators found.</td></tr>"}</tbody></table>
+    <tbody>{audit_rows or "<tr><td colspan=3 class='muted'>No compromise indicators found.</td></tr>"}</tbody></table>{_allowed_note(result)}
   </section>"""
 
     # Audit indicators are counted in the chips too; say so, or a header of
