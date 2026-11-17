@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Which PHP-FPM is actually served (#85).** nginx now reports one INFO
+  listing what each server block serves (`hokaku.example.jp -> root
+  /var/www/.../public; PHP 8.3 FPM`), parsed from `nginx -T` (which follows
+  the sites-enabled symlinks `grep -r` missed). The php plugin checks every
+  running `phpX.Y-fpm`, not just the CLI: an end-of-life branch is MEDIUM
+  (near: LOW) with its package origin (Ubuntu archive or a PPA such as
+  ondrej/php); running FPMs no nginx/Apache config references are listed as
+  INFO; and an in-use FPM that `apt autoremove` would remove is MEDIUM, with
+  the `apt-mark manual` command. Read-only; without root (no `nginx -T`) the
+  unused/autoremove checks are skipped rather than guessed. PHP 8.5 added to
+  the EOL table.
 - **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
   `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
   as "unexpected outbound" every run; they are counted in one `allowed
