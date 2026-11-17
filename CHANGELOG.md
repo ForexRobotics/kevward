@@ -7,6 +7,19 @@
   branch name, `pyproject.toml`, `kevward/__init__.py` and a `## X.Y.Z`
   CHANGELOG section agree, tags the merge commit `vX.Y.Z` (never an existing
   tag) and starts `publish.yml` on it. Tagging by hand still works.
+- **See whether a reboot is scheduled (#114).** The report header shows
+  `reboot scheduled: 2026-11-13 21:00 JST` (or `none`), read from logind's
+  `/run/systemd/shutdown/scheduled` (works on systemd 249 / 22.04), with
+  `busctl` as a fallback. JSON gains `reboot_scheduled` (ISO 8601 or null) and
+  `reboot_schedule_state`. New `schedule-reboot --status` (read-only, `--json`)
+  and `--cancel` (`shutdown -c`, root). Scheduling or cancelling that fails now
+  exits 1, as does `apply --reboot` when the reboot could not be scheduled.
+  The unused `scheduler.reboot_now()` was removed.
+- **`npm audit` now actually audits each project (#154).** It ran in kevward's
+  own working directory, so every Node.js project looked clean. It now runs
+  inside the project (`util.run(..., cwd=)`), and an npm error or unreadable
+  output shows as an INFO "npm audit could not run ... (not checked)" instead
+  of no findings.
 - **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
   `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
   as "unexpected outbound" every run; they are counted in one `allowed
