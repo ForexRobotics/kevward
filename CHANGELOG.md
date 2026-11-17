@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`npm audit` now actually audits each project (#154).** It ran in kevward's
+  own working directory, so every Node.js project looked clean. It now runs
+  inside the project (`util.run(..., cwd=)`), and an npm error or unreadable
+  output shows as an INFO "npm audit could not run ... (not checked)" instead
+  of no findings.
 - **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
   `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
   as "unexpected outbound" every run; they are counted in one `allowed

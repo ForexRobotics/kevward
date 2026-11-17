@@ -103,21 +103,47 @@ class NodejsPlugin(ServicePlugin):
     def _npm_audit(self, proj: Path) -> list[Finding]:
         if not have("npm") or not (proj / "package-lock.json").is_file():
             return []
-        res = run(["npm", "audit", "--json"], timeout=120)
-        try:
-            data = json.loads(res.out or res.err)
-        except (json.JSONDecodeError, ValueError):
-            return []
-        out: list[Finding] = []
-        for name, vuln in (data.get("vulnerabilities") or {}).items():
-            sev = _SEV_MAP.get((vuln.get("severity") or "").lower(), Severity.MEDIUM)
-            out.append(
-                Finding(
-                    service=f"npm:{proj.name}",
-                    kind=FindingKind.VULNERABILITY,
-                    severity=sev,
-                    title=f"{name}: {vuln.get('severity')} severity advisory",
-                    detail=f"range: {vuln.get('range', '?')} (in {proj})",
-                )
+        # Run inside the project: without cwd npm audited kevward's own working
+        # directory and every project looked clean (#154).
+        res = run(["npm", "audit", "--json"], timeout=120, cwd=proj)
+        return npm_audit_findings(proj, res.out or res.err)
+
+
+def npm_audit_findings(proj: Path, text: str) -> list[Finding]:
+    """Findings from ``npm audit --json`` output for ``proj``. Pure.
+
+    An error object or unreadable output becomes one INFO "not audited"
+    finding instead of looking like "no vulnerabilities".
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        data = None
+    if not isinstance(data, dict) or "error" in data:
+        err = data.get("error") if isinstance(data, dict) else None
+        if isinstance(err, dict):
+            why = err.get("summary") or err.get("code") or "npm error"
+        else:
+            why = (text or "no output").strip().splitlines()[0][:120] if text else "no output"
+        return [
+            Finding(
+                service=f"npm:{proj.name}",
+                kind=FindingKind.CONFIG,
+                severity=Severity.INFO,
+                title=f"npm audit could not run for {proj.name} (not checked)",
+                detail=f"{proj}: {str(why)[:200]}",
             )
-        return out
+        ]
+    out: list[Finding] = []
+    for name, vuln in (data.get("vulnerabilities") or {}).items():
+        sev = _SEV_MAP.get((vuln.get("severity") or "").lower(), Severity.MEDIUM)
+        out.append(
+            Finding(
+                service=f"npm:{proj.name}",
+                kind=FindingKind.VULNERABILITY,
+                severity=sev,
+                title=f"{name}: {vuln.get('severity')} severity advisory",
+                detail=f"range: {vuln.get('range', '?')} (in {proj})",
+            )
+        )
+    return out
