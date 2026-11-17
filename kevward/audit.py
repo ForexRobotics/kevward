@@ -47,6 +47,7 @@ import glob
 import ipaddress
 import os
 import re
+from dataclasses import dataclass
 
 from .model import Finding, FindingKind, Severity
 from .util import have, is_root, run
@@ -238,6 +239,66 @@ def _split_hostport(addr: str) -> tuple[str | None, int | None]:
     return host or None, int(port)
 
 
+@dataclass(frozen=True)
+class OutboundRule:
+    """One ``[audit] allowed_outbound`` entry: ``proc:port`` or ``proc:port@cidr``."""
+
+    text: str
+    proc: str
+    port: str
+    net: ipaddress.IPv4Network | ipaddress.IPv6Network | None = None
+
+    def matches(self, proc: str, host: str, port: int | None) -> bool:
+        # An unknown process ("" / "?", e.g. a non-root run) only matches "*".
+        if not proc or proc == "?":
+            if self.proc != "*":
+                return False
+        elif not fnmatch.fnmatchcase(proc, self.proc):
+            return False
+        if port is None or not fnmatch.fnmatchcase(str(port), self.port):
+            return False
+        if self.net is not None:
+            try:
+                return ipaddress.ip_address(host) in self.net
+            except ValueError:
+                return False
+        return True
+
+
+def parse_outbound_allow(patterns: list[str] | None) -> tuple[list[OutboundRule], list[str]]:
+    """Parse ``[audit] allowed_outbound`` (#155) into rules and error messages.
+
+    ``<process glob>:<port glob>[@<CIDR>]``, e.g. ``tor:9001``,
+    ``node-exporter:*``, ``*:5222@203.0.113.0/24``. A ``*`` process is only
+    accepted with a concrete port or a CIDR, so ``*:*`` cannot silence every
+    outbound connection. Pure.
+    """
+    rules: list[OutboundRule] = []
+    errors: list[str] = []
+    for raw in patterns or []:
+        text = str(raw).strip()
+        spec, _, cidr = text.partition("@")
+        proc, sep, port = spec.rpartition(":")
+        if not sep or not proc or not port or any(c.isspace() for c in spec):
+            errors.append(f"{text!r}: expected <process>:<port>[@<cidr>]")
+            continue
+        if not re.fullmatch(r"[0-9*?\[\]-]+", port):
+            errors.append(f"{text!r}: port must be a number or glob")
+            continue
+        net = None
+        if cidr:
+            try:
+                net = ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                errors.append(f"{text!r}: invalid CIDR {cidr!r}")
+                continue
+        if proc == "*" and set(port) <= {"*"} and net is None:
+            errors.append(f"{text!r}: too broad (give a port or a CIDR)")
+            continue
+        rules.append(OutboundRule(text, proc, port, net))
+    return rules, errors
+
+
 def _proc_of(ss_line: str) -> str:
     m = re.search(r'\(\("([^"]+)",pid=\d+', ss_line)
     return m.group(1) if m else ""
@@ -281,10 +342,17 @@ def check_reverse_ssh() -> list[Finding]:
     return out
 
 
-def check_connections(max_info: int = 15) -> list[Finding]:
+def check_connections(max_info: int = 15,
+                      allow: list[OutboundRule] | None = None,
+                      hits: dict[str, int] | None = None) -> list[Finding]:
     """Established outbound + listeners via ``ss``. Inbound to our own listening
-    ports is skipped (it is not a foothold signal)."""
+    ports is skipped (it is not a foothold signal).
+
+    ``allow`` (``[audit] allowed_outbound``, #155) silences the INFO
+    "unexpected outbound" rows it matches and counts them in ``hits`` (rule
+    text -> connections). It never silences a shell-owned socket."""
     out: list[Finding] = []
+    allow = allow or []
     r = run(["ss", "-tnap"], timeout=20)
     if not r.ok:
         return out
@@ -322,7 +390,14 @@ def check_connections(max_info: int = 15) -> list[Finding]:
             out.append(_f(Severity.HIGH,
                           f"possible reverse shell: {proc or '?'} -> {phost}:{pport}",
                           detail=line.strip()[:200]))
-        elif pport not in _WELL_KNOWN_OUT and info_count < max_info:
+        elif pport not in _WELL_KNOWN_OUT:
+            rule = next((a for a in allow if a.matches(proc, phost, pport)), None)
+            if rule is not None:
+                if hits is not None:
+                    hits[rule.text] = hits.get(rule.text, 0) + 1
+                continue
+            if info_count >= max_info:
+                continue
             info_count += 1
             out.append(_f(Severity.INFO,
                           f"unexpected outbound: {proc or '?'} -> {phost}:{pport}",
@@ -881,13 +956,33 @@ def _check_user_units() -> list[Finding]:
     return out
 
 
-def audit(allow_forced: list[str] | None = None) -> list[Finding]:
-    findings = (check_reverse_ssh() + check_connections()
+def audit(allow_forced: list[str] | None = None,
+          allowed_outbound: list[str] | None = None,
+          notes: dict | None = None) -> list[Finding]:
+    """Run every check. ``notes``, when given, receives
+    ``allowed_outbound_hits`` (rule -> connections it silenced, #155)."""
+    rules, errors = parse_outbound_allow(allowed_outbound)
+    hits: dict[str, int] = {}
+    bad = [_f(Severity.LOW, f"[audit] allowed_outbound: ignored entry {e}")
+           for e in errors]
+    findings = (bad + check_reverse_ssh() + check_connections(allow=rules, hits=hits)
                 + check_persistence(allow_forced)
                 + _check_proc_origin() + _check_pkg_integrity()
                 + _check_accounts() + _check_suid())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
+    if notes is not None:
+        notes["allowed_outbound_hits"] = hits
     return findings
+
+
+def allowed_summary(hits: dict[str, int] | None) -> str:
+    """``allowed outbound: 2 (tor:9001)`` or "" when nothing was allowed."""
+    if not hits:
+        return ""
+    total = sum(hits.values())
+    rules = ", ".join(f"{k} ×{v}" if v > 1 and len(hits) > 1 else k
+                      for k, v in sorted(hits.items()))
+    return f"allowed outbound: {total} ({rules})"
 
 
 # --------------------------------------------------------------------------- #
@@ -904,14 +999,19 @@ def _print_findings(findings: list[Finding]) -> None:
             print(f"            {f.detail}")
 
 
-def run_cli(use_json: bool, allow_forced: list[str] | None = None) -> int:
-    findings = audit(allow_forced)
+def run_cli(use_json: bool, allow_forced: list[str] | None = None,
+            allowed_outbound: list[str] | None = None) -> int:
+    notes: dict = {}
+    findings = audit(allow_forced, allowed_outbound, notes)
     if use_json:
         import json
         print(json.dumps([f.to_dict() for f in findings], indent=2,
                          ensure_ascii=False))
     else:
         _print_findings(findings)
+        line = allowed_summary(notes.get("allowed_outbound_hits"))
+        if line:
+            print(f"  ({line} — [audit] allowed_outbound)")
         if not is_root():
             print("note: run with sudo for full visibility into other users' "
                   "processes, sockets and files.")

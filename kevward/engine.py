@@ -29,6 +29,8 @@ class RunResult:
     # Host compromise indicators (`kevward audit`). None = not run; [] = run,
     # nothing found; a list = indicators to review. Set by `report --audit`.
     audit: list[Finding] | None = None
+    # [audit] allowed_outbound matches: rule -> connections silenced (#155).
+    audit_allowed_outbound: dict[str, int] = field(default_factory=dict)
     # The host already asks for a reboot (/run/reboot-required is set), as
     # opposed to "applying the pending updates will need one".
     reboot_pending: bool = False
@@ -69,6 +71,7 @@ class RunResult:
             "services": [s.to_dict() for s in self.services],
             "attackers": self.attackers,
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
+            "audit_allowed_outbound": self.audit_allowed_outbound,
         }
 
     def to_json(self, indent: int = 2) -> str:

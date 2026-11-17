@@ -265,6 +265,14 @@ be listed in `[audit] allowed_forced_commands` (globs on the `command="..."`
 value) so they stop showing up as indicators; any other forced command
 is still reported.
 
+Likewise, outbound connections a service makes every day on purpose (a Tor
+client to port 9001, a metrics agent) can be listed in
+`[audit] allowed_outbound` as `"<process>:<port>"`, optionally
+`"<process>:<port>@<cidr>"`. They are then summarised as one
+`allowed outbound: N` line instead of an "unexpected outbound" row each run.
+A shell or interpreter with an outbound socket (possible reverse shell) is
+reported regardless.
+
 To fold the audit into your daily HTML report (so one page shows posture,
 attackers *and* intrusion indicators), add `--audit` to `report`:
 

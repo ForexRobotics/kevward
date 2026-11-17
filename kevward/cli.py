@@ -251,7 +251,10 @@ def _cmd_report(args) -> Path:
             pass  # a version notice must never break a report
     if args.audit:
         from . import audit as ad
-        result.audit = ad.audit(cfg.audit.allowed_forced_commands)
+        notes: dict = {}
+        result.audit = ad.audit(cfg.audit.allowed_forced_commands,
+                                cfg.audit.allowed_outbound, notes)
+        result.audit_allowed_outbound = notes.get("allowed_outbound_hits") or {}
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -369,7 +372,8 @@ def cmd_audit(args) -> int:
     from . import audit as ad
     cfg = _mkconfig(args)
     return ad.run_cli(use_json=args.json,
-                      allow_forced=cfg.audit.allowed_forced_commands)
+                      allow_forced=cfg.audit.allowed_forced_commands,
+                      allowed_outbound=cfg.audit.allowed_outbound)
 
 
 def cmd_list_plugins(args) -> int:
