@@ -348,11 +348,26 @@ or raise `[trends] version_budget_s` / `max_version_checks` /
 
 ## Scheduling
 
-Install the units in `systemd/`:
+Let kevward manage the daily report timer:
 
 ```bash
-sudo cp systemd/kevward-report.* /etc/systemd/system/
-sudo systemctl enable --now kevward-report.timer    # daily read-only report
+kevward schedule install                         # DRY RUN: show the units
+sudo kevward schedule install --yes              # daily 07:00 + up to 20 min
+sudo kevward schedule install --yes --at 06:30 --jitter 30min
+kevward schedule status                          # schedule, delay, next/last run
+sudo kevward schedule uninstall --yes            # remove only what install wrote
+```
+
+`install` creates `kevward-report.service` / `.timer` only if they do not exist,
+and always writes the schedule to `kevward-report.timer.d/50-kevward.conf`, so
+a hand-edited unit is kept. The random delay is fixed per host
+(`FixedRandomDelay=yes`), which keeps several hosts from querying
+ubuntu.com and CISA at the same second. `status` warns when the timer has no
+random delay or is not managed by kevward.
+
+The weekly patching timer stays opt-in and manual:
+
+```bash
 # Only after you trust it:
 sudo cp systemd/kevward-apply.* /etc/systemd/system/
 sudo systemctl enable --now kevward-apply.timer      # weekly security patching
