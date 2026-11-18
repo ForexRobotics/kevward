@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.1
 
 - **audit: password logins from before password auth was turned off are no
   longer HIGH (#165).** The #87 check compared old auth-log lines with
