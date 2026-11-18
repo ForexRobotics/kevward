@@ -10,6 +10,7 @@ Subcommands:
   report           Write an HTML posture report (+ attacker IPs, + trends, + audit).
   trends           Show actively-exploited CVEs (CISA KEV) relevant to this host.
   schedule-reboot  Schedule a reboot in the maintenance window.
+  schedule         Install / inspect / remove the daily report timer.
   firewall         Manage an nftables blocklist of attacker IPs (local host).
   harden           Host hardening checks + reversible interim mitigations.
   audit            Read-only scan for host compromise indicators (local host).
@@ -347,6 +348,42 @@ def cmd_schedule_reboot(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_schedule(args) -> int:
+    from . import schedule as sch
+    if args.action == "status":
+        props, warns = sch.status()
+        if args.json:
+            import json
+            print(json.dumps({"timer": props, "warnings": warns}, indent=2))
+            return 0
+        if props:
+            print(f"timer:        {sch.TIMER} ({props.get('UnitFileState') or '?'}, "
+                  f"{props.get('ActiveState') or '?'})")
+            print(f"schedule:     {sch.calendar_of(props.get('TimersCalendar', ''))}")
+            print(f"random delay: {props.get('RandomizedDelayUSec') or '0'}"
+                  f" (fixed per host: {props.get('FixedRandomDelay') or '?'})")
+            print(f"next run:     {props.get('NextElapseUSecRealtime') or '-'}")
+            print(f"last run:     {props.get('LastTriggerUSec') or '-'}"
+                  f" (result: {props.get('ServiceResult') or '?'})")
+            print(f"drop-in:      {props.get('dropin') or 'none'}")
+        for w in warns:
+            print(f"warning: {w}")
+        return 0
+    _mkconfig(args, side_effects=args.yes)
+    if args.action == "install":
+        ok, msgs = sch.install(args.at, args.jitter, dry_run=not args.yes)
+    else:
+        if not args.yes:
+            print("DRY RUN (pass --yes to uninstall): would disable the timer if kevward "
+                  "created it, and remove the 50-kevward.conf drop-in and any unit files "
+                  f"listed in {sch.STATE_FILE}")
+            return 0
+        ok, msgs = sch.uninstall()
+    for m in msgs:
+        print(m)
+    return 0 if ok else 1
+
+
 def cmd_firewall(args) -> int:
     cfg = _mkconfig(args, side_effects=args.action in ("apply", "flush") and args.yes)
     from . import firewall as fw
@@ -446,6 +483,16 @@ def build_parser() -> argparse.ArgumentParser:
     srg.add_argument("--cancel", action="store_true",
                      help="cancel a scheduled reboot (shutdown -c; needs root)")
     sr.set_defaults(func=cmd_schedule_reboot)
+
+    sc = sub.add_parser("schedule", help="install / inspect / remove the daily report timer")
+    _add_common(sc)
+    sc.add_argument("action", choices=["install", "status", "uninstall"])
+    sc.add_argument("--at", default="07:00", help="daily time, HH:MM local (install)")
+    sc.add_argument("--jitter", default="20min",
+                    help="random delay, fixed per host (install; e.g. 20min, 900s)")
+    sc.add_argument("--yes", action="store_true",
+                    help="actually write/remove units (otherwise a dry run)")
+    sc.set_defaults(func=cmd_schedule)
 
     fw = sub.add_parser(
         "firewall",

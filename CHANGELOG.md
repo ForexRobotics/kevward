@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **`kevward schedule` manages the daily report timer (#69).** `install
+  [--at 07:00] [--jitter 20min] --yes` writes the service and timer only if
+  missing and puts the schedule in a `50-kevward.conf` drop-in
+  (`RandomizedDelaySec`, `FixedRandomDelay=yes`), then enables and restarts
+  the timer; without `--yes` it is a dry run. `status` shows the effective
+  schedule, delay and next/last run and warns about a timer with no random
+  delay. `uninstall --yes` removes only what `install` created. Hand-edited
+  units and other drop-ins are never overwritten or removed.
 - **audit: password logins that should be impossible (#87).** A `sshd ...
   Accepted password for <user>` in the auth logs is HIGH when sshd has
   `PasswordAuthentication no` or the account's password is locked (`!`/`*` in
