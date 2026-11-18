@@ -36,6 +36,9 @@ class RunResult:
     reboot_pending: bool = False
     # Packages listed in reboot-required.pkgs (why the reboot is pending).
     reboot_packages: list[str] = field(default_factory=list)
+    # A shutdown/reboot already scheduled with logind (#114):
+    # {"state": "scheduled"|"none"|"unknown", "at": ISO UTC, "mode": ...}.
+    reboot_schedule: dict = field(default_factory=lambda: {"state": "unknown"})
     # Which config file was used (None = defaults) and why it was unusable.
     config_source: str | None = None
     config_error: str | None = None
@@ -66,6 +69,9 @@ class RunResult:
             "reboot_pending": self.reboot_pending,
             "reboot_packages": self.reboot_packages,
             "reboot_kind": self.reboot_kind,
+            "reboot_scheduled": (self.reboot_schedule.get("at")
+                                 if self.reboot_schedule.get("state") == "scheduled" else None),
+            "reboot_schedule_state": self.reboot_schedule.get("state", "unknown"),
             "config_source": self.config_source,
             "config_error": self.config_error,
             "services": [s.to_dict() for s in self.services],
@@ -98,6 +104,14 @@ def config_error_report(cfg: Config) -> ServiceReport:
     )
 
 
+def _reboot_schedule() -> dict:
+    try:
+        from .scheduler import scheduled_reboot
+        return scheduled_reboot()
+    except Exception:
+        return {"state": "unknown"}
+
+
 def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
     only = cfg.policy.services or None
     plugins = load(only)
@@ -107,6 +121,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         os=f"{platform.system()} {platform.release()}",
         reboot_pending=reboot_pending(),
         reboot_packages=reboot_pending_pkgs(),
+        reboot_schedule=_reboot_schedule(),
         config_source=str(cfg.source) if cfg.source else None,
         config_error=cfg.load_error,
     )

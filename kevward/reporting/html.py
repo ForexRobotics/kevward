@@ -414,6 +414,9 @@ def render(result: RunResult) -> str:
     )
     if result.reboot_status == "now" and result.reboot_packages:
         reboot += f" ({_esc(format_pkgs(result.reboot_packages))})"
+    from ..scheduler import describe as _describe_schedule
+    sched = getattr(result, "reboot_schedule", None) or {"state": "unknown"}
+    sched_cell = f"reboot scheduled: <b>{_esc(_describe_schedule(sched))}</b>"
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -462,7 +465,7 @@ def render(result: RunResult) -> str:
 <body><div class="wrap">
   <header>
     <h1>kevward — {_esc(result.host)}</h1>
-    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · kevward {_KW_VERSION} · {config_cell}</p>
+    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · {sched_cell} · kevward {_KW_VERSION} · {config_cell}</p>
     <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
     {audit_note}
   </header>
