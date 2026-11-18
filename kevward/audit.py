@@ -744,9 +744,31 @@ _ACCEPTED_PW = re.compile(
 )
 
 
+def password_off_since(files: list[tuple[str, float, str]]) -> tuple[float, str] | None:
+    """When ``PasswordAuthentication no`` was configured, as (mtime, path). Pure.
+
+    ``files`` are (path, mtime, text) for sshd_config and sshd_config.d/*.conf.
+    The earliest mtime among files with an active ``PasswordAuthentication no``
+    line is used: a later edit of that file only makes the cutoff later, never
+    earlier, so a login after the setting took effect is never excused by an
+    old timestamp. File mtime is a proxy for "when it was set" (#87 follow-up).
+    """
+    best: tuple[float, str] | None = None
+    for path, mtime, text in files:
+        for ln in text.splitlines():
+            parts = ln.split("#", 1)[0].split()
+            if len(parts) >= 2 and parts[0].lower() == "passwordauthentication" \
+                    and parts[1].lower() == "no":
+                if best is None or mtime < best[0]:
+                    best = (mtime, path)
+                break
+    return best
+
+
 def accepted_password_logins(
     lines, locked: set[str], password_auth_disabled: bool | None,
-) -> list[tuple[str, str, str, int, str]]:
+    off_since: float | None = None, now=None,
+) -> list[tuple[str, str, str, int, str, bool]]:
     """Password logins that should be impossible on this host (#87). Pure.
 
     Flags ``Accepted password`` when sshd has ``PasswordAuthentication no``
@@ -755,9 +777,20 @@ def accepted_password_logins(
     means authentication succeeded by a path that should not exist, the shape
     of auth-bypass bugs like SSHole (CVE-2026-123158).
 
-    Returns ``(user, source ip, method, count, last line)`` per user/source.
+    ``off_since`` (epoch seconds, see ``password_off_since``): a password
+    login logged *before* PasswordAuthentication was turned off is not a
+    bypass, e.g. a host's initial setup (www2, 2026-10-25). Such lines are
+    returned with ``before=True``; locked-account logins are never excused,
+    and a line whose time cannot be read counts as after.
+
+    Returns ``(user, source ip, method, count, last line, before)`` per
+    user/source/method/before.
     """
-    seen: dict[tuple[str, str, str], list] = {}
+    from datetime import datetime
+
+    from .integrations.logwatch import parse_log_time
+    now = now or datetime.now().astimezone()
+    seen: dict[tuple[str, str, str, bool], list] = {}
     for line in lines:
         m = _ACCEPTED_PW.search(line)
         if not m:
@@ -766,13 +799,30 @@ def accepted_password_logins(
         bad = user in locked or (method == "password" and password_auth_disabled is True)
         if not bad:
             continue
-        key = (user, ip, method)
+        before = False
+        if off_since is not None and user not in locked:
+            ts = parse_log_time(line, now)
+            before = ts is not None and ts.timestamp() < off_since
+        key = (user, ip, method, before)
         if key in seen:
             seen[key][0] += 1
             seen[key][1] = line.strip()
         else:
             seen[key] = [1, line.strip()]
-    return [(u, ip, meth, n, last) for (u, ip, meth), (n, last) in seen.items()]
+    return [(u, ip, meth, n, last, before)
+            for (u, ip, meth, before), (n, last) in seen.items()]
+
+
+def _sshd_config_files() -> list[tuple[str, float, str]]:
+    out: list[tuple[str, float, str]] = []
+    for path in ["/etc/ssh/sshd_config", *sorted(glob.glob("/etc/ssh/sshd_config.d/*.conf"))]:
+        try:
+            st = os.stat(path)
+            with open(path, errors="replace") as fh:
+                out.append((path, st.st_mtime, fh.read()))
+        except OSError:
+            continue
+    return out
 
 
 def _check_accepted_password(log_glob: str = "/var/log/auth.log*") -> list[Finding]:
@@ -788,9 +838,22 @@ def _check_accepted_password(log_glob: str = "/var/log/auth.log*") -> list[Findi
     disabled = None if pa is None else pa == "no"
     if not locked and disabled is not True:
         return []  # nothing could rule a password login out
+    since = password_off_since(_sshd_config_files()) if disabled else None
     out: list[Finding] = []
-    for user, ip, method, n, last in accepted_password_logins(
-            _iter_lines(log_glob), locked, disabled):
+    for user, ip, method, n, last, before in accepted_password_logins(
+            _iter_lines(log_glob), locked, disabled,
+            off_since=since[0] if since else None):
+        if before and since:
+            from datetime import datetime
+            when = datetime.fromtimestamp(since[0]).astimezone()
+            out.append(_f(Severity.INFO,
+                          f"ssh {method} login for {user} from {ip} before password "
+                          f"logins were turned off ({n}x)",
+                          detail=f"last: {last[:200]} — PasswordAuthentication no is set in "
+                                 f"{since[1]} (file changed {when:%Y-%m-%d %H:%M %Z}); "
+                                 "these logins predate it, e.g. initial setup. "
+                                 "Confirm the source address is yours."))
+            continue
         why = ("its password is locked" if user in locked
                else "sshd has PasswordAuthentication no")
         out.append(_f(Severity.HIGH,
