@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **audit: password logins that should be impossible (#87).** A `sshd ...
+  Accepted password for <user>` in the auth logs is HIGH when sshd has
+  `PasswordAuthentication no` or the account's password is locked (`!`/`*` in
+  /etc/shadow; hashes are never read out). `keyboard-interactive/pam` is
+  flagged only for locked accounts (PAM may run OTP). This is the shape of
+  auth-bypass bugs like SSHole (CVE-2026-123158). One finding per user and
+  source IP, with the count and the last log line.
 - **Release tags are created automatically (#88).** Merging a
   `release/X.Y.Z` pull request runs `release-tag.yml`: it checks that the
   branch name, `pyproject.toml`, `kevward/__init__.py` and a `## X.Y.Z`
