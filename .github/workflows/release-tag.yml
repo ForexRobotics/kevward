@@ -1,0 +1,80 @@
+name: Tag release
+
+# When a release/X.Y.Z pull request is merged into main (#88):
+#   1. check that the branch name, pyproject.toml, kevward/__init__.py and a
+#      "## X.Y.Z" CHANGELOG section all agree,
+#   2. create the annotated tag vX.Y.Z on the merge commit (fails if it exists),
+#   3. start publish.yml on that tag.
+#
+# Step 3 uses workflow_dispatch because a tag pushed with GITHUB_TOKEN does not
+# trigger other workflows. A dispatched run of publish.yml on refs/tags/vX.Y.Z
+# is the same as a tag push: the `pypi` environment (v* tags only) and PyPI
+# Trusted Publishing (workflow = publish.yml) both see the tag. workflow_call
+# would run with the caller's ref (main) and be rejected by both.
+#
+# Tagging by hand still works: publish.yml keeps its `push: tags` trigger.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # push the tag
+      actions: write    # dispatch publish.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Check versions agree
+        id: ver
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          BRANCH_VER="${HEAD_REF#release/}"
+          PY_VER="$(python3 -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          INIT_VER="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' kevward/__init__.py)"
+          echo "branch=$BRANCH_VER pyproject=$PY_VER __init__=$INIT_VER"
+          if [ "$BRANCH_VER" != "$PY_VER" ] || [ "$PY_VER" != "$INIT_VER" ]; then
+            echo "::error::version mismatch: branch $BRANCH_VER, pyproject $PY_VER, __init__ $INIT_VER"
+            exit 1
+          fi
+          if ! grep -qx "## $PY_VER" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $PY_VER' section"
+            exit 1
+          fi
+          echo "version=$PY_VER" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push the tag
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag $TAG already exists"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "kevward $VERSION" "$SHA"
+          git push origin "refs/tags/$TAG"
+          echo "tagged $TAG at $SHA"
+
+      - name: Start publish.yml on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "v$VERSION"

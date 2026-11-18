@@ -56,6 +56,11 @@ Release hygiene on the repository side:
 - release tags (`v*`) cannot be deleted or moved;
 - `main` only changes through pull requests that pass CI;
 - workflow actions are pinned to full commit SHAs.
+- release tags are created by the `release-tag.yml` workflow when a
+  `release/X.Y.Z` pull request is merged, only after the branch name,
+  `pyproject.toml`, `kevward/__init__.py` and the CHANGELOG all say `X.Y.Z`;
+- PyPI uploads come only from the `pypi` environment, which accepts `v*` tags
+  only.
 
 ## Supported versions
 
