@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
-from ..util import run
+from . import _webserve as ws
 from ._apt import AptServicePlugin
 
 
@@ -25,10 +25,21 @@ class NginxPlugin(AptServicePlugin):
 
     def _config_checks(self) -> list[Finding]:
         out: list[Finding] = []
-        res = run(["nginx", "-T"], timeout=30)
-        if not res.ok:
+        conf = ws.nginx_dump()  # `nginx -T`, shared with the php plugin (#85)
+        if conf is None:
             return out
-        conf = res.out
+        servers, upstreams = ws.parse_nginx_t(conf)
+        served = ws.served_summary(servers, upstreams)
+        if served:
+            out.append(
+                Finding(
+                    service=self.name,
+                    kind=FindingKind.CONFIG,
+                    severity=Severity.INFO,
+                    title=f"nginx serves {len(served)} site(s)",
+                    detail="; ".join(served)[:1000],
+                )
+            )
         if "server_tokens off" not in conf:
             out.append(
                 Finding(
