@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **audit: password logins from before password auth was turned off are no
+  longer HIGH (#165).** The #87 check compared old auth-log lines with
+  today's sshd setting, so a host's initial-setup logins (www2, 2026-10-25,
+  15 minutes before `PasswordAuthentication no` was written) showed as a
+  possible bypass. Logins older than the earliest sshd config file with an
+  active `PasswordAuthentication no` are now INFO, naming that file and its
+  change time; later ones stay HIGH, and locked-account logins are never
+  excused.
+
 ## 0.14.0
 
 Runs without me: releases tag and publish themselves, the report timer and
