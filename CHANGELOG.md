@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
+
+Runs without me: releases tag and publish themselves, the report timer and
+scheduled reboots are managed and visible from kevward, and several checks
+that silently said "fine" now report what they could not check. Plus new
+audit signals (impossible password logins, expected-outbound allowlist) and
+which PHP-FPM is really serving the site.
 
 - **Which PHP-FPM is actually served (#85).** nginx now reports one INFO
   listing what each server block serves (`hokaku.example.jp -> root
