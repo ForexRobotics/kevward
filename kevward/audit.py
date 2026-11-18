@@ -727,6 +727,80 @@ def classify_shadow_line(line: str) -> str | None:
     return name if pw == "" else None
 
 
+def locked_accounts(shadow_text: str) -> set[str]:
+    """Accounts whose ``/etc/shadow`` password is locked or unset (``!...``,
+    ``*``, ``!!``). Pure; never returns or keeps the hash itself."""
+    out: set[str] = set()
+    for ln in shadow_text.splitlines():
+        parts = ln.split(":")
+        if len(parts) >= 2 and parts[1][:1] in ("!", "*"):
+            out.add(parts[0])
+    return out
+
+
+_ACCEPTED_PW = re.compile(
+    r"sshd\[\d+\]: Accepted (password|keyboard-interactive/pam) for "
+    r"(?:invalid user )?(\S+) from (\S+) port \d+"
+)
+
+
+def accepted_password_logins(
+    lines, locked: set[str], password_auth_disabled: bool | None,
+) -> list[tuple[str, str, str, int, str]]:
+    """Password logins that should be impossible on this host (#87). Pure.
+
+    Flags ``Accepted password`` when sshd has ``PasswordAuthentication no``
+    or the account's password is locked, and ``Accepted keyboard-interactive/pam``
+    only for a locked account (PAM may legitimately run OTP there). Such a line
+    means authentication succeeded by a path that should not exist, the shape
+    of auth-bypass bugs like SSHole (CVE-2026-123158).
+
+    Returns ``(user, source ip, method, count, last line)`` per user/source.
+    """
+    seen: dict[tuple[str, str, str], list] = {}
+    for line in lines:
+        m = _ACCEPTED_PW.search(line)
+        if not m:
+            continue
+        method, user, ip = m.group(1), m.group(2), m.group(3)
+        bad = user in locked or (method == "password" and password_auth_disabled is True)
+        if not bad:
+            continue
+        key = (user, ip, method)
+        if key in seen:
+            seen[key][0] += 1
+            seen[key][1] = line.strip()
+        else:
+            seen[key] = [1, line.strip()]
+    return [(u, ip, meth, n, last) for (u, ip, meth), (n, last) in seen.items()]
+
+
+def _check_accepted_password(log_glob: str = "/var/log/auth.log*") -> list[Finding]:
+    """HIGH for each password login the host's own settings rule out (#87)."""
+    from .integrations.conditions import _read_sshd_t
+    from .integrations.logwatch import _iter_lines
+    try:
+        with open("/etc/shadow", errors="replace") as fh:
+            locked = locked_accounts(fh.read())
+    except OSError:
+        locked = set()  # not root: rely on sshd -T alone
+    pa = _read_sshd_t().get("passwordauthentication")
+    disabled = None if pa is None else pa == "no"
+    if not locked and disabled is not True:
+        return []  # nothing could rule a password login out
+    out: list[Finding] = []
+    for user, ip, method, n, last in accepted_password_logins(
+            _iter_lines(log_glob), locked, disabled):
+        why = ("its password is locked" if user in locked
+               else "sshd has PasswordAuthentication no")
+        out.append(_f(Severity.HIGH,
+                      f"ssh {method} login accepted for {user} from {ip}, but {why} "
+                      f"({n}x)",
+                      detail=f"last: {last[:200]} — possible authentication bypass; "
+                             "investigate this session and the sshd build"))
+    return out
+
+
 def classify_sudoers_line(line: str) -> str | None:
     """Flag a passwordless-to-everything sudoers grant. Kept narrow (only
     ``NOPASSWD: ALL``) so ordinary ``user ALL=(ALL) ALL`` does not fire."""
@@ -968,7 +1042,7 @@ def audit(allow_forced: list[str] | None = None,
     findings = (bad + check_reverse_ssh() + check_connections(allow=rules, hits=hits)
                 + check_persistence(allow_forced)
                 + _check_proc_origin() + _check_pkg_integrity()
-                + _check_accounts() + _check_suid())
+                + _check_accounts() + _check_accepted_password() + _check_suid())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
     if notes is not None:
         notes["allowed_outbound_hits"] = hits

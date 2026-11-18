@@ -22,11 +22,13 @@ class Cmd:
         return self.rc == 0
 
 
-def run(args: list[str], timeout: int = 120, input_: str | None = None) -> Cmd:
+def run(args: list[str], timeout: int = 120, input_: str | None = None,
+        cwd: str | os.PathLike | None = None) -> Cmd:
     """Run a command, capturing output. Never raises on non-zero exit.
 
     Commands are always passed as an argv list (never a shell string), so there
-    is no shell interpolation of any value.
+    is no shell interpolation of any value. ``cwd`` sets the working directory
+    (e.g. a project for ``npm audit``, #154).
     """
     try:
         p = subprocess.run(
@@ -35,11 +37,16 @@ def run(args: list[str], timeout: int = 120, input_: str | None = None) -> Cmd:
             text=True,
             timeout=timeout,
             input=input_,
+            cwd=cwd,
             check=False,
         )
         return Cmd(p.returncode, p.stdout or "", p.stderr or "")
     except FileNotFoundError:
+        if cwd is not None and not os.path.isdir(cwd):
+            return Cmd(127, "", f"working directory not found: {cwd}")
         return Cmd(127, "", f"command not found: {args[0]}")
+    except NotADirectoryError:
+        return Cmd(127, "", f"working directory is not a directory: {cwd}")
     except subprocess.TimeoutExpired:
         return Cmd(124, "", f"timed out after {timeout}s: {' '.join(args)}")
 

@@ -10,6 +10,31 @@
   schedule, delay and next/last run and warns about a timer with no random
   delay. `uninstall --yes` removes only what `install` created. Hand-edited
   units and other drop-ins are never overwritten or removed.
+- **audit: password logins that should be impossible (#87).** A `sshd ...
+  Accepted password for <user>` in the auth logs is HIGH when sshd has
+  `PasswordAuthentication no` or the account's password is locked (`!`/`*` in
+  /etc/shadow; hashes are never read out). `keyboard-interactive/pam` is
+  flagged only for locked accounts (PAM may run OTP). This is the shape of
+  auth-bypass bugs like SSHole (CVE-2026-123158). One finding per user and
+  source IP, with the count and the last log line.
+- **Release tags are created automatically (#88).** Merging a
+  `release/X.Y.Z` pull request runs `release-tag.yml`: it checks that the
+  branch name, `pyproject.toml`, `kevward/__init__.py` and a `## X.Y.Z`
+  CHANGELOG section agree, tags the merge commit `vX.Y.Z` (never an existing
+  tag) and starts `publish.yml` on it. Tagging by hand still works.
+- **See whether a reboot is scheduled (#114).** The report header shows
+  `reboot scheduled: 2026-11-13 21:00 JST` (or `none`), read from logind's
+  `/run/systemd/shutdown/scheduled` (works on systemd 249 / 22.04), with
+  `busctl` as a fallback. JSON gains `reboot_scheduled` (ISO 8601 or null) and
+  `reboot_schedule_state`. New `schedule-reboot --status` (read-only, `--json`)
+  and `--cancel` (`shutdown -c`, root). Scheduling or cancelling that fails now
+  exits 1, as does `apply --reboot` when the reboot could not be scheduled.
+  The unused `scheduler.reboot_now()` was removed.
+- **`npm audit` now actually audits each project (#154).** It ran in kevward's
+  own working directory, so every Node.js project looked clean. It now runs
+  inside the project (`util.run(..., cwd=)`), and an npm error or unreadable
+  output shows as an INFO "npm audit could not run ... (not checked)" instead
+  of no findings.
 - **`[audit] allowed_outbound` (#155).** Expected outbound connections, e.g.
   `["tor:9001"]` (`<process glob>:<port glob>[@<cidr>]`), are no longer listed
   as "unexpected outbound" every run; they are counted in one `allowed

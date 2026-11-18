@@ -77,7 +77,8 @@ def test_parse_rejects_malformed_and_too_broad():
 def test_audit_reports_bad_entries_and_fills_notes(monkeypatch):
     monkeypatch.setattr(ad, "run", lambda *a, **k: Cmd(0, SS, ""))
     for name in ("check_reverse_ssh", "check_persistence", "_check_proc_origin",
-                 "_check_pkg_integrity", "_check_accounts", "_check_suid"):
+                 "_check_pkg_integrity", "_check_accounts", "_check_suid",
+                 "_check_accepted_password"):
         monkeypatch.setattr(ad, name, lambda *a, **k: [])
     notes: dict = {}
     fs = ad.audit(None, ["tor:9001", "*:*"], notes)

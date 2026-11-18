@@ -180,7 +180,10 @@ def cmd_apply(args) -> int:
     if result.reboot_required:
         if cfg.policy.allow_reboot and args.reboot and not dry:
             from .scheduler import schedule_reboot
-            print(schedule_reboot(cfg.policy.reboot_window_start))
+            ok, msg = schedule_reboot(cfg.policy.reboot_window_start)
+            print(msg)
+            if not ok:
+                failed = True
         else:
             print("\nreboot required (not scheduled; use schedule-reboot or --reboot "
                   "with allow_reboot=true)")
@@ -320,13 +323,29 @@ def cmd_trends(args) -> int:
 
 
 def cmd_schedule_reboot(args) -> int:
+    from . import scheduler
+    if args.status:
+        # Read-only: never needs root or policy.
+        st = scheduler.scheduled_reboot()
+        if args.json:
+            import json
+            print(json.dumps(st))
+        else:
+            print(f"reboot scheduled: {scheduler.describe(st)}")
+        return 0
     cfg = _mkconfig(args, side_effects=True)
+    if args.cancel:
+        # Cancelling is never harmful, so policy.allow_reboot is not required;
+        # an unreadable config still refuses (side_effects=True above).
+        ok, msg = scheduler.cancel_reboot()
+        print(msg)
+        return 0 if ok else 1
     if not cfg.policy.allow_reboot:
         print("refused: policy.allow_reboot is false. Set it to true to permit reboots.")
         return 2
-    from .scheduler import schedule_reboot
-    print(schedule_reboot(args.window or cfg.policy.reboot_window_start))
-    return 0
+    ok, msg = scheduler.schedule_reboot(args.window or cfg.policy.reboot_window_start)
+    print(msg)
+    return 0 if ok else 1
 
 
 def cmd_schedule(args) -> int:
@@ -458,6 +477,11 @@ def build_parser() -> argparse.ArgumentParser:
     sr = sub.add_parser("schedule-reboot", help="schedule a maintenance-window reboot")
     _add_common(sr)
     sr.add_argument("--window", help="HH:MM local time")
+    srg = sr.add_mutually_exclusive_group()
+    srg.add_argument("--status", action="store_true",
+                     help="show whether a reboot is scheduled (read-only)")
+    srg.add_argument("--cancel", action="store_true",
+                     help="cancel a scheduled reboot (shutdown -c; needs root)")
     sr.set_defaults(func=cmd_schedule_reboot)
 
     sc = sub.add_parser("schedule", help="install / inspect / remove the daily report timer")

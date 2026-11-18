@@ -111,6 +111,8 @@ kevward apply                 # DRY RUN: show what would be patched
 sudo kevward apply --yes      # actually apply security updates
 sudo kevward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot
 sudo kevward schedule-reboot --window 04:00
+kevward schedule-reboot --status    # is a reboot scheduled? (read-only)
+sudo kevward schedule-reboot --cancel
 kevward firewall plan         # DRY RUN: attacker IPs that would be blocked
 kevward harden check          # kernel/sysctl/exposure posture (read-only)
 sudo kevward audit            # read-only scan for host compromise indicators
