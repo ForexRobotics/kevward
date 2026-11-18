@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Release tags are created automatically (#88).** Merging a
+  `release/X.Y.Z` pull request runs `release-tag.yml`: it checks that the
+  branch name, `pyproject.toml`, `kevward/__init__.py` and a `## X.Y.Z`
+  CHANGELOG section agree, tags the merge commit `vX.Y.Z` (never an existing
+  tag) and starts `publish.yml` on it. Tagging by hand still works.
 - **See whether a reboot is scheduled (#114).** The report header shows
   `reboot scheduled: 2026-11-13 21:00 JST` (or `none`), read from logind's
   `/run/systemd/shutdown/scheduled` (works on systemd 249 / 22.04), with
