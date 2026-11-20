@@ -336,6 +336,21 @@ Reports include an INFO finding when a newer kevward release is on PyPI
 (looked up once a day, read-only — kevward never upgrades itself). Turn it
 off on air-gapped hosts with `[update] check = false`.
 
+PHP from a third-party repository such as the ondrej/php PPA arrives from an
+apt origin without "security" in its name. When such a PHP upgrade is pending,
+kevward checks php.net's release data (cached 12 h) and reports it as a HIGH
+security update, applied by `apply`, if a release in between is a PHP security
+release; if php.net cannot be reached it stays a minor upgrade marked
+"security status unchecked". `[apt] php_release_check = false` turns the lookup
+off; `[apt] security_origins = ["LP-PPA-ondrej-php"]` treats every update from
+a named origin as security.
+
+`apply` runs `apt-get` non-interactively (keeping locally modified config
+files, as unattended-upgrades does), shows its output as it goes, and allows
+it an hour (`[apt] install_timeout_s`). If it fails or times out, kevward runs
+`dpkg --audit` and tells you whether `sudo dpkg --configure -a` is needed
+before rebooting.
+
 The KEV table's version check is time-boxed (45 s, 80 lookups per run, 4 at a
 time) so the daily report stays fast; CVEs it could not reach show as *not
 checked* and resolve over later runs from the cache. On a new host, or one

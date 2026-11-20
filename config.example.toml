@@ -77,6 +77,21 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # fetch_workers = 4
 
 # --------------------------------------------------------------------------- #
+# apt: how pending updates are classified and installed
+[apt]
+# Updates from these apt origins count as security updates (HIGH, applied by
+# `apply` with apply_security). Globs against the origin name, e.g. the
+# ondrej/php PPA. Empty by default.
+# security_origins = ["LP-PPA-ondrej-php"]
+# Ask php.net (cached 12h) whether a pending PHP upgrade from a non-security
+# origin (ondrej/php PPA, sury) is a PHP security release; if so it is
+# reported and applied as a security update. false for air-gapped hosts.
+# php_release_check = true
+# Time limit for `apt-get install` during `apply`, in seconds (0 = none).
+# A kernel install can take minutes on a small VPS. Clamped to 0 or 300..86400.
+# install_timeout_s = 3600
+
+# --------------------------------------------------------------------------- #
 # Newer-release notice (read-only: kevward never upgrades itself)
 # --------------------------------------------------------------------------- #
 [update]

@@ -72,6 +72,9 @@ class Finding:
     packages: list[str] = field(default_factory=list)
     # A web page with the advisories for this finding (e.g. Ubuntu notices).
     url: str | None = None
+    # apt origin of a pending package update, e.g. "Ubuntu:24.04/noble-security"
+    # or "LP-PPA-ondrej-php:22.04/jammy" (#169). None for non-apt findings.
+    origin: str | None = None
 
     @property
     def refs(self) -> list[str]:
