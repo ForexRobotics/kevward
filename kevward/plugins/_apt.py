@@ -17,12 +17,35 @@ Concrete plugins typically only declare ``name``, ``packages`` and
 
 from __future__ import annotations
 
+import fnmatch
 import re
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 from ..model import ActionResult, Finding, FindingKind, Severity
 from ..plugin import ServicePlugin
-from ..util import have, is_root, pkg_needs_reboot, run
+from ..util import have, is_root, pkg_needs_reboot, run, run_stream
+
+
+@dataclass
+class AptSettings:
+    """``[apt]`` config, set once per run by the engine (``configure``)."""
+
+    # apt origins whose updates count as security updates (#169), matched as
+    # globs against the origin name (the part before ":"), e.g.
+    # "LP-PPA-ondrej-php". Empty by default: nothing changes silently.
+    security_origins: list[str] = field(default_factory=list)
+    # Ask php.net whether a pending PHP upgrade is a security release (#169).
+    php_release_check: bool = True
+    # Wall-clock limit for `apt-get install` in apply (#170); 0 = no limit.
+    install_timeout_s: int = 3600
+
+
+SETTINGS = AptSettings()
+
+
+def configure(settings: AptSettings) -> None:
+    global SETTINGS
+    SETTINGS = settings
 
 # Lines from `apt-get -s upgrade` look like:
 #   Inst nginx [1.24.0-1] (1.24.0-2ubuntu1 Ubuntu:24.04/noble-security [amd64])
@@ -54,6 +77,45 @@ def parse_inst(text: str) -> list[dict]:
     return out
 
 
+def origin_names(origin: str) -> list[str]:
+    """'Ubuntu:22.04/jammy-updates, LP-PPA-ondrej-php:22.04/jammy [amd64]'
+    -> ['Ubuntu', 'LP-PPA-ondrej-php']. Pure."""
+    text = re.sub(r"\s*\[[^\]]*\]\s*$", "", origin or "")
+    return [part.strip().split(":", 1)[0] for part in text.split(",") if part.strip()]
+
+
+def clean_origin(origin: str) -> str:
+    """Origin without the trailing ``[arch]``. Pure."""
+    return re.sub(r"\s*\[[^\]]*\]\s*$", "", origin or "").strip()
+
+
+def classify_changes(changes: list[dict], security_origins: list[str],
+                     php_check: bool, php_fetch=None) -> list[dict]:
+    """Second pass over ``parse_inst`` results (#169).
+
+    ``parse_inst`` treats only origins containing "security" (Ubuntu's
+    -security pockets) as security. Here, updates from an origin listed in
+    ``[apt] security_origins`` become security updates, and pending PHP
+    upgrades are checked against php.net's security releases. Mutates and
+    returns ``changes``.
+    """
+    pats = [p for p in security_origins if p]
+    for c in changes:
+        if c["security"] or not pats:
+            continue
+        names = origin_names(c["origin"])
+        hit = next((p for p in pats for n in names if fnmatch.fnmatchcase(n, p)), None)
+        if hit:
+            c["security"] = True
+            c["security_why"] = (f"origin {names[0]} matches [apt] security_origins "
+                                 f"({hit!r})")
+    if php_check:
+        from ..integrations import php_releases
+
+        php_releases.classify(changes, **({"fetch": php_fetch} if php_fetch else {}))
+    return changes
+
+
 def merge_kept_back(upgrade: list[dict], full: list[dict]) -> list[dict]:
     """Add upgrades that ``apt-get upgrade`` keeps back but a full upgrade does.
 
@@ -79,7 +141,8 @@ def _simulate_upgrade() -> list[dict]:
     run(["apt-get", "update", "-qq"], timeout=180)
     upgrade = parse_inst(run(["apt-get", "-s", "upgrade"], timeout=180).out)
     full = parse_inst(run(["apt-get", "-s", "dist-upgrade"], timeout=180).out)
-    return merge_kept_back(upgrade, full)
+    return classify_changes(merge_kept_back(upgrade, full),
+                            SETTINGS.security_origins, SETTINGS.php_release_check)
 
 
 # Kernel metapackages: upgrading them installs a new kernel image.
@@ -95,7 +158,11 @@ def change_finding(service: str, change: dict) -> Finding:
     security = change["security"]
     kept = change.get("kept_back", False)
     title = f"{change['pkg']} {change['cur']} → {change['new']}"
-    detail = f"origin: {change['origin'].strip()}"
+    detail = f"origin: {clean_origin(change['origin'])}"
+    if change.get("security_why"):
+        detail += f"; security update because {change['security_why']}"
+    elif change.get("security_unchecked"):
+        detail += f"; {change['security_unchecked']}"
     if kept:
         title += " (kept back)"
         detail += (
@@ -125,6 +192,8 @@ def change_finding(service: str, change: dict) -> Finding:
         # Only the kernel image (incl. its metapackages) and glibc imply a reboot.
         reboot_required=reboot,
         ref=change["pkg"],
+        url=change.get("url"),
+        origin=clean_origin(change["origin"]) or None,
     )
 
 
@@ -185,7 +254,7 @@ def group_findings(
         singles = [change_finding(service, c) for c in members]
         if len(singles) == 1:
             f = singles[0]
-            if security:
+            if security and not f.url:
                 f = replace(f, url=notices_url(src, codename))
             out.append(f)
             continue
@@ -198,6 +267,8 @@ def group_findings(
             if len(cur) == 1 and len(new) == 1
             else "→ " + ", ".join(sorted(new))
         )
+        origins = sorted({f.origin for f in singles if f.origin})
+        own_url = next((c["url"] for c in members if c.get("url")), None)
         title = f"{src} {span} ({len(pkgs)} packages)"
         if kept:
             title += " (kept back)"
@@ -214,7 +285,8 @@ def group_findings(
                 reboot_required=any(f.reboot_required for f in singles),
                 ref=pkgs[0],
                 packages=pkgs,
-                url=notices_url(src, codename) if security else None,
+                url=own_url or (notices_url(src, codename) if security else None),
+                origin=", ".join(origins) or None,
             )
         )
     return out
@@ -272,16 +344,41 @@ class AptServicePlugin(ServicePlugin):
         # --only-upgrade never installs the *named* packages afresh, but still
         # pulls in new dependencies (e.g. the new kernel for a kept-back
         # linux-generic).
-        env_args = ["apt-get", "install", "-y", "--only-upgrade", *pkgs]
-        res = run(env_args, timeout=600)
+        # Non-interactive like unattended-upgrades: keep locally modified
+        # conffiles instead of waiting on a prompt nobody can see (#170).
+        args = ["apt-get", "install", "-y", "--only-upgrade",
+                "-o", "Dpkg::Options::=--force-confdef",
+                "-o", "Dpkg::Options::=--force-confold", *pkgs]
         reboot = any(f.reboot_required for f in findings)
-        return [
-            ActionResult(
-                self.name,
-                desc,
-                changed=res.ok,
-                ok=res.ok,
-                output=(res.out[-2000:] if res.ok else res.err[-2000:]),
-                reboot_required=reboot,
-            )
-        ]
+        print(f"[{self.name}] running apt-get install for {len(pkgs)} package(s); "
+              "a kernel can take several minutes...", flush=True)
+        res = run_stream(args, timeout=SETTINGS.install_timeout_s or None,
+                         env={"DEBIAN_FRONTEND": "noninteractive"},
+                         prefix=f"  [{self.name}] ")
+        if res.ok:
+            return [ActionResult(self.name, desc, changed=True, ok=True,
+                                 output=res.out[-2000:], reboot_required=reboot)]
+        audit = run(["dpkg", "--audit"], timeout=60)
+        summary = failure_summary(res.rc, SETTINGS.install_timeout_s, audit.out,
+                                  kernel=any(_KERNEL_META.match(p) for p in pkgs))
+        return [ActionResult(self.name, desc, changed=False, ok=False,
+                             output=summary + "\n" + (res.err or res.out)[-2000:],
+                             reboot_required=reboot)]
+
+
+def failure_summary(rc: int, timeout_s: int, dpkg_audit: str, kernel: bool) -> str:
+    """First line shown for a failed install, with what to do next (#170). Pure.
+
+    ``dpkg_audit`` is the output of ``dpkg --audit``: empty means every
+    package is fully installed and configured.
+    """
+    what = (f"apt-get timed out after {timeout_s}s and was stopped" if rc == 124
+            else f"apt-get failed (exit {rc})")
+    if dpkg_audit.strip():
+        n = sum(1 for ln in dpkg_audit.splitlines() if ln.startswith(" "))
+        msg = (f"{what}; dpkg --audit reports unfinished packages"
+               f"{f' ({n})' if n else ''}: run `sudo dpkg --configure -a`")
+        if kernel:
+            msg += " and do not reboot until `dpkg --audit` prints nothing"
+        return msg
+    return f"{what}; dpkg --audit is clean (no half-installed packages)"

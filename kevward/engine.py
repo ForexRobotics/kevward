@@ -112,8 +112,19 @@ def _reboot_schedule() -> dict:
         return {"state": "unknown"}
 
 
+def _configure_apt(cfg: Config) -> None:
+    from .plugins import _apt
+
+    _apt.configure(_apt.AptSettings(
+        security_origins=list(cfg.apt.security_origins),
+        php_release_check=cfg.apt.php_release_check,
+        install_timeout_s=cfg.apt.install_timeout_s,
+    ))
+
+
 def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
     only = cfg.policy.services or None
+    _configure_apt(cfg)
     plugins = load(only)
     result = RunResult(
         host=socket.gethostname(),

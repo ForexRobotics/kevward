@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **PHP security releases from the ondrej/php PPA are security updates
+  (#169).** Only origins with "security" in their name (Ubuntu's -security
+  pockets) counted, so PHP 8.2.36 / 8.3.37 / 8.4.28 (2026-11-19, seven
+  critical CVEs) showed as `low · minor_upgrade` on hosts using the PPA and
+  `kevward apply` skipped them. A pending PHP upgrade from a non-security
+  origin is now checked against php.net's release data (one request per PHP
+  branch, cached 12h): a security release in between makes it a HIGH
+  `security_update` linking the PHP announcement; if php.net cannot be
+  reached it stays `low` and says "security status unchecked". New `[apt]`
+  section: `php_release_check` (default true) and `security_origins`
+  (globs on the origin name, default empty). apt findings carry their
+  `origin` in the JSON output.
+- **`apply` no longer kills a long apt-get after 600 s (#170).** A kernel
+  install can take minutes on a small VPS, and killing apt-get in the middle
+  can leave dpkg half-configured. The limit is now `[apt] install_timeout_s`
+  (default 3600, 0 = none); apt-get output is shown as it runs; apt-get runs
+  non-interactively (`DEBIAN_FRONTEND=noninteractive`, keep local conffiles,
+  like unattended-upgrades) so it can no longer wait on an invisible prompt.
+  On failure or timeout kevward runs `dpkg --audit` and says whether
+  `sudo dpkg --configure -a` is needed, and not to reboot until it is clean
+  when a kernel was involved.
+
 ## 0.14.1
 
 - **audit: password logins from before password auth was turned off are no

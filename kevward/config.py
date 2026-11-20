@@ -122,12 +122,37 @@ class TrendsConfig:
 
 
 @dataclass
+class AptConfig:
+    """How pending apt updates are classified and installed (#169, #170)."""
+
+    # apt origins whose updates count as security updates, as globs against
+    # the origin name shown by `apt-cache policy` (e.g. "LP-PPA-ondrej-php").
+    # Empty by default, so nothing is reclassified silently.
+    security_origins: list[str] = field(default_factory=list)
+    # Look up php.net release data (cached 12h) to tell whether a pending PHP
+    # upgrade from a non-security origin (ondrej/php PPA) is a security release.
+    # False for air-gapped hosts.
+    php_release_check: bool = True
+    # Wall-clock limit for `apt-get install` during `apply`, in seconds.
+    # 0 = no limit. Clamped to 0 or 300..86400.
+    install_timeout_s: int = 3600
+
+    def __post_init__(self) -> None:
+        if isinstance(self.security_origins, str):
+            self.security_origins = [self.security_origins]
+        self.security_origins = [str(x) for x in self.security_origins]
+        t = int(self.install_timeout_s)
+        self.install_timeout_s = 0 if t <= 0 else min(max(t, 300), 86400)
+
+
+@dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
     firewall: FirewallConfig = field(default_factory=FirewallConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
     trends: TrendsConfig = field(default_factory=TrendsConfig)
+    apt: AptConfig = field(default_factory=AptConfig)
     report_dir: Path = Path("/var/log/kevward")
     # The file actually loaded (None = built-in defaults), for display (#105).
     source: Path | None = None
@@ -181,6 +206,10 @@ class Config:
         tr = data.get("trends", {})
         cfg.trends = TrendsConfig(
             **{k: v for k, v in tr.items() if k in TrendsConfig.__annotations__}
+        )
+        ap = data.get("apt", {})
+        cfg.apt = AptConfig(
+            **{k: v for k, v in ap.items() if k in AptConfig.__annotations__}
         )
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])
