@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.14.2
+
+Two `apply` bugs found while patching the 2026-11-19 PHP release: PPA PHP
+security releases were skipped, and a long kernel install could be killed
+half-way.
 
 - **PHP security releases from the ondrej/php PPA are security updates
   (#169).** Only origins with "security" in their name (Ubuntu's -security
