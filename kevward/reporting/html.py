@@ -515,13 +515,14 @@ def render(result: RunResult, lang: str | None = None) -> str:
 <style>
   :root {{
     --bg:#f6f7f9; --card:#fff; --fg:#1c2330; --muted:#657086; --line:#e2e6ec;
-    --ok:#2f6f4f; --bad:#b4232a; --own:#a07a12; --atk:#c0582b;
+    --ok:#2f6f4f; --bad:#b4232a; --own:#a07a12; --atk:#6f4bb8;
   }}
   @media (prefers-color-scheme: dark) {{
     :root:not([data-theme=light]) {{
       --bg:#0f141b; --card:#161d27; --fg:#e7ecf3; --muted:#8c99ac; --line:#273040;
-      --ok:#5fb58a; --bad:#ff6b6b; --own:#e0b44c; --atk:#e08a5c;
+      --ok:#5fb58a; --bad:#ff6b6b; --own:#e0b44c; --atk:#ad8cf0;
     }}
+    :root:not([data-theme=light]) a {{ color:#7fb0ff; }}
   }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; background:var(--bg); color:var(--fg);
@@ -537,13 +538,13 @@ def render(result: RunResult, lang: str | None = None) -> str:
   .muted {{ color:var(--muted); }}
   section {{ background:var(--card); border:1px solid var(--line);
     border-radius:12px; padding:18px 20px; margin:0 0 16px; overflow-x:auto; }}
-  h2 {{ font-size:16px; text-transform:uppercase; letter-spacing:.04em;
+  h2 {{ font-size:18px; text-transform:uppercase; letter-spacing:.04em;
     color:var(--muted); margin:0 0 14px; }}
   .chips {{ display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 6px; }}
   .chip {{ border:1.5px solid; border-radius:999px; padding:2px 12px; font-size:13px; }}
   .chip.act.ok {{ background:var(--ok); border-color:var(--ok); color:#fff; }}
   .chip.act.bad {{ background:var(--bad); border-color:var(--bad); color:#fff; }}
-  .cat {{ font-size:14px; font-weight:700; letter-spacing:.03em; margin:24px 0 12px;
+  .cat {{ font-size:17px; font-weight:700; letter-spacing:.03em; margin:28px 0 12px;
     padding-left:10px; border-left:4px solid var(--muted); }}
   .cat-own {{ border-color:var(--own); color:var(--own); }}
   .cat-atk {{ border-color:var(--atk); color:var(--atk); }}
