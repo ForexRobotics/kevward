@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Report layout aligned with the stille-hunter weekly report (#180).** The
+  kevward logo (inlined, inverted in dark mode) sits top-left; a summary card
+  says in one line whether anything critical/high or an applicable KEV needs
+  action, with a matching "to act on" chip; cards are grouped under coloured
+  category headers (this host — blue, attacks on this host — orange, signs of
+  intrusion — red); tables scroll inside their card on narrow screens, and
+  labels and table headers no longer wrap mid-word.
 - **Japanese report (#180).** `[report] lang = "ja"` in config.toml, or
   `kevward report --lang ja` for one run, renders the HTML report's frame in
   Japanese: headings, explanations, table headers, severity / kind / KEV

@@ -132,3 +132,21 @@ def test_config_and_cli(tmp_path, monkeypatch):
     assert seen["lang"] == "ja"
     cli.main(["report", "-c", str(p), "-o", str(out), "--lang", "en"])
     assert seen["lang"] == "en"
+
+
+def test_layout_logo_categories_and_summary():
+    out = H.render(_result(), lang="ja")
+    assert '<img class="logo" alt="kevward" src="data:image/png;base64,' in out
+    assert '<div class="cat cat-own">このホストの状態</div>' in out
+    assert '<div class="cat cat-atk">このホストへの攻撃</div>' in out
+    assert '<div class="cat cat-ctx">侵入の痕跡</div>' in out  # audit ran ([] here)
+    assert "<p class=\"status bad\">対応が必要な指摘（緊急・高）が 1 件あります。</p>" in out
+    assert "<span class='chip act bad'>要対応（緊急・高）: <b>1</b></span>" in out
+    r = RunResult(host="h", generated_at="t", os="Linux")
+    en = H.render(r)
+    assert ('<p class="status ok">No critical or high findings, and no actively-exploited '
+            'CVE applies to this host.</p>') in en
+    assert "cat-ctx" not in en.split("</style>", 1)[1]  # no audit run: no audit category
+    r.attackers = {"trends": {"applicable_count": 2, "matches": []}}
+    assert ("actively-exploited CVEs (CISA KEV) that apply to this host: 2."
+            in H.render(r))

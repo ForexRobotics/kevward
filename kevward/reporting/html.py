@@ -18,6 +18,7 @@ from .. import __version__ as _KW_VERSION
 from ..engine import RunResult
 from ..util import format_pkgs
 from .i18n import FONT_FALLBACK, Translator, normalize, translator
+from .logo import LOGO_PNG_B64
 
 _EN = translator("en")
 
@@ -258,7 +259,8 @@ def render(result: RunResult, lang: str | None = None) -> str:
     # Shown only when `report --audit` ran: None means audit was not requested.
     if result.audit is not None:
         audit_block = f"""
-  <section>
+  <div class="cat cat-ctx">{t("Signs of intrusion")}</div>
+  <section class="card ctx">
     <h2>{t("Host compromise indicators (audit)")}</h2>
     <p class="muted" style="font-size:12px">{t(_AUDIT_INTRO)}</p>
     <table><thead><tr><th>{t("Sev")}</th><th>{t("Indicator")}</th><th>{t("Detail")}</th></tr></thead>
@@ -282,6 +284,30 @@ def render(result: RunResult, lang: str | None = None) -> str:
     )
     no_findings = t("No package or config findings (audit indicators are listed "
                     "below)." if n_audit else "No findings.")
+
+    # Summary (#180): the one line to read first, as in the stille-hunter
+    # weekly report. Critical/high findings and KEV matches that apply here.
+    urgent = sev_counts.get("critical", 0) + sev_counts.get("high", 0)
+    kev_here = int((att.get("trends") or {}).get("applicable_count") or 0)
+    if urgent or kev_here:
+        status_cls = "bad"
+        parts = []
+        if urgent:
+            parts.append(t("{n} critical/high finding{s} to act on",
+                           n=urgent, s="s" if urgent != 1 else ""))
+        if kev_here:
+            parts.append(t("actively-exploited CVEs (CISA KEV) that apply to this host: {n}",
+                           n=kev_here))
+        status_line = t("; ").join(parts) + t(".")
+    else:
+        status_cls = "ok"
+        status_line = t("No critical or high findings, and no actively-exploited CVE "
+                        "applies to this host.")
+    kpi_chip = (
+        f"<span class='chip act {status_cls}'>"
+        + t("to act on (critical/high): <b>{n}</b>", n=urgent)
+        + "</span>"
+    )
 
     def chip(sev: str) -> str:
         return (
@@ -448,7 +474,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
             "<b>{ransomware}</b>", size=trends.get("catalog_size", "?"),
             matches=trends.get("match_count", 0), ransomware=trends.get("ransomware_linked", 0))
         trend_block = f"""
-        <section>
+        <section class="card own">
           <h2>{t("Actively-exploited (CISA KEV) relevant to this host")}</h2>
           <p class="muted">{_catalog_line}{applic_line}
           {t('· (cached snapshot)') if not trends.get('cache_fresh') else ''}</p>
@@ -489,24 +515,44 @@ def render(result: RunResult, lang: str | None = None) -> str:
 <style>
   :root {{
     --bg:#f6f7f9; --card:#fff; --fg:#1c2330; --muted:#657086; --line:#e2e6ec;
+    --ok:#2f6f4f; --bad:#b4232a; --own:#3b74c4; --atk:#c0582b;
   }}
   @media (prefers-color-scheme: dark) {{
     :root:not([data-theme=light]) {{
       --bg:#0f141b; --card:#161d27; --fg:#e7ecf3; --muted:#8c99ac; --line:#273040;
+      --ok:#5fb58a; --bad:#ff6b6b; --own:#6c9be0; --atk:#e08a5c;
     }}
   }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; background:var(--bg); color:var(--fg);
     font:15px/1.5 system-ui,-apple-system,"Segoe UI",{FONT_FALLBACK.get(lang, "")}sans-serif; }}
   .wrap {{ max-width:960px; margin:0 auto; padding:24px 16px 64px; }}
-  header h1 {{ margin:0 0 4px; font-size:22px; }}
+  header {{ display:flex; gap:16px; align-items:center; }}
+  header h1 {{ margin:0 0 4px; font-size:24px; }}
+  header p {{ margin:0; }}
+  .logo {{ width:56px; height:63px; flex:none; }}
+  @media (prefers-color-scheme: dark) {{
+    :root:not([data-theme=light]) .logo {{ filter:invert(1); }}
+  }}
   .muted {{ color:var(--muted); }}
   section {{ background:var(--card); border:1px solid var(--line);
-    border-radius:12px; padding:18px 20px; margin:18px 0; }}
-  h2 {{ font-size:15px; text-transform:uppercase; letter-spacing:.04em;
+    border-radius:12px; padding:18px 20px; margin:0 0 16px; overflow-x:auto; }}
+  h2 {{ font-size:16px; text-transform:uppercase; letter-spacing:.04em;
     color:var(--muted); margin:0 0 14px; }}
-  .chips {{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }}
-  .chip {{ border:1px solid; border-radius:999px; padding:2px 10px; font-size:13px; }}
+  .chips {{ display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 6px; }}
+  .chip {{ border:1.5px solid; border-radius:999px; padding:2px 12px; font-size:13px; }}
+  .chip.act.ok {{ background:var(--ok); border-color:var(--ok); color:#fff; }}
+  .chip.act.bad {{ background:var(--bad); border-color:var(--bad); color:#fff; }}
+  .cat {{ font-size:14px; font-weight:700; letter-spacing:.03em; margin:24px 0 12px;
+    padding-left:10px; border-left:4px solid var(--muted); }}
+  .cat-own {{ border-color:var(--own); color:var(--own); }}
+  .cat-atk {{ border-color:var(--atk); color:var(--atk); }}
+  .cat-ctx {{ border-color:var(--bad); color:var(--bad); }}
+  .card.own {{ border-left:4px solid var(--own); }}
+  .card.atk {{ border-left:4px solid var(--atk); }}
+  .card.ctx {{ border-left:4px solid var(--bad); }}
+  .status {{ font-size:18px; font-weight:600; margin:0; }}
+  .status.ok {{ color:var(--ok); }} .status.bad {{ color:var(--bad); }}
   table {{ width:100%; border-collapse:collapse; font-size:13.5px; }}
   th,td {{ text-align:left; padding:7px 8px; border-bottom:1px solid var(--line);
     vertical-align:top; }}
@@ -527,24 +573,32 @@ def render(result: RunResult, lang: str | None = None) -> str:
 </style></head>
 <body><div class="wrap">
   <header>
-    <h1>kevward — {_esc(result.host)}</h1>
+    <img class="logo" alt="kevward" src="data:image/png;base64,{LOGO_PNG_B64}">
+    <div><h1>{t("kevward report — {host}", host=_esc(result.host))}</h1>
     <p class="muted">{t("{os} · generated {generated} · reboot required: <b>{reboot}</b> · {sched} · "
                         "kevward {version} · {config}", os=_esc(result.os), generated=generated,
-                        reboot=reboot, sched=sched_cell, version=_KW_VERSION, config=config_cell)}</p>
-    <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
-    {audit_note}
+                        reboot=reboot, sched=sched_cell, version=_KW_VERSION, config=config_cell)}</p></div>
   </header>
+  <div class="chips">{kpi_chip}{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
+  {audit_note}
+
+  <div class="cat cat-own">{t("This host")}</div>
+  <section class="card own">
+    <h2>{t("Summary")}</h2>
+    <p class="status {status_cls}">{status_line}</p>
+  </section>
 
   {trend_block}
 
-  <section>
+  <section class="card own">
     <h2>{t("Findings")}</h2>
     {dupe_note}
     <table><thead><tr><th>{t("Sev")}</th><th>{t("Service")}</th><th>{t("Kind")}</th><th>{t("Title")}</th><th>{t("CVE")}</th></tr></thead>
     <tbody>{''.join(rows) or f"<tr><td colspan=5 class='muted'>{no_findings}</td></tr>"}</tbody></table>
   </section>
 
-  <section>
+  <div class="cat cat-atk">{t("Attacks on this host")}</div>
+  <section class="card atk">
     <h2>{t("Attack sources")}</h2>
     {fw_line}
     <div class="grid">
@@ -565,7 +619,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
   </section>
   {audit_block}
 
-  <footer class="muted" style="text-align:center;font-size:12px">
+  <footer class="muted" style="text-align:center;font-size:12px;margin-top:24px">
     kevward {_KW_VERSION} · {t("defensive posture report")} · {datetime.now().year} ·
     AGPL-3.0 ·
     <a href="https://github.com/ForexRobotics/kevward" style="color:inherit">{t("source")}</a>

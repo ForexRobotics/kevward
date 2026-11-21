@@ -44,6 +44,19 @@ JA: dict[str, str] = {
         "件数には audit の兆候 {n} 件を含みます（「侵入の痕跡」を参照）",
     "defensive posture report": "防御態勢レポート",
     "source": "ソース",
+    # --- categories / summary (layout aligned with stille-hunter's report) ---
+    "This host": "このホストの状態",
+    "Attacks on this host": "このホストへの攻撃",
+    "Signs of intrusion": "侵入の痕跡",
+    "Summary": "サマリー",
+    "{n} critical/high finding{s} to act on": "対応が必要な指摘（緊急・高）が {n} 件あります",
+    "actively-exploited CVEs (CISA KEV) that apply to this host: {n}":
+        "悪用中の脆弱性（CISA KEV）がこのホストに {n} 件該当します",
+    "; ": "。",
+    ".": "。",
+    "No critical or high findings, and no actively-exploited CVE applies to this host.":
+        "緊急・高の指摘はなく、このホストに該当する悪用中の脆弱性（CISA KEV）もありません。",
+    "to act on (critical/high): <b>{n}</b>": "要対応（緊急・高）: <b>{n}</b>",
     # --- severities / kinds ---
     "critical": "緊急",
     "high": "高",
