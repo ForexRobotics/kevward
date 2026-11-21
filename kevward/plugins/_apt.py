@@ -223,6 +223,30 @@ def parse_source_map(text: str, pkgs: list[str]) -> dict[str, str]:
     return out
 
 
+def parse_installed(text: str) -> dict[str, list[tuple[str, str]]]:
+    """Source package -> [(binary, version)] of installed packages, from
+    ``dpkg-query -W -f='${Package}\\t${source:Package}\\t${Version}\\t${db:Status-Abbrev}\\n'``.
+    Only fully installed (``ii``) packages count. Pure."""
+    out: dict[str, list[tuple[str, str]]] = {}
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4 or not parts[3].startswith("ii"):
+            continue
+        pkg = parts[0].strip().split(":", 1)[0]
+        src = parts[1].strip() or pkg
+        out.setdefault(src, []).append((pkg, parts[2].strip()))
+    return out
+
+
+def installed_by_source() -> dict[str, list[tuple[str, str]]]:
+    """All installed packages grouped by source (one dpkg-query, #174)."""
+    if not have("dpkg-query"):
+        return {}
+    r = run(["dpkg-query", "-W",
+             "-f=${Package}\t${source:Package}\t${Version}\t${db:Status-Abbrev}\n"])
+    return parse_installed(r.out) if r.ok else {}
+
+
 def notices_url(source: str, codename: str) -> str | None:
     """Ubuntu Security Notices for this source package and release."""
     if not codename:
@@ -233,8 +257,20 @@ def notices_url(source: str, codename: str) -> str | None:
     )
 
 
+def _with_versions(f: Finding, src: str, members: list[dict],
+                   installed: dict[str, list[tuple[str, str]]]) -> Finding:
+    """Add #174's per-package versions and already-updated siblings."""
+    pkgs = {c["pkg"] for c in members}
+    new = {c["new"] for c in members}
+    updated = sorted(p for p, v in installed.get(src, []) if p not in pkgs and v in new)
+    return replace(f, source_package=src,
+                   package_versions={c["pkg"]: c["cur"] for c in members},
+                   updated_packages=updated)
+
+
 def group_findings(
-    changes: list[dict], service: str, src_map: dict[str, str], codename: str = ""
+    changes: list[dict], service: str, src_map: dict[str, str], codename: str = "",
+    installed: dict[str, list[tuple[str, str]]] | None = None,
 ) -> list[Finding]:
     """One finding per (source package, kind, kept-back) instead of per binary.
 
@@ -256,7 +292,7 @@ def group_findings(
             f = singles[0]
             if security and not f.url:
                 f = replace(f, url=notices_url(src, codename))
-            out.append(f)
+            out.append(_with_versions(f, src, members, installed or {}))
             continue
         worst = max(singles, key=lambda f: f.severity.rank)
         pkgs = [c["pkg"] for c in members]
@@ -273,7 +309,7 @@ def group_findings(
         if kept:
             title += " (kept back)"
         detail = "packages: " + ", ".join(pkgs) + "; " + worst.detail
-        out.append(
+        out.append(_with_versions(
             Finding(
                 service=service,
                 kind=worst.kind,
@@ -287,8 +323,7 @@ def group_findings(
                 packages=pkgs,
                 url=own_url or (notices_url(src, codename) if security else None),
                 origin=", ".join(origins) or None,
-            )
-        )
+            ), src, members, installed or {}))
     return out
 
 
@@ -299,7 +334,8 @@ def change_findings(service: str, changes: list[dict]) -> list[Finding]:
     from ..integrations.usn import host_codename
 
     src_map = source_packages(sorted({c["pkg"] for c in changes}))
-    return group_findings(changes, service, src_map, host_codename())
+    return group_findings(changes, service, src_map, host_codename(),
+                          installed_by_source())
 
 
 class AptServicePlugin(ServicePlugin):

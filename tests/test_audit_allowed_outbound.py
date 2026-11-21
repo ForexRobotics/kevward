@@ -103,3 +103,39 @@ def test_html_shows_summary_line():
     assert "allowed outbound: 2 (tor:9001)" in html
     assert "No compromise indicators found." in html
     assert r.to_dict()["audit_allowed_outbound"] == {"tor:9001": 2}
+
+
+def test_zero_hits_keep_the_summary_line(monkeypatch):
+    """#175: a configured rule with no matching connection is still shown."""
+    monkeypatch.setattr(ad, "run", lambda *a, **k: Cmd(0, "", ""))
+    for name in ("check_reverse_ssh", "check_persistence", "_check_proc_origin",
+                 "_check_pkg_integrity", "_check_accounts", "_check_suid",
+                 "_check_accepted_password"):
+        monkeypatch.setattr(ad, name, lambda *a, **k: [])
+    notes: dict = {}
+    ad.audit(None, ["tor:9001"], notes)
+    assert notes["allowed_outbound_hits"] == {"tor:9001": 0}
+    assert ad.allowed_summary(notes["allowed_outbound_hits"]) == (
+        "allowed outbound: 0 (rules: tor:9001; no matching connection at scan time)")
+    notes = {}
+    ad.audit(None, [], notes)
+    assert ad.allowed_summary(notes["allowed_outbound_hits"]) == ""
+
+
+def test_summary_with_some_rules_idle():
+    assert ad.allowed_summary({"tor:9001": 2, "*:5222": 0}) == (
+        "allowed outbound: 2 (tor:9001; no match: *:5222)")
+    assert ad.allowed_summary({"tor:9001": 2, "*:5222": 1}) == (
+        "allowed outbound: 3 (*:5222, tor:9001 ×2)")
+
+
+def test_html_zero_hits_line():
+    from kevward.engine import RunResult
+    from kevward.reporting.html import render
+    r = RunResult(host="www2", generated_at="2026-11-21T00:00:00+00:00", os="Ubuntu 24.04")
+    r.audit = []
+    r.audit_allowed_outbound = {"tor:9001": 0}
+    html = render(r)
+    assert ("allowed outbound: 0 (rules: tor:9001; no matching connection at scan time)"
+            " — configured in <code>[audit] allowed_outbound</code>") in html
+    assert r.to_dict()["audit_allowed_outbound"] == {"tor:9001": 0}

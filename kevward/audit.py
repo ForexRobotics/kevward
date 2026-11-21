@@ -1099,7 +1099,9 @@ def audit(allow_forced: list[str] | None = None,
     """Run every check. ``notes``, when given, receives
     ``allowed_outbound_hits`` (rule -> connections it silenced, #155)."""
     rules, errors = parse_outbound_allow(allowed_outbound)
-    hits: dict[str, int] = {}
+    # Every configured rule is reported, at 0 when nothing matched (#175), so
+    # "no connection at scan time" differs from "rule not configured".
+    hits: dict[str, int] = {r.text: 0 for r in rules}
     bad = [_f(Severity.LOW, f"[audit] allowed_outbound: ignored entry {e}")
            for e in errors]
     findings = (bad + check_reverse_ssh() + check_connections(allow=rules, hits=hits)
@@ -1113,13 +1115,21 @@ def audit(allow_forced: list[str] | None = None,
 
 
 def allowed_summary(hits: dict[str, int] | None) -> str:
-    """``allowed outbound: 2 (tor:9001)`` or "" when nothing was allowed."""
+    """``allowed outbound: 2 (tor:9001)``; with rules but no match (#175)
+    ``allowed outbound: 0 (rules: tor:9001; no matching connection at scan
+    time)``; "" when no rule is configured."""
     if not hits:
         return ""
     total = sum(hits.values())
-    rules = ", ".join(f"{k} ×{v}" if v > 1 and len(hits) > 1 else k
-                      for k, v in sorted(hits.items()))
-    return f"allowed outbound: {total} ({rules})"
+    if total == 0:
+        return (f"allowed outbound: 0 (rules: {', '.join(sorted(hits))}; "
+                "no matching connection at scan time)")
+    matched = {k: v for k, v in hits.items() if v}
+    rules = ", ".join(f"{k} ×{v}" if v > 1 and len(matched) > 1 else k
+                      for k, v in sorted(matched.items()))
+    idle = sorted(k for k, v in hits.items() if not v)
+    tail = f"; no match: {', '.join(idle)}" if idle else ""
+    return f"allowed outbound: {total} ({rules}{tail})"
 
 
 # --------------------------------------------------------------------------- #
