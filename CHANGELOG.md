@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.15.0
+
+The HTML report can now be read in Japanese, and its layout follows the
+stille-hunter weekly report: logo, a one-line summary of what needs action,
+and colour-coded categories (#180). Set `[report] lang = "ja"` in
+config.toml, or pass `kevward report --lang ja`; English stays the default.
 
 - **Report layout aligned with the stille-hunter weekly report (#180).** The
   kevward logo (inlined, inverted in dark mode) sits top-left; a summary card
@@ -15,8 +20,7 @@
   status labels, the header line, firewall / fail2ban / sshd summaries, the
   audit intro and helper lines such as "still old" and "advisories". Finding
   titles and details from plugins, JSON and CLI output stay English (phase
-  2). English remains the default and its output is unchanged apart from
-  whitespace. No new dependency: an in-tree catalog keyed by the English
+  2). English remains the default. No new dependency: an in-tree catalog keyed by the English
   text, with a test that every message has a Japanese entry. An unknown
   `lang` is a config error.
 
