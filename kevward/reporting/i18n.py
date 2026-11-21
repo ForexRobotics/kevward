@@ -26,10 +26,9 @@ Translator = Callable[..., str]
 JA: dict[str, str] = {
     # --- page / header ---
     "kevward report — {host}": "kevward レポート — {host}",
-    "{os} · generated {generated} · reboot required: <b>{reboot}</b> · {sched} · "
-    "kevward {version} · {config}":
-        "{os} · 生成 {generated} · 再起動: <b>{reboot}</b> · {sched} · "
-        "kevward {version} · {config}",
+    "{os} · generated {generated}": "{os} · 生成 {generated}",
+    "reboot required: <b>{reboot}</b> · {sched}": "再起動: <b>{reboot}</b> · {sched}",
+    "kevward {version} · {config}": "kevward {version} · {config}",
     "YES": "必要",
     "no": "不要",
     "after pending updates": "保留中の更新を入れた後に必要",

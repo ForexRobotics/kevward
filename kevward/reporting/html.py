@@ -515,12 +515,12 @@ def render(result: RunResult, lang: str | None = None) -> str:
 <style>
   :root {{
     --bg:#f6f7f9; --card:#fff; --fg:#1c2330; --muted:#657086; --line:#e2e6ec;
-    --ok:#2f6f4f; --bad:#b4232a; --own:#3b74c4; --atk:#c0582b;
+    --ok:#2f6f4f; --bad:#b4232a; --own:#a07a12; --atk:#c0582b;
   }}
   @media (prefers-color-scheme: dark) {{
     :root:not([data-theme=light]) {{
       --bg:#0f141b; --card:#161d27; --fg:#e7ecf3; --muted:#8c99ac; --line:#273040;
-      --ok:#5fb58a; --bad:#ff6b6b; --own:#6c9be0; --atk:#e08a5c;
+      --ok:#5fb58a; --bad:#ff6b6b; --own:#e0b44c; --atk:#e08a5c;
     }}
   }}
   * {{ box-sizing:border-box; }}
@@ -551,6 +551,9 @@ def render(result: RunResult, lang: str | None = None) -> str:
   .card.own {{ border-left:4px solid var(--own); }}
   .card.atk {{ border-left:4px solid var(--atk); }}
   .card.ctx {{ border-left:4px solid var(--bad); }}
+  .card.own h2 {{ color:var(--own); }}
+  .card.atk h2 {{ color:var(--atk); }}
+  .card.ctx h2 {{ color:var(--bad); }}
   .status {{ font-size:18px; font-weight:600; margin:0; }}
   .status.ok {{ color:var(--ok); }} .status.bad {{ color:var(--bad); }}
   table {{ width:100%; border-collapse:collapse; font-size:13.5px; }}
@@ -575,9 +578,9 @@ def render(result: RunResult, lang: str | None = None) -> str:
   <header>
     <img class="logo" alt="kevward" src="data:image/png;base64,{LOGO_PNG_B64}">
     <div><h1>{t("kevward report — {host}", host=_esc(result.host))}</h1>
-    <p class="muted">{t("{os} · generated {generated} · reboot required: <b>{reboot}</b> · {sched} · "
-                        "kevward {version} · {config}", os=_esc(result.os), generated=generated,
-                        reboot=reboot, sched=sched_cell, version=_KW_VERSION, config=config_cell)}</p></div>
+    <p class="muted">{t("{os} · generated {generated}", os=_esc(result.os), generated=generated)}</p>
+    <p class="muted">{t("reboot required: <b>{reboot}</b> · {sched}", reboot=reboot, sched=sched_cell)}</p>
+    <p class="muted">{t("kevward {version} · {config}", version=_KW_VERSION, config=config_cell)}</p></div>
   </header>
   <div class="chips">{kpi_chip}{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
   {audit_note}
@@ -620,8 +623,8 @@ def render(result: RunResult, lang: str | None = None) -> str:
   {audit_block}
 
   <footer class="muted" style="text-align:center;font-size:12px;margin-top:24px">
-    kevward {_KW_VERSION} · {t("defensive posture report")} · {datetime.now().year} ·
-    AGPL-3.0 ·
+    kevward {_KW_VERSION} · {t("defensive posture report")} ·
+    &copy; {datetime.now().year} Forex Robotics Co., Ltd. · AGPL-3.0 ·
     <a href="https://github.com/ForexRobotics/kevward" style="color:inherit">{t("source")}</a>
   </footer>
 </div></body></html>"""
