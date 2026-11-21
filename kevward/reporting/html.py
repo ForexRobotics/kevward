@@ -515,12 +515,12 @@ def render(result: RunResult, lang: str | None = None) -> str:
 <style>
   :root {{
     --bg:#f6f7f9; --card:#fff; --fg:#1c2330; --muted:#657086; --line:#e2e6ec;
-    --ok:#2f6f4f; --bad:#b4232a; --own:#a07a12; --atk:#6f4bb8;
+    --ok:#2f6f4f; --bad:#b4232a; --own:#a07a12; --atk:#b0179f;
   }}
   @media (prefers-color-scheme: dark) {{
     :root:not([data-theme=light]) {{
       --bg:#0f141b; --card:#161d27; --fg:#e7ecf3; --muted:#8c99ac; --line:#273040;
-      --ok:#5fb58a; --bad:#ff6b6b; --own:#e0b44c; --atk:#ad8cf0;
+      --ok:#5fb58a; --bad:#ff6b6b; --own:#e0b44c; --atk:#f06ee6;
     }}
     :root:not([data-theme=light]) a {{ color:#7fb0ff; }}
   }}
