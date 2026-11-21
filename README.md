@@ -107,6 +107,7 @@ kevward check -s nginx -s php # limit to specific services
 kevward trends                # actively-exploited CVEs relevant to this host
 kevward report --trends       # write an HTML posture + attacker-IP report
 sudo kevward report --trends --audit   # + fold in compromise indicators (audit)
+kevward report --lang ja      # report headings/labels in Japanese ([report] lang)
 kevward apply                 # DRY RUN: show what would be patched
 sudo kevward apply --yes      # actually apply security updates
 sudo kevward apply --yes --minor --reboot   # +minor upgrades, +schedule reboot

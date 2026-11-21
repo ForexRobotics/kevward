@@ -98,3 +98,11 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # Look up the latest kevward on PyPI once a day and show an INFO finding in the
 # report when a newer release exists. Set false on air-gapped hosts.
 # check = true
+
+# --------------------------------------------------------------------------- #
+# HTML report
+[report]
+# Language of the report's headings, labels and summary lines: "en" or "ja".
+# Finding titles/details, JSON and CLI output stay English for now.
+# `kevward report --lang ja` overrides this for one run.
+# lang = "en"

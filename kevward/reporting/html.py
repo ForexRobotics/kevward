@@ -17,6 +17,9 @@ from datetime import datetime
 from .. import __version__ as _KW_VERSION
 from ..engine import RunResult
 from ..util import format_pkgs
+from .i18n import FONT_FALLBACK, Translator, normalize, translator
+
+_EN = translator("en")
 
 _SEV_COLOR = {
     "critical": "#b4232a",
@@ -31,7 +34,7 @@ def _esc(s) -> str:
     return html.escape(str(s if s is not None else ""))
 
 
-def _ssh_window(lw: dict) -> tuple[str, str]:
+def _ssh_window(lw: dict, t: Translator = _EN) -> tuple[str, str]:
     """Label the sshd failure totals with the period they cover, and add the
     last-24h / 7-day slice, so an all-time total from rotated logs is not read
     as a current attack. Returns (suffix for the totals line, recent line)."""
@@ -40,14 +43,16 @@ def _ssh_window(lw: dict) -> tuple[str, str]:
         return "", ""
     span = f"{_esc(str(start)[:10])} → {_esc(str(end or start)[:10])}"
     suffix = (
-        f" <span style='font-size:12px'>(all rotated auth logs, {span})</span>"
+        f" <span style='font-size:12px'>{t('(all rotated auth logs, {span})', span=span)}</span>"
     )
     n24 = int(lw.get("ssh_attempts_24h") or 0)
     n7 = int(lw.get("ssh_attempts_7d") or 0)
     s24 = int(lw.get("ssh_sources_24h") or 0)
     recent = (
-        f"<p class='muted' style='margin-top:-6px'>last 24h: <b>{n24:,}</b> "
-        f"attempts from <b>{s24}</b> sources · last 7d: <b>{n7:,}</b></p>"
+        "<p class='muted' style='margin-top:-6px'>"
+        + t("last 24h: <b>{n24}</b> attempts from <b>{s24}</b> sources · "
+            "last 7d: <b>{n7}</b>", n24=f"{n24:,}", s24=s24, n7=f"{n7:,}")
+        + "</p>"
     )
     return suffix, recent
 
@@ -63,15 +68,15 @@ def _bar(label: str, value: int, maximum: int, color: str) -> str:
 
 
 
-def _fw_window(since, generated_at: str) -> str:
+def _fw_window(since, generated_at: str, t: Translator = _EN) -> str:
     """'since 2026-11-11 22:00 UTC, 9.3 h' for the drop counters' window, so
     hosts can be compared; falls back to the old wording when unknown."""
     import datetime as _dt
     try:
         start = _dt.datetime.fromtimestamp(int(since), tz=_dt.timezone.utc)
     except (TypeError, ValueError, OverflowError, OSError):
-        return "since last ruleset load"
-    label = f"since {start:%Y-%m-%d %H:%M} UTC"
+        return t("since last ruleset load")
+    label = t("since {start} UTC", start=f"{start:%Y-%m-%d %H:%M}")
     try:
         now = _dt.datetime.fromisoformat(generated_at)
         hours = (now - start).total_seconds() / 3600
@@ -79,13 +84,23 @@ def _fw_window(since, generated_at: str) -> str:
         return label
     if hours < 0:
         return label
-    span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
-    return f"{label}, {span}"
+    span = (t("{n} h", n=f"{hours:.1f}") if hours < 48
+            else t("{n} days", n=f"{hours / 24:.1f}"))
+    return t("{label}, {span}", label=label, span=span)
 
 _MAX_OLD = 12
 
+# Kept byte-for-byte as before (#180): it is also the catalog key.
+_AUDIT_INTRO = (
+    "Read-only scan for a post-intrusion\n    foothold — reverse SSH / tunnels, "
+    "reverse-shell or bind-backdoor sockets, and\n    persistence (ld.so.preload, "
+    "cron, systemd units, rc, authorized_keys). These\n    flag <em>possible</em> "
+    "indicators to review, not confirmed compromise; run as\n    root for full "
+    "visibility."
+)
 
-def _old_packages(f) -> str:
+
+def _old_packages(f, t: Translator = _EN) -> str:
     """``still old: php8.3 8.3.36-1+…`` and how many siblings are already
     upgraded, for apt findings (#174). "" when the finding has no versions."""
     vers = getattr(f, "package_versions", None) or {}
@@ -95,31 +110,40 @@ def _old_packages(f) -> str:
     shown = [p for p in pkgs if p in vers] or list(vers)
     items = [f"{p} {vers[p]}" for p in shown[:_MAX_OLD]]
     if len(shown) > _MAX_OLD:
-        items.append(f"+{len(shown) - _MAX_OLD} more")
-    text = "still old: " + ", ".join(items)
+        items.append(t("+{n} more", n=len(shown) - _MAX_OLD))
+    text = t("still old: {items}", items=", ".join(items))
     done = getattr(f, "updated_packages", None) or []
     if done:
         src = getattr(f, "source_package", None)
-        what = f"{src} package" if src else "package"
-        at = f" already at {f.fixed_version}" if f.fixed_version else " already upgraded"
-        text += (f" · {len(done)} other {what}{'s' if len(done) != 1 else ''}{at}"
+        n, plural = len(done), ("s" if len(done) != 1 else "")
+        if src and f.fixed_version:
+            msg = t("{n} other {src} package{s} already at {version}",
+                    n=n, src=src, s=plural, version=f.fixed_version)
+        elif src:
+            msg = t("{n} other {src} package{s} already upgraded", n=n, src=src, s=plural)
+        elif f.fixed_version:
+            msg = t("{n} other package{s} already at {version}",
+                    n=n, s=plural, version=f.fixed_version)
+        else:
+            msg = t("{n} other package{s} already upgraded", n=n, s=plural)
+        text += (f" · {msg}"
                  f" ({', '.join(done[:_MAX_OLD])}{', …' if len(done) > _MAX_OLD else ''})")
     return _esc(text)
 
 
-def _finding_extra(f) -> str:
+def _finding_extra(f, t: Translator = _EN) -> str:
     """Package list for grouped apt findings and a link to the advisories
     (#143); which packages are still old and which already upgraded (#174)."""
     bits = []
     pkgs = getattr(f, "packages", None) or []
-    old = _old_packages(f)
+    old = _old_packages(f, t)
     if old:
         bits.append(old)
     elif len(pkgs) > 1:
         bits.append(_esc(", ".join(pkgs)))
     url = getattr(f, "url", None)
     if url and url.startswith("https://"):
-        bits.append(f"<a href='{_esc(url)}' rel='noopener'>advisories</a>")
+        bits.append(f"<a href='{_esc(url)}' rel='noopener'>{t('advisories')}</a>")
     if not bits:
         return ""
     return "<br><span class='muted'>" + " · ".join(bits) + "</span>"
@@ -170,19 +194,23 @@ def _without_owned(f, owned: set):
     return replace(f, packages=left, ref=left[0], title=title)
 
 
-def _allowed_note(result: RunResult) -> str:
+def _allowed_note(result: RunResult, t: Translator = _EN) -> str:
     """One line for outbound connections silenced by [audit] allowed_outbound."""
     from ..audit import allowed_summary
     hits = getattr(result, "audit_allowed_outbound", None)
     line = allowed_summary(hits)
     if not line:
         return ""
-    how = "matched" if sum(hits.values()) else "configured in"
-    return (f"<p class='muted' style='font-size:12px'>{_esc(line)} — "
-            f"{how} <code>[audit] allowed_outbound</code></p>")
+    msg = ("{line} — matched <code>[audit] allowed_outbound</code>" if sum(hits.values())
+           else "{line} — configured in <code>[audit] allowed_outbound</code>")
+    return f"<p class='muted' style='font-size:12px'>{t(msg, line=_esc(line))}</p>"
 
 
-def render(result: RunResult) -> str:
+def render(result: RunResult, lang: str | None = None) -> str:
+    """The report page. ``lang`` (#180) translates the frame (headings,
+    labels, summary lines); finding text stays as the plugins wrote it."""
+    lang = normalize(lang)
+    t = translator(lang)
     att = result.attackers or {}
     f2b = att.get("fail2ban", {})
     lw = att.get("logwatch", {})
@@ -211,8 +239,8 @@ def render(result: RunResult) -> str:
             kind = f.kind if isinstance(f.kind, str) else f.kind.value
             rows.append(
                 f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
-                f"{_esc(sev)}</span></td><td>{_esc(f.service)}</td>"
-                f"<td>{_esc(kind)}</td><td>{_esc(f.title)}{_finding_extra(f)}</td>"
+                f"{_esc(t(sev))}</span></td><td>{_esc(f.service)}</td>"
+                f"<td>{_esc(t(kind))}</td><td>{_esc(f.title)}{_finding_extra(f, t)}</td>"
                 f"<td class='cve'>{_esc(f.cve or '')}</td></tr>"
             )
 
@@ -223,7 +251,7 @@ def render(result: RunResult) -> str:
         sev_counts[sev] = sev_counts.get(sev, 0) + 1  # reflected in the header chips
         audit_rows += (
             f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
-            f"{_esc(sev)}</span></td><td>{_esc(f.title)}</td>"
+            f"{_esc(t(sev))}</span></td><td>{_esc(f.title)}</td>"
             f"<td class='muted'>{_esc(f.detail)}</td></tr>"
         )
     audit_block = ""
@@ -231,36 +259,34 @@ def render(result: RunResult) -> str:
     if result.audit is not None:
         audit_block = f"""
   <section>
-    <h2>Host compromise indicators (audit)</h2>
-    <p class="muted" style="font-size:12px">Read-only scan for a post-intrusion
-    foothold — reverse SSH / tunnels, reverse-shell or bind-backdoor sockets, and
-    persistence (ld.so.preload, cron, systemd units, rc, authorized_keys). These
-    flag <em>possible</em> indicators to review, not confirmed compromise; run as
-    root for full visibility.</p>
-    <table><thead><tr><th>Sev</th><th>Indicator</th><th>Detail</th></tr></thead>
-    <tbody>{audit_rows or "<tr><td colspan=3 class='muted'>No compromise indicators found.</td></tr>"}</tbody></table>{_allowed_note(result)}
+    <h2>{t("Host compromise indicators (audit)")}</h2>
+    <p class="muted" style="font-size:12px">{t(_AUDIT_INTRO)}</p>
+    <table><thead><tr><th>{t("Sev")}</th><th>{t("Indicator")}</th><th>{t("Detail")}</th></tr></thead>
+    <tbody>{audit_rows or f"<tr><td colspan=3 class='muted'>{t('No compromise indicators found.')}</td></tr>"}</tbody></table>{_allowed_note(result, t)}
   </section>"""
 
     # Audit indicators are counted in the chips too; say so, or a header of
     # "low: 1" next to an empty Findings table reads as a contradiction.
     n_audit = len(result.audit or [])
     audit_note = (
-        f"<p class='muted' style='font-size:12px;margin:6px 0 0'>counts include "
-        f"{n_audit} audit indicator{'s' if n_audit != 1 else ''} "
-        f"(see Host compromise indicators)</p>" if n_audit else ""
+        "<p class='muted' style='font-size:12px;margin:6px 0 0'>"
+        + t("counts include {n} audit indicator{s} (see Host compromise indicators)",
+            n=n_audit, s="s" if n_audit != 1 else "")
+        + "</p>" if n_audit else ""
     )
     dupe_note = (
-        f"<p class='muted' style='font-size:12px;margin:0 0 6px'>{hidden_dupes} "
-        f"apt row{'s' if hidden_dupes != 1 else ''} not repeated: the same package "
-        f"update is listed under its service (counted once)</p>" if hidden_dupes else ""
+        "<p class='muted' style='font-size:12px;margin:0 0 6px'>"
+        + t("{n} apt row{s} not repeated: the same package update is listed under its "
+            "service (counted once)", n=hidden_dupes, s="s" if hidden_dupes != 1 else "")
+        + "</p>" if hidden_dupes else ""
     )
-    no_findings = ("No package or config findings (audit indicators are listed "
-                   "below)." if n_audit else "No findings.")
+    no_findings = t("No package or config findings (audit indicators are listed "
+                    "below)." if n_audit else "No findings.")
 
     def chip(sev: str) -> str:
         return (
             f"<span class='chip' style='border-color:{_SEV_COLOR[sev]};"
-            f"color:{_SEV_COLOR[sev]}'>{sev}: "
+            f"color:{_SEV_COLOR[sev]}'>{t(sev)}: "
             f"<b>{sev_counts.get(sev,0)}</b></span>"
         )
 
@@ -271,12 +297,12 @@ def render(result: RunResult) -> str:
     max_ssh = max((c for _, c in ssh), default=0)
     ban_bars = "".join(
         _bar(ip, c, max_ban, "#c0582b") for ip, c in offenders[:20]
-    ) or "<p class='muted'>No fail2ban history found.</p>"
+    ) or f"<p class='muted'>{t('No fail2ban history found.')}</p>"
     ssh_bars = "".join(
         _bar(ip, c, max_ssh, "#50607a") for ip, c in ssh[:20]
-    ) or "<p class='muted'>No sshd auth failures found.</p>"
+    ) or f"<p class='muted'>{t('No sshd auth failures found.')}</p>"
 
-    ssh_window, ssh_recent = _ssh_window(lw)
+    ssh_window, ssh_recent = _ssh_window(lw, t)
 
     # --- firewall drops (issue #42 follow-up): packets dropped per kevward set.
     fw = att.get("firewall") or {}
@@ -291,8 +317,8 @@ def render(result: RunResult) -> str:
         if not any(s in sizes for s in sets):
             return ""
         n = sum(int(sizes.get(s, 0)) for s in sets)
-        return (f" <span style='font-size:12px'>({n:,} "
-                f"entr{'y' if n == 1 else 'ies'})</span>")
+        msg = "({n} entry)" if n == 1 else "({n} entries)"
+        return f" <span style='font-size:12px'>{t(msg, n=f'{n:,}')}</span>"
 
     fw_line = ""
     if fw:
@@ -300,22 +326,27 @@ def render(result: RunResult) -> str:
         cidr = _fw_pkts("blockcidr4", "blockcidr6")
         total = evidence + cidr
         fw_line = (
-            "<p class='muted' style='margin-top:0'>firewall drops "
-            f"<span style='font-size:12px'>({_fw_window(att.get('firewall_since'), result.generated_at)})</span>: "
-            f"evidence blocklist <b>{evidence:,}</b>{_fw_size('blocklist4', 'blocklist6')} · "
-            f"operator CIDR blocks <b>{cidr:,}</b>{_fw_size('blockcidr4', 'blockcidr6')} · "
-            f"total <b>{total:,}</b> packets</p>"
+            "<p class='muted' style='margin-top:0'>"
+            + t("firewall drops <span style='font-size:12px'>({window})</span>: evidence "
+                "blocklist <b>{evidence}</b>{evidence_size} · operator CIDR blocks "
+                "<b>{cidr}</b>{cidr_size} · total <b>{total}</b> packets",
+                window=_fw_window(att.get("firewall_since"), result.generated_at, t),
+                evidence=f"{evidence:,}", evidence_size=_fw_size("blocklist4", "blocklist6"),
+                cidr=f"{cidr:,}", cidr_size=_fw_size("blockcidr4", "blockcidr6"),
+                total=f"{total:,}")
+            + "</p>"
         )
 
     # Blocklist meant to be on (boot unit enabled) but the table is gone.
     fw_state = att.get("firewall_state") or {}
     if fw_state.get("table") is False and fw_state.get("unit") == "enabled":
         fw_line += (
-            "<p style='margin-top:0;color:#b4232a'><b>⚠ kevward firewall not "
-            "loaded</b> — the boot unit is enabled but table <code>inet kevward"
-            "</code> is absent, so no IPs are being blocked. Check "
-            "<code>systemctl status kevward-firewall</code>, then run "
-            "<code>kevward firewall apply --yes</code>.</p>"
+            "<p style='margin-top:0;color:#b4232a'>"
+            + t("<b>⚠ kevward firewall not loaded</b> — the boot unit is enabled but table "
+                "<code>inet kevward</code> is absent, so no IPs are being blocked. Check "
+                "<code>systemctl status kevward-firewall</code>, then run "
+                "<code>kevward firewall apply --yes</code>.")
+            + "</p>"
         )
 
     # --- trend matches ---
@@ -332,8 +363,8 @@ def render(result: RunResult) -> str:
         r = m.get("applicability_reason")
         if not r:
             return ""
-        lead = ("n/a on this host" if m.get("applicability") in ("not_applicable", "na_release")
-                else "why")
+        lead = t("n/a on this host" if m.get("applicability") in ("not_applicable", "na_release")
+                 else "why")
         return f"<br><small>{lead}: {_esc(r)}</small>"
 
     def _trend_row(m: dict) -> str:
@@ -341,7 +372,7 @@ def render(result: RunResult) -> str:
         status_cell = ""
         if _va:
             label, color = _badge.get(m.get("applicability", "possible"), _badge["possible"])
-            status_cell = f"<td><span class='pill' style='background:{color}'>{label}</span></td>"
+            status_cell = f"<td><span class='pill' style='background:{color}'>{t(label)}</span></td>"
         return (
             f"<tr><td class='cve'>{_esc(m.get('cve'))}{rw}</td>"
             f"{status_cell}"
@@ -361,34 +392,28 @@ def render(result: RunResult) -> str:
     _na_rel = [m for m in _all if m.get("applicability") == "na_release"]
     trend_block = ""
     if trends:
-        _status_th = "<th>Status</th>" if _va else ""
+        _status_th = f"<th>{t('Status')}</th>" if _va else ""
         _ncols = 5 if _va else 4
         if _va:
             applic_line = (
-                f" · <b>{trends.get('applicable_count', 0)}</b> applicable here"
-                f" · {trends.get('fixed_count', 0)} already fixed"
+                t(" · <b>{n}</b> applicable here", n=trends.get("applicable_count", 0))
+                + t(" · {n} already fixed", n=trends.get("fixed_count", 0))
             )
             if trends.get("not_applicable_count"):
-                applic_line += (
-                    f" · {trends['not_applicable_count']} n/a by host config"
-                )
+                applic_line += t(" · {n} n/a by host config",
+                                 n=trends["not_applicable_count"])
             if trends.get("na_release_count"):
-                applic_line += (
-                    f" · {trends['na_release_count']} n/a for this release"
-                )
+                applic_line += t(" · {n} n/a for this release", n=trends["na_release_count"])
             if trends.get("unchecked_count"):
-                applic_line += (
-                    f" · <b style='color:#b8860b'>{trends['unchecked_count']}"
-                    "</b> not checked"
-                )
+                applic_line += t(" · <b style='color:#b8860b'>{n}</b> not checked",
+                                 n=trends["unchecked_count"])
             _cc = trends.get("cve_cache") or {}
             if _cc and not _cc.get("writable", True):
-                applic_line += (
-                    "<br><b style='color:#b8860b'>CVE cache not writable "
-                    f"({_esc(_cc.get('dir', ''))})</b> — run as root or set "
-                    "XDG_CACHE_HOME; 'not checked' CVEs will not resolve"
-                )
-            note = (
+                applic_line += t(
+                    "<br><b style='color:#b8860b'>CVE cache not writable ({dir})</b> — run "
+                    "as root or set XDG_CACHE_HOME; 'not checked' CVEs will not resolve",
+                    dir=_esc(_cc.get("dir", "")))
+            note = t(
                 "Name-matched against software on this host, then cross-checked "
                 "against installed versions via Ubuntu security data: "
                 "<b>applicable</b> = affected and not yet patched on this host, "
@@ -405,7 +430,7 @@ def render(result: RunResult) -> str:
             )
         else:
             applic_line = ""
-            note = (
+            note = t(
                 "Matched by product name against software detected on this host. "
                 "This flags <em>possible</em> exposure — confirm version-level "
                 "applicability for each CVE before acting."
@@ -414,48 +439,53 @@ def render(result: RunResult) -> str:
         if _na_rel:
             _na_release_block = (
                 f"<details style='margin-top:10px'><summary class='muted'>"
-                f"{len(_na_rel)} n/a for this release (Ubuntu data)</summary>"
+                f"{t('{n} n/a for this release (Ubuntu data)', n=len(_na_rel))}</summary>"
                 f"<table><tbody>{''.join(_trend_row(m) for m in _na_rel)}"
                 "</tbody></table></details>"
             )
+        _catalog_line = t(
+            "Catalog: {size} CVEs · matches: <b>{matches}</b> · ransomware-linked: "
+            "<b>{ransomware}</b>", size=trends.get("catalog_size", "?"),
+            matches=trends.get("match_count", 0), ransomware=trends.get("ransomware_linked", 0))
         trend_block = f"""
         <section>
-          <h2>Actively-exploited (CISA KEV) relevant to this host</h2>
-          <p class="muted">Catalog: {trends.get('catalog_size','?')} CVEs ·
-          matches: <b>{trends.get('match_count',0)}</b> ·
-          ransomware-linked: <b>{trends.get('ransomware_linked',0)}</b>{applic_line}
-          {'· (cached snapshot)' if not trends.get('cache_fresh') else ''}</p>
+          <h2>{t("Actively-exploited (CISA KEV) relevant to this host")}</h2>
+          <p class="muted">{_catalog_line}{applic_line}
+          {t('· (cached snapshot)') if not trends.get('cache_fresh') else ''}</p>
           <p class="muted" style="font-size:12px">{note}</p>
-          <table><thead><tr><th>CVE</th>{_status_th}<th>Vendor/Product</th>
-          <th>Name</th><th>Added</th></tr></thead>
-          <tbody>{trend_rows or f"<tr><td colspan={_ncols} class='muted'>No matches.</td></tr>"}</tbody></table>
+          <table><thead><tr><th>{t("CVE")}</th>{_status_th}<th>{t("Vendor/Product")}</th>
+          <th>{t("Name")}</th><th>{t("Added")}</th></tr></thead>
+          <tbody>{trend_rows or f"<tr><td colspan={_ncols} class='muted'>{t('No matches.')}</td></tr>"}</tbody></table>
           {_na_release_block}
         </section>"""
 
     generated = _esc(result.generated_at)
     if getattr(result, "config_error", None):
-        config_cell = (f"<b style='color:#c0392b'>config: {_esc(result.config_source)} "
-                       "(UNREADABLE — using defaults)</b>")
+        config_cell = ("<b style='color:#c0392b'>"
+                       + t("config: {source} (UNREADABLE — using defaults)",
+                           source=_esc(result.config_source)) + "</b>")
     elif getattr(result, "config_source", None):
-        config_cell = f"config: {_esc(result.config_source)}"
+        config_cell = t("config: {source}", source=_esc(result.config_source))
     else:
-        config_cell = "config: defaults"
-    reboot = {"now": "YES", "after-updates": "after pending updates"}.get(
+        config_cell = t("config: defaults")
+    reboot = t({"now": "YES", "after-updates": "after pending updates"}.get(
         result.reboot_status, "no"
-    )
+    ))
     if result.reboot_status == "now" and result.reboot_packages:
         reboot += f" ({_esc(format_pkgs(result.reboot_packages))})"
     from ..scheduler import describe as _describe_schedule
     sched = getattr(result, "reboot_schedule", None) or {"state": "unknown"}
-    sched_cell = f"reboot scheduled: <b>{_esc(_describe_schedule(sched))}</b>"
+    when = _describe_schedule(sched)
+    sched_cell = t("reboot scheduled: <b>{when}</b>",
+                   when=_esc(t(when) if when in ("none", "unknown") else when))
 
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="kevward-generated-at" content="{_esc(result.generated_at)}">
 <meta name="kevward-version" content="{_esc(_KW_VERSION)}">
 <meta name="kevward-host" content="{_esc(result.host)}">
-<title>kevward report — {_esc(result.host)}</title>
+<title>{t("kevward report — {host}", host=_esc(result.host))}</title>
 <style>
   :root {{
     --bg:#f6f7f9; --card:#fff; --fg:#1c2330; --muted:#657086; --line:#e2e6ec;
@@ -467,7 +497,7 @@ def render(result: RunResult) -> str:
   }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; background:var(--bg); color:var(--fg);
-    font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }}
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",{FONT_FALLBACK.get(lang, "")}sans-serif; }}
   .wrap {{ max-width:960px; margin:0 auto; padding:24px 16px 64px; }}
   header h1 {{ margin:0 0 4px; font-size:22px; }}
   .muted {{ color:var(--muted); }}
@@ -496,7 +526,9 @@ def render(result: RunResult) -> str:
 <body><div class="wrap">
   <header>
     <h1>kevward — {_esc(result.host)}</h1>
-    <p class="muted">{_esc(result.os)} · generated {generated} · reboot required: <b>{reboot}</b> · {sched_cell} · kevward {_KW_VERSION} · {config_cell}</p>
+    <p class="muted">{t("{os} · generated {generated} · reboot required: <b>{reboot}</b> · {sched} · "
+                        "kevward {version} · {config}", os=_esc(result.os), generated=generated,
+                        reboot=reboot, sched=sched_cell, version=_KW_VERSION, config=config_cell)}</p>
     <div class="chips">{chip('critical')}{chip('high')}{chip('medium')}{chip('low')}{chip('info')}</div>
     {audit_note}
   </header>
@@ -504,24 +536,26 @@ def render(result: RunResult) -> str:
   {trend_block}
 
   <section>
-    <h2>Findings</h2>
+    <h2>{t("Findings")}</h2>
     {dupe_note}
-    <table><thead><tr><th>Sev</th><th>Service</th><th>Kind</th><th>Title</th><th>CVE</th></tr></thead>
+    <table><thead><tr><th>{t("Sev")}</th><th>{t("Service")}</th><th>{t("Kind")}</th><th>{t("Title")}</th><th>{t("CVE")}</th></tr></thead>
     <tbody>{''.join(rows) or f"<tr><td colspan=5 class='muted'>{no_findings}</td></tr>"}</tbody></table>
   </section>
 
   <section>
-    <h2>Attack sources</h2>
+    <h2>{t("Attack sources")}</h2>
     {fw_line}
     <div class="grid">
       <div>
-        <p class="muted">fail2ban bans — currently banned: <span class="kpi">{f2b.get('live_total',0)}</span>
-        · unique offenders seen: <b>{f2b.get('unique_ips',0)}</b></p>
+        <p class="muted">{t('fail2ban bans — currently banned: <span class="kpi">{live}</span> · unique '
+                            'offenders seen: <b>{unique}</b>', live=f2b.get('live_total', 0),
+                            unique=f2b.get('unique_ips', 0))}</p>
         {ban_bars}
       </div>
       <div>
-        <p class="muted">sshd auth failures — sources: <b>{lw.get('ssh_unique_sources',0)}</b>
-        · attempts: <b>{lw.get('ssh_total_attempts',0)}</b>{ssh_window}</p>
+        <p class="muted">{t("sshd auth failures — sources: <b>{sources}</b> · attempts: <b>{attempts}</b>",
+                            sources=lw.get('ssh_unique_sources', 0),
+                            attempts=lw.get('ssh_total_attempts', 0))}{ssh_window}</p>
         {ssh_recent}
         {ssh_bars}
       </div>
@@ -530,8 +564,8 @@ def render(result: RunResult) -> str:
   {audit_block}
 
   <footer class="muted" style="text-align:center;font-size:12px">
-    kevward {_KW_VERSION} · defensive posture report · {datetime.now().year} ·
+    kevward {_KW_VERSION} · {t("defensive posture report")} · {datetime.now().year} ·
     AGPL-3.0 ·
-    <a href="https://github.com/ForexRobotics/kevward" style="color:inherit">source</a>
+    <a href="https://github.com/ForexRobotics/kevward" style="color:inherit">{t("source")}</a>
   </footer>
 </div></body></html>"""

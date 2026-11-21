@@ -324,7 +324,8 @@ def _cmd_report(args) -> Path:
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(result), encoding="utf-8")
+    lang = getattr(args, "lang", None) or cfg.report.lang
+    out.write_text(render(result, lang=lang), encoding="utf-8")
     if args.json:
         # keep stdout pure JSON so `report --json > posture.json` is valid (#113)
         print(f"wrote {out}", file=sys.stderr)
@@ -527,6 +528,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--trends", action="store_true", help="include CISA KEV trends (network)")
     r.add_argument("--audit", action="store_true",
                    help="include host compromise indicators (read-only; sudo for full view)")
+    r.add_argument("--lang", choices=["en", "ja"],
+                   help="report language (default: [report] lang in config, else en)")
     r.set_defaults(func=cmd_report)
 
     t = sub.add_parser("trends", help="actively-exploited CVEs relevant to host")

@@ -146,6 +146,20 @@ class AptConfig:
 
 
 @dataclass
+class ReportConfig:
+    """HTML report options (#180)."""
+
+    # Language of the report's frame (headings, labels, summary lines):
+    # "en" (default) or "ja". Finding text, JSON and CLI output stay English.
+    lang: str = "en"
+
+    def __post_init__(self) -> None:
+        from .reporting.i18n import normalize
+
+        self.lang = normalize(self.lang)  # ValueError on an unknown language
+
+
+@dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
     firewall: FirewallConfig = field(default_factory=FirewallConfig)
@@ -153,6 +167,7 @@ class Config:
     update: UpdateConfig = field(default_factory=UpdateConfig)
     trends: TrendsConfig = field(default_factory=TrendsConfig)
     apt: AptConfig = field(default_factory=AptConfig)
+    report: ReportConfig = field(default_factory=ReportConfig)
     report_dir: Path = Path("/var/log/kevward")
     # The file actually loaded (None = built-in defaults), for display (#105).
     source: Path | None = None
@@ -210,6 +225,10 @@ class Config:
         ap = data.get("apt", {})
         cfg.apt = AptConfig(
             **{k: v for k, v in ap.items() if k in AptConfig.__annotations__}
+        )
+        rp = data.get("report", {})
+        cfg.report = ReportConfig(
+            **{k: v for k, v in rp.items() if k in ReportConfig.__annotations__}
         )
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])
