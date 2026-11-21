@@ -32,7 +32,6 @@ from .engine import run as run_engine
 from .integrations import fail2ban, logwatch
 from .model import Severity
 from .plugin import detected_kev_terms, discover
-from .util import have, is_root
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -154,6 +153,62 @@ def cmd_check(args) -> int:
     return _print_findings(result, args.json)
 
 
+def refresh_line(refresh: dict) -> tuple[str, bool]:
+    """First line of an apply plan: was the apt plan computed on fresh lists?
+    Returns (line, is_warning). Pure (#171)."""
+    state = (refresh or {}).get("state")
+    if state == "ok":
+        return f"apt lists refreshed (apt-get update ok, {refresh.get('seconds', 0)}s)", False
+    if state == "failed":
+        return (f"WARNING: apt-get update failed ({refresh.get('error') or 'unknown error'}); "
+                "the plan below may be stale"), True
+    if state == "skipped":
+        return ("note: not root — apt package lists were not refreshed; "
+                "run with sudo for an up-to-date plan"), False
+    return "", False
+
+
+def _kind(f) -> str:
+    return f.kind if isinstance(f.kind, str) else f.kind.value
+
+
+def plan_tail(result, apply_minor: bool) -> tuple[list[str], bool]:
+    """Lines after the per-service actions: an empty plan, minor upgrades left
+    out, and why a reboot is mentioned. Returns (lines, a reboot is needed now
+    or after this plan). Pure over a RunResult (#171)."""
+    lines: list[str] = []
+    planned = {p for s in result.services for a in s.actions
+               for p in a.description.removeprefix("install: ").split(", ")
+               if a.description.startswith("install: ")}
+    if not any(s.actions for s in result.services):
+        lines.append("nothing to apply (0 packages)")
+    if not apply_minor:
+        minor = {p for s in result.services for f in s.findings
+                 if _kind(f) == "minor_upgrade" for p in f.refs} - planned
+        if minor:
+            n = len(minor)
+            lines.append(f"{n} minor upgrade{'s' if n != 1 else ''} not included (use --minor)")
+    rebooting = {p for s in result.services for f in s.findings if f.reboot_required
+                 for p in f.refs if _needs_reboot(p)}
+    now = sorted(rebooting & planned)
+    later = sorted(rebooting - planned)
+    if result.reboot_pending:
+        why = ", ".join(result.reboot_packages) or "reboot-required.pkgs not available"
+        lines.append(f"reboot: already required ({why})")
+    elif now:
+        lines.append(f"reboot: will be required after these updates ({', '.join(now)})")
+    elif later:
+        lines.append("reboot: will be required once pending updates not in this plan "
+                     f"are installed ({', '.join(later)})")
+    return lines, bool(result.reboot_pending or now)
+
+
+def _needs_reboot(pkg: str) -> bool:
+    from .plugins._apt import change_needs_reboot
+
+    return change_needs_reboot(pkg)
+
+
 def cmd_apply(args) -> int:
     cfg = _mkconfig(args, side_effects=args.yes)
     if args.minor:
@@ -161,12 +216,14 @@ def cmd_apply(args) -> int:
     dry = not args.yes
     if dry:
         print("DRY RUN (pass --yes to actually apply)")
-        if not is_root() and have("apt-get"):
-            print("note: not root — apt package lists were not refreshed; "
-                  "run with sudo for an up-to-date plan")
-        print()
     result = run_engine(cfg, do_apply=True, dry_run=dry)
     failed = False
+    line, warn = refresh_line(result.apt_refresh)
+    if line:
+        print(line)
+    if warn:
+        failed = True
+    print()
     for svc in result.services:
         for a in svc.actions:
             tag = "would" if a.dry_run else ("ok" if a.ok else "FAIL")
@@ -177,16 +234,21 @@ def cmd_apply(args) -> int:
                 line += f"  ({reason})"
                 failed = True
             print(line)
+    tail, reboot_now = plan_tail(result, cfg.policy.apply_minor)
+    for line in tail:
+        print(line)
+    sched = result.reboot_schedule or {}
     if result.reboot_required:
-        if cfg.policy.allow_reboot and args.reboot and not dry:
+        if sched.get("state") == "scheduled":
+            print(f"reboot scheduled: {sched.get('at') or 'yes'}")
+        elif cfg.policy.allow_reboot and args.reboot and not dry:
             from .scheduler import schedule_reboot
             ok, msg = schedule_reboot(cfg.policy.reboot_window_start)
             print(msg)
             if not ok:
                 failed = True
-        else:
-            print("\nreboot required (not scheduled; use schedule-reboot or --reboot "
-                  "with allow_reboot=true)")
+        elif reboot_now:
+            print("  (not scheduled; use schedule-reboot or --reboot with allow_reboot=true)")
     return 1 if failed else 0
 
 

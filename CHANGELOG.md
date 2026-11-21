@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **`apply` says what happened (#171).** The dry run on www printed only
+  `DRY RUN`, blank lines and `reboot required (not scheduled; …)`. Now:
+  - the first line says whether apt lists were refreshed
+    (`apt lists refreshed (apt-get update ok, 3.2s)`); a failed
+    `apt-get update` was silently ignored and now prints `WARNING: apt-get
+    update failed (…); the plan below may be stale` and exits 1;
+  - `nothing to apply (0 packages)` when there is nothing to do, and
+    `N minor upgrades not included (use --minor)`;
+  - the reboot line says why: `already required (libc6)`, `will be required
+    after these updates (linux-generic)`, or `will be required once pending
+    updates not in this plan are installed`; nothing when neither applies.
+  The apt plan (and `apt-get update`) is now computed once per run and
+  shared by every apt plugin instead of once per plugin. JSON adds
+  `apt_refresh`.
+- **Laravel: one EOL finding per major (#171).** Two copies of the same app
+  gave two identical MEDIUM "past end of security fixes" rows; they are now
+  one row listing the paths.
 - **Report: which packages of an apt finding are still old (#174).** A
   finding such as `php8.3 8.3.36 → 8.3.37` did not say whether it meant the
   whole php8.3 source or only the `php8.3` metapackage (left behind by

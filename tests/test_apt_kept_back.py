@@ -94,6 +94,7 @@ def test_simulate_upgrade_runs_both_and_merges(monkeypatch):
         return R({"upgrade": UPGRADE, "dist-upgrade": DIST}.get(args[-1], ""))
 
     monkeypatch.setattr(_apt, "run", fake_run)
+    monkeypatch.setattr(_apt, "is_root", lambda: True)  # CI runs unprivileged
     got = _apt._simulate_upgrade()
     assert calls == ["-qq", "upgrade", "dist-upgrade"]
     assert sum(c["kept_back"] for c in got) == 3

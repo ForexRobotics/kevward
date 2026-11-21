@@ -135,14 +135,51 @@ def merge_kept_back(upgrade: list[dict], full: list[dict]) -> list[dict]:
     return upgrade + extra
 
 
+#: Result of the last ``apt-get update`` (#171): {"state": "ok" | "failed" |
+#: "skipped", "seconds": float, "error": str}. None until a simulation ran.
+REFRESH: dict | None = None
+_SIM: list[dict] | None = None
+
+
+def reset_simulation() -> None:
+    """Forget the cached plan; the engine calls this once per run."""
+    global REFRESH, _SIM
+    REFRESH, _SIM = None, None
+
+
+def refresh_lists() -> dict:
+    """``apt-get update`` and how it went. Skipped without root, where it
+    could not write the lists anyway. Never raises."""
+    import time
+
+    if not is_root():
+        return {"state": "skipped", "seconds": 0.0, "error": "not root"}
+    t0 = time.monotonic()
+    r = run(["apt-get", "update", "-qq"], timeout=180)
+    secs = round(time.monotonic() - t0, 1)
+    if r.ok:
+        return {"state": "ok", "seconds": secs, "error": ""}
+    first = next((ln.strip() for ln in (r.err or r.out).splitlines() if ln.strip()),
+                 f"exit {r.rc}")
+    return {"state": "failed", "seconds": secs, "error": first[:200]}
+
+
 def _simulate_upgrade() -> list[dict]:
-    """Planned changes from a simulated upgrade, including kept-back ones."""
-    # Refresh lists quietly; tolerate failure (e.g. offline / no root).
-    run(["apt-get", "update", "-qq"], timeout=180)
+    """Planned changes from a simulated upgrade, including kept-back ones.
+
+    Computed once per run and shared by every apt plugin (it used to run
+    ``apt-get update`` once per plugin). The refresh result is kept in
+    ``REFRESH`` so ``apply`` can say whether the plan is current (#171).
+    """
+    global REFRESH, _SIM
+    if _SIM is not None:
+        return [dict(c) for c in _SIM]
+    REFRESH = refresh_lists()
     upgrade = parse_inst(run(["apt-get", "-s", "upgrade"], timeout=180).out)
     full = parse_inst(run(["apt-get", "-s", "dist-upgrade"], timeout=180).out)
-    return classify_changes(merge_kept_back(upgrade, full),
+    _SIM = classify_changes(merge_kept_back(upgrade, full),
                             SETTINGS.security_origins, SETTINGS.php_release_check)
+    return [dict(c) for c in _SIM]
 
 
 # Kernel metapackages: upgrading them installs a new kernel image.
