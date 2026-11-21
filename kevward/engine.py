@@ -31,6 +31,9 @@ class RunResult:
     audit: list[Finding] | None = None
     # [audit] allowed_outbound matches: rule -> connections silenced (#155).
     audit_allowed_outbound: dict[str, int] = field(default_factory=dict)
+    # How `apt-get update` went before the plan was computed (#171):
+    # {"state": "ok" | "failed" | "skipped", "seconds", "error"}; {} if no apt.
+    apt_refresh: dict = field(default_factory=dict)
     # The host already asks for a reboot (/run/reboot-required is set), as
     # opposed to "applying the pending updates will need one".
     reboot_pending: bool = False
@@ -78,6 +81,7 @@ class RunResult:
             "attackers": self.attackers,
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
             "audit_allowed_outbound": self.audit_allowed_outbound,
+            "apt_refresh": self.apt_refresh,
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -115,6 +119,7 @@ def _reboot_schedule() -> dict:
 def _configure_apt(cfg: Config) -> None:
     from .plugins import _apt
 
+    _apt.reset_simulation()
     _apt.configure(_apt.AptSettings(
         security_origins=list(cfg.apt.security_origins),
         php_release_check=cfg.apt.php_release_check,
@@ -152,4 +157,7 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
                 claimed=claimed if apply_this else None,
             )
         )
+    from .plugins import _apt
+
+    result.apt_refresh = dict(_apt.REFRESH or {})
     return result

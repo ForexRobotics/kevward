@@ -117,12 +117,17 @@ def test_check_only_run_claims_nothing(monkeypatch):
 def test_dry_run_warns_when_not_root(monkeypatch, capsys):
     from kevward import cli
 
-    monkeypatch.setattr(cli, "is_root", lambda: False)
-    monkeypatch.setattr(cli, "have", lambda name: True)
-    monkeypatch.setattr(cli, "run_engine", lambda *a, **k: engine.RunResult("h", "t", "Linux"))
+    def fake(refresh):
+        def _run(*a, **k):
+            r = engine.RunResult("h", "t", "Linux")
+            r.apt_refresh = refresh
+            return r
+        return _run
+
+    monkeypatch.setattr(cli, "run_engine", fake({"state": "skipped", "error": "not root"}))
     cli.main(["apply"])
     assert "apt package lists were not refreshed" in capsys.readouterr().out
 
-    monkeypatch.setattr(cli, "is_root", lambda: True)
+    monkeypatch.setattr(cli, "run_engine", fake({"state": "ok", "seconds": 1.0, "error": ""}))
     cli.main(["apply"])
     assert "not refreshed" not in capsys.readouterr().out

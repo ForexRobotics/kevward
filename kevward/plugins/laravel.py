@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from ..model import Finding, FindingKind, Severity
@@ -110,7 +111,38 @@ class LaravelPlugin(ServicePlugin):
         extra = multi_framework_finding(self.name, detections)
         if extra:
             findings.append(extra)
-        return findings
+        return collapse_eol(findings)
+
+
+_EOL_MARK = "end of security fixes"
+
+
+def collapse_eol(findings: list[Finding]) -> list[Finding]:
+    """One EOL finding per (Laravel major, phase) instead of one per app path
+    (#171): two copies of the same app used to give two identical MEDIUMs.
+    The paths move into the detail. Pure; keeps the first finding's place."""
+    groups: dict[str, list[Finding]] = {}
+    for f in findings:
+        if _EOL_MARK in f.title and ": " in f.title:
+            groups.setdefault(f.title.split(": ", 1)[1], []).append(f)
+    out: list[Finding] = []
+    for f in findings:
+        if not (_EOL_MARK in f.title and ": " in f.title):
+            out.append(f)
+            continue
+        key = f.title.split(": ", 1)[1]
+        members = groups.pop(key, None)
+        if members is None:
+            continue  # already merged into the first one
+        if len(members) == 1:
+            out.append(f)
+            continue
+        paths = "; ".join(m.detail.split(" · ", 1)[0] + f" ({m.current_version})"
+                          for m in members)
+        rest = f.detail.split(". ", 1)[1] if ". " in f.detail else ""
+        out.append(replace(f, title=f"{key} — {len(members)} apps",
+                           detail=f"{paths}. {rest}".strip()))
+    return out
 
 
 def _framework_version(app: Path) -> str | None:
