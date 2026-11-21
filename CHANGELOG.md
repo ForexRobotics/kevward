@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.14.3
+
+Clearer `apply` and report output from the week's patching: whether the apt
+plan is current and why a reboot is mentioned (#171), which packages of an
+apt finding are still old (#174), and the `allowed_outbound` line at 0 hits
+(#175).
 
 - **`apply` says what happened (#171).** The dry run on www printed only
   `DRY RUN`, blank lines and `reboot required (not scheduled; …)`. Now:
