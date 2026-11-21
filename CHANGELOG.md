@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Japanese report (#180).** `[report] lang = "ja"` in config.toml, or
+  `kevward report --lang ja` for one run, renders the HTML report's frame in
+  Japanese: headings, explanations, table headers, severity / kind / KEV
+  status labels, the header line, firewall / fail2ban / sshd summaries, the
+  audit intro and helper lines such as "still old" and "advisories". Finding
+  titles and details from plugins, JSON and CLI output stay English (phase
+  2). English remains the default and its output is unchanged apart from
+  whitespace. No new dependency: an in-tree catalog keyed by the English
+  text, with a test that every message has a Japanese entry. An unknown
+  `lang` is a config error.
+
 ## 0.14.3
 
 Clearer `apply` and report output from the week's patching: whether the apt
