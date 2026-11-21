@@ -240,7 +240,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
             rows.append(
                 f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
                 f"{_esc(t(sev))}</span></td><td>{_esc(f.service)}</td>"
-                f"<td>{_esc(t(kind))}</td><td>{_esc(f.title)}{_finding_extra(f, t)}</td>"
+                f"<td class='kind'>{_esc(t(kind))}</td><td>{_esc(f.title)}{_finding_extra(f, t)}</td>"
                 f"<td class='cve'>{_esc(f.cve or '')}</td></tr>"
             )
 
@@ -510,8 +510,10 @@ def render(result: RunResult, lang: str | None = None) -> str:
   table {{ width:100%; border-collapse:collapse; font-size:13.5px; }}
   th,td {{ text-align:left; padding:7px 8px; border-bottom:1px solid var(--line);
     vertical-align:top; }}
-  th {{ color:var(--muted); font-weight:600; }}
-  .pill {{ color:#fff; border-radius:6px; padding:1px 8px; font-size:12px; }}
+  th {{ color:var(--muted); font-weight:600; white-space:nowrap; }}
+  .pill {{ color:#fff; border-radius:6px; padding:1px 8px; font-size:12px;
+    white-space:nowrap; }}
+  .kind {{ white-space:nowrap; }}
   .cve {{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }}
   .row {{ display:flex; align-items:center; gap:10px; margin:3px 0; }}
   .lbl {{ width:150px; font-family:ui-monospace,monospace; font-size:12.5px;

@@ -91,7 +91,7 @@ def test_japanese_frame_keeps_finding_text():
     out = H.render(_result(), lang="ja")
     assert '<html lang="ja">' in out
     assert "<h2>指摘</h2>" in out and "侵入の痕跡（audit）" in out
-    assert ">高</span>" in out and "<td>セキュリティ更新</td>" in out
+    assert ">高</span>" in out and "<td class='kind'>セキュリティ更新</td>" in out
     assert "php8.3 8.3.36 → 8.3.37" in out  # plugin text unchanged
     assert "未更新: php8.3 8.3.36-1" in out
     assert "同じソース（php8.3）の他の 1 パッケージは 8.3.37-2 に更新済み" in out
