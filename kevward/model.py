@@ -75,6 +75,12 @@ class Finding:
     # apt origin of a pending package update, e.g. "Ubuntu:24.04/noble-security"
     # or "LP-PPA-ondrej-php:22.04/jammy" (#169). None for non-apt findings.
     origin: str | None = None
+    # apt findings (#174): source package, installed version of each package
+    # still to upgrade, and installed packages of the same source that are
+    # already at the candidate version (a partial upgrade).
+    source_package: str | None = None
+    package_versions: dict[str, str] = field(default_factory=dict)
+    updated_packages: list[str] = field(default_factory=list)
 
     @property
     def refs(self) -> list[str]:

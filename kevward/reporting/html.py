@@ -82,11 +82,40 @@ def _fw_window(since, generated_at: str) -> str:
     span = f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"
     return f"{label}, {span}"
 
+_MAX_OLD = 12
+
+
+def _old_packages(f) -> str:
+    """``still old: php8.3 8.3.36-1+…`` and how many siblings are already
+    upgraded, for apt findings (#174). "" when the finding has no versions."""
+    vers = getattr(f, "package_versions", None) or {}
+    if not vers:
+        return ""
+    pkgs = getattr(f, "packages", None) or list(vers)
+    shown = [p for p in pkgs if p in vers] or list(vers)
+    items = [f"{p} {vers[p]}" for p in shown[:_MAX_OLD]]
+    if len(shown) > _MAX_OLD:
+        items.append(f"+{len(shown) - _MAX_OLD} more")
+    text = "still old: " + ", ".join(items)
+    done = getattr(f, "updated_packages", None) or []
+    if done:
+        src = getattr(f, "source_package", None)
+        what = f"{src} package" if src else "package"
+        at = f" already at {f.fixed_version}" if f.fixed_version else " already upgraded"
+        text += (f" · {len(done)} other {what}{'s' if len(done) != 1 else ''}{at}"
+                 f" ({', '.join(done[:_MAX_OLD])}{', …' if len(done) > _MAX_OLD else ''})")
+    return _esc(text)
+
+
 def _finding_extra(f) -> str:
-    """Package list for grouped apt findings and a link to the advisories (#143)."""
+    """Package list for grouped apt findings and a link to the advisories
+    (#143); which packages are still old and which already upgraded (#174)."""
     bits = []
     pkgs = getattr(f, "packages", None) or []
-    if len(pkgs) > 1:
+    old = _old_packages(f)
+    if old:
+        bits.append(old)
+    elif len(pkgs) > 1:
         bits.append(_esc(", ".join(pkgs)))
     url = getattr(f, "url", None)
     if url and url.startswith("https://"):
@@ -144,11 +173,13 @@ def _without_owned(f, owned: set):
 def _allowed_note(result: RunResult) -> str:
     """One line for outbound connections silenced by [audit] allowed_outbound."""
     from ..audit import allowed_summary
-    line = allowed_summary(getattr(result, "audit_allowed_outbound", None))
+    hits = getattr(result, "audit_allowed_outbound", None)
+    line = allowed_summary(hits)
     if not line:
         return ""
+    how = "matched" if sum(hits.values()) else "configured in"
     return (f"<p class='muted' style='font-size:12px'>{_esc(line)} — "
-            "matched <code>[audit] allowed_outbound</code></p>")
+            f"{how} <code>[audit] allowed_outbound</code></p>")
 
 
 def render(result: RunResult) -> str:

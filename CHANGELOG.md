@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Report: which packages of an apt finding are still old (#174).** A
+  finding such as `php8.3 8.3.36 → 8.3.37` did not say whether it meant the
+  whole php8.3 source or only the `php8.3` metapackage (left behind by
+  `apt-get install --only-upgrade 'php8.3-*'`). The HTML row now lists
+  `still old: <package> <installed version>` and how many other installed
+  packages of the same source are already at the new version. JSON adds
+  `source_package`, `package_versions` and `updated_packages` to apt
+  findings (one extra `dpkg-query -W` per run).
+- **audit: the `allowed_outbound` summary stays when nothing matched
+  (#175).** With rules configured but no matching connection at scan time,
+  the line disappeared, so "tor was not connected right now" looked the same
+  as "the rule is not configured". Now `allowed outbound: 0 (rules:
+  tor:9001; no matching connection at scan time)`, and
+  `audit_allowed_outbound` in JSON lists every rule, at 0 when idle.
+
 ## 0.14.2
 
 Two `apply` bugs found while patching the 2026-11-19 PHP release: PPA PHP
