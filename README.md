@@ -18,7 +18,10 @@
 
 <sub>One `kevward report` — patch posture, actively-exploited (CISA KEV) matches,
 attacker IPs, and (with `--audit`) host compromise indicators — in a single
-self-contained HTML page (light & dark themes). Demo data shown.</sub>
+self-contained HTML page (light & dark themes). Demo data shown. Also in
+Japanese with `[report] lang = "ja"`: [light](https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/report-ja.png) ·
+[dark](https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/report-ja-dark.png) · [phone](https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/report-ja-mobile.png) ·
+[English dark](https://raw.githubusercontent.com/ForexRobotics/kevward/main/docs/img/report-dark.png).</sub>
 
 kevward runs *on a server* and answers three questions a sysadmin asks every
 morning:
