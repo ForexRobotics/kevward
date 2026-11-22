@@ -405,7 +405,15 @@ metadata in `<head>`:
 <meta name="kevward-generated-at" content="2026-11-10T22:05:13+00:00">
 <meta name="kevward-version" content="0.12.8">
 <meta name="kevward-host" content="web-1">
+<meta name="kevward-count-critical" content="0">
+<meta name="kevward-count-high" content="2">
+…
+<meta name="kevward-count-act-now" content="2">
+<meta name="kevward-count-kev-applicable" content="0">
 ```
+
+The `kevward-count-*` values are the header chips (critical / high / medium /
+low / info, `act-now` = critical + high) and the KEV matches that apply.
 
 and every `kevward report` run (successful or not) writes
 `last-run.json` next to it:
@@ -414,6 +422,30 @@ and every `kevward report` run (successful or not) writes
 {"started_at": "…", "finished_at": "…", "ok": false,
  "error": "OSError: [Errno 28] No space left on device", "report": null}
 ```
+
+(a successful run also has `counts`, the same numbers as the meta tags).
+
+The run's content is also written as **`report.json`** beside the HTML: the
+`kevward report --json` object plus `schema_version` and a `summary` computed
+exactly as the HTML header shows it:
+
+```json
+{"schema_version": 1, "host": "web-1", "generated_at": "…", "services": […],
+ "attackers": {…}, "audit": […],
+ "summary": {
+   "counts": {"critical": 0, "high": 2, "medium": 8, "low": 3, "info": 12},
+   "act_now": 2,
+   "kev": {"applicable": 1, "unchecked": 0, "fixed": 3, "na_config": 0,
+           "na_release": 12, "applicable_cves": ["CVE-…"], …},
+   "attack": {"fail2ban_bans_total": 42, "ssh_failed_total": 1234,
+              "ssh_window": {"start": "…", "end": "…"},
+              "fw_drops": {"evidence": 105, "cidr": 20, "total": 125, "since": 1763856000}, …}}}
+```
+
+Use it to chart a host over time; the per-IP lists stay under
+`attackers.fail2ban.top_offenders` and `attackers.logwatch.ssh_failed_logins`.
+The firewall counters reset when the ruleset is reloaded, so `fw_drops.since`
+(epoch seconds) says what they cover.
 
 Treat a report as **stale** when `kevward-generated-at` is older than about
 26 hours or `last-run.json` says `"ok": false`, and surface that instead of
@@ -441,7 +473,7 @@ enabled = true
 
 | role | ops | how |
 |---|---|---|
-| `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
+| `read` | `version`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
 | `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install`, `apply.start` | `sudo -n`, with an exact-match sudoers line |
 
 ```text

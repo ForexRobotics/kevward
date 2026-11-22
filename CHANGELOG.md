@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **`report.json` (#211).** `kevward report` also writes the run as data
+  beside report.html: the `report --json` object plus `schema_version: 1` and
+  a `summary` computed exactly as the HTML header (`counts` per severity,
+  `act_now`, `kev` with the applicable CVEs, `attack` with fail2ban / sshd
+  totals, their window and firewall drops). ssh-gate `report.get` takes
+  `format: "data"` to return it.
+- report.html carries the header counts as `kevward-count-*` meta tags, and
+  `last-run.json` has the same `counts`.
+
 ## 0.18.2
 
 ssh-gate `job.get` now works with the read role (#208).

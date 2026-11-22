@@ -218,6 +218,45 @@ def _allowed_note(result: RunResult, t: Translator = _EN) -> str:
     return f"<p class='muted' style='font-size:12px'>{t(msg, line=_esc(line))}</p>"
 
 
+SEVERITIES = ("critical", "high", "medium", "low", "info")
+
+
+def severity_counts(result: RunResult) -> tuple[dict[str, int], int]:
+    """The header chips' numbers: findings per severity after hiding apt rows
+    already listed under their service plugin, plus audit indicators. Returns
+    (counts with every severity, apt rows hidden). Pure; shared with
+    report.json and the count meta tags (#211) so they always agree."""
+    counts = dict.fromkeys(SEVERITIES, 0)
+    owned = _service_pkg_keys(result)
+    hidden = 0
+    for svc in result.services:
+        if not svc.present:
+            continue
+        for f in svc.findings:
+            if svc.service == "apt" and _without_owned(f, owned) is None:
+                hidden += 1
+                continue
+            sev = f.severity if isinstance(f.severity, str) else f.severity.value
+            counts[sev] = counts.get(sev, 0) + 1
+    for f in (result.audit or []):
+        sev = f.severity if isinstance(f.severity, str) else f.severity.value
+        counts[sev] = counts.get(sev, 0) + 1
+    return counts, hidden
+
+
+def fw_drop_totals(fw: dict) -> dict[str, int] | None:
+    """Packets dropped by the evidence blocklist and the operator CIDR sets."""
+    if not fw:
+        return None
+
+    def pkts(*sets: str) -> int:
+        return sum(int(fw[s][0]) for s in sets if s in fw)
+
+    evidence = pkts("blocklist4", "blocklist6")
+    cidr = pkts("blockcidr4", "blockcidr6")
+    return {"evidence": evidence, "cidr": cidr, "total": evidence + cidr}
+
+
 def render(result: RunResult, lang: str | None = None) -> str:
     """The report page. ``lang`` (#180) translates the frame (headings,
     labels, summary lines); finding text stays as the plugins wrote it."""
@@ -229,7 +268,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
     trends = att.get("trends", {})
 
     # --- findings table ---
-    sev_counts: dict[str, int] = {}
+    sev_counts, _hidden = severity_counts(result)
     rows = []
     owned = _service_pkg_keys(result)
     hidden_dupes = 0
@@ -247,7 +286,6 @@ def render(result: RunResult, lang: str | None = None) -> str:
                     continue
                 f = trimmed
             sev = f.severity if isinstance(f.severity, str) else f.severity.value
-            sev_counts[sev] = sev_counts.get(sev, 0) + 1
             kind = f.kind if isinstance(f.kind, str) else f.kind.value
             rows.append(
                 f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
@@ -260,7 +298,6 @@ def render(result: RunResult, lang: str | None = None) -> str:
     audit_rows = ""
     for f in (result.audit or []):
         sev = f.severity if isinstance(f.severity, str) else f.severity.value
-        sev_counts[sev] = sev_counts.get(sev, 0) + 1  # reflected in the header chips
         audit_rows += (
             f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
             f"{_esc(t(sev))}</span></td><td>{_esc(f.title)}</td>"
@@ -300,6 +337,12 @@ def render(result: RunResult, lang: str | None = None) -> str:
     # weekly report. Critical/high findings and KEV matches that apply here.
     urgent = sev_counts.get("critical", 0) + sev_counts.get("high", 0)
     kev_here = int((att.get("trends") or {}).get("applicable_count") or 0)
+    # Machine-readable copies of the chips (#211): consoles read these instead
+    # of scraping the chips' markup.
+    count_meta = "\n".join(
+        f'<meta name="kevward-count-{k}" content="{v}">'
+        for k, v in [*((sev, sev_counts.get(sev, 0)) for sev in SEVERITIES),
+                     ("act-now", urgent), ("kev-applicable", kev_here)])
     if urgent or kev_here:
         status_cls = "bad"
         parts = []
@@ -344,9 +387,6 @@ def render(result: RunResult, lang: str | None = None) -> str:
     # --- firewall drops (issue #42 follow-up): packets dropped per kevward set.
     fw = att.get("firewall") or {}
 
-    def _fw_pkts(*sets: str) -> int:
-        return sum(int(fw[s][0]) for s in sets if s in fw)
-
     sizes = att.get("firewall_sizes") or {}
 
     def _fw_size(*sets: str) -> str:
@@ -359,9 +399,8 @@ def render(result: RunResult, lang: str | None = None) -> str:
 
     fw_line = ""
     if fw:
-        evidence = _fw_pkts("blocklist4", "blocklist6")
-        cidr = _fw_pkts("blockcidr4", "blockcidr6")
-        total = evidence + cidr
+        _tot = fw_drop_totals(fw)
+        evidence, cidr, total = _tot["evidence"], _tot["cidr"], _tot["total"]
         fw_line = (
             "<p class='muted' style='margin-top:0'>"
             + t("firewall drops <span style='font-size:12px'>({window})</span>: evidence "
@@ -528,6 +567,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
 <meta name="kevward-generated-at" content="{_esc(result.generated_at)}">
 <meta name="kevward-version" content="{_esc(_KW_VERSION)}">
 <meta name="kevward-host" content="{_esc(result.host)}">
+{count_meta}
 <title>{t("kevward report — {host}", host=_esc(result.host))}</title>
 <style>
   :root {{

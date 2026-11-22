@@ -359,9 +359,11 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
 
 def op_report_get(cfg: Config, args: dict) -> dict:
     fmt = args.get("format", "html")
-    if fmt not in ("html", "json"):
-        raise GateError("bad_request", "format must be 'html' or 'json'")
-    p = cfg.report_dir / ("report.html" if fmt == "html" else "last-run.json")
+    files = {"html": "report.html", "json": "last-run.json", "data": "report.json"}
+    if fmt not in files:
+        raise GateError("bad_request", "format must be 'html', 'json' (last run) or "
+                        "'data' (the report's content, report.json)")
+    p = cfg.report_dir / files[fmt]
     try:
         raw = p.read_bytes()
         mtime = p.stat().st_mtime
@@ -371,7 +373,7 @@ def op_report_get(cfg: Config, args: dict) -> dict:
         raise GateError("internal", f"cannot read {p}: {e.strerror}") from None
     text = raw.decode("utf-8", errors="replace")
     content: object = text
-    if fmt == "json":
+    if fmt in ("json", "data"):
         try:
             content = json.loads(text)
         except ValueError:
