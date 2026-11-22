@@ -62,6 +62,20 @@ def cancel_reboot() -> tuple[bool, str]:
     return True, "scheduled reboot cancelled"
 
 
+#: systemd's USEC_INFINITY: logind reports "nothing scheduled" as this or 0.
+USEC_INFINITY = 2**64 - 1
+
+
+def _from_usec(usec: int) -> datetime | None:
+    """Realtime microseconds -> UTC datetime; None for 0, infinity or out of range."""
+    if usec <= 0 or usec >= USEC_INFINITY:
+        return None
+    try:
+        return datetime.fromtimestamp(usec / 1_000_000, tz=timezone.utc)
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 def parse_scheduled(text: str) -> tuple[datetime, str] | None:
     """``(when (UTC), mode)`` from logind's scheduled file, or None. Pure.
 
@@ -72,28 +86,36 @@ def parse_scheduled(text: str) -> tuple[datetime, str] | None:
         line.split("=", 1) for line in (text or "").splitlines() if "=" in line
     )
     usec = fields.get("USEC", "").strip()
-    if not usec.isdigit() or int(usec) == 0:
+    when = _from_usec(int(usec)) if usec.isdigit() else None
+    if when is None:
         return None
-    when = datetime.fromtimestamp(int(usec) / 1_000_000, tz=timezone.utc)
     return when, (fields.get("MODE", "").strip() or "reboot")
 
 
 def parse_busctl_scheduled(text: str) -> tuple[datetime, str] | None:
     """Parse ``busctl get-property ... ScheduledShutdown``: ``(st) "reboot" 1731...``."""
     m = re.search(r'"([^"]*)"\s+(\d+)', text or "")
-    if not m or int(m.group(2)) == 0:
+    when = _from_usec(int(m.group(2))) if m else None
+    if when is None:
         return None
-    when = datetime.fromtimestamp(int(m.group(2)) / 1_000_000, tz=timezone.utc)
     return when, (m.group(1) or "reboot")
 
 
 def scheduled_reboot(path: str | None = None) -> dict:
-    """Whether a shutdown/reboot is scheduled. Read-only, fail-soft.
+    """Whether a shutdown/reboot is scheduled. Read-only, fail-soft: anything
+    unexpected gives ``{"state": "unknown"}``, never an exception.
 
     Returns ``{"state": "scheduled", "at": <ISO 8601 UTC>, "mode": "reboot"}``,
     ``{"state": "none"}``, or ``{"state": "unknown"}`` when neither the file
     nor logind could be read.
     """
+    try:
+        return _scheduled_reboot(path)
+    except Exception:
+        return {"state": "unknown"}
+
+
+def _scheduled_reboot(path: str | None) -> dict:
     p = path or SCHEDULED_FILE
     try:
         with open(p, encoding="utf-8", errors="replace") as fh:

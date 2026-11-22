@@ -147,8 +147,8 @@ def test_ssh_gate_config_and_fail2ban(env):
     assert c.ssh_gate.enabled is True and c.audit.allowed_outbound == ["tor:9001"]
     assert list(cfgp.parent.glob("config.toml.bak-*"))
     f2b = (e.etc / "fail2ban" / "jail.d" / su.F2B_NAME).read_text()
-    assert "ignoreip = %(known/ignoreip)s 124.44.207.82/32 2001:db8::/32" in f2b
-    assert ["fail2ban-client", "reload"] in e.runner.calls
+    assert "ignoreip = 127.0.0.1/8 ::1 124.44.207.82/32 2001:db8::/32\n" in f2b
+    assert e.runner.calls[-2:] == [["fail2ban-client", "-t"], ["fail2ban-client", "reload"]]
     assert d["changed"] is True
     again = su.setup(ssh_gate=True, fail2ban_ignore=["124.44.207.82", "2001:db8::/32"], env=e)
     assert again["changed"] is False
@@ -218,3 +218,87 @@ def test_timer_dry_run_lists_units(env):
     paths = {a["path"] for a in d["actions"] if a["kind"] == "timer"}
     assert str(e.unit_dir / "kevward-report.timer") in paths
     assert not e.unit_dir.exists()
+
+
+# --- fail2ban: [DEFAULT] cannot use %(known/...)s --------------------------------
+
+def test_fail2ban_never_writes_known_interpolation(env):
+    e, _ = env
+    f2b = e.etc / "fail2ban"
+    (f2b / "jail.d").mkdir(parents=True)
+    (f2b / "jail.conf").write_text("[DEFAULT]\n#ignoreip = 127.0.0.1/8 ::1\nbantime = 10m\n"
+                                   "[sshd]\nenabled = true\n")
+    (f2b / "jail.local").write_text("[DEFAULT]\nignoreip = 127.0.0.1/8 ::1 192.0.2.0/24,"
+                                    " 198.51.100.7 %(known/ignoreip)s\n")
+    (f2b / "jail.d" / "defaults-debian.conf").write_text("[sshd]\nenabled = true\n")
+    (f2b / "jail.d" / "zz-later.local").write_text("[DEFAULT]\nignoreip = 203.0.113.99\n")
+    su.setup(fail2ban_ignore=["124.44.207.82"], env=e)
+    text = (f2b / "jail.d" / su.F2B_NAME).read_text()
+    body = [ln for ln in text.splitlines() if not ln.startswith("#")]
+    assert body == ["[DEFAULT]",
+                    "ignoreip = 127.0.0.1/8 ::1 192.0.2.0/24 198.51.100.7 124.44.207.82/32"]
+
+
+def test_fail2ban_check_failure_restores(env):
+    e, _ = env
+    jd = e.etc / "fail2ban" / "jail.d"
+    jd.mkdir(parents=True)
+
+    class F2bRunner(Runner):
+        def __call__(self, args, timeout=120, **k):
+            self.calls.append(args)
+            bad = args == ["fail2ban-client", "-t"]
+            return Cmd(1 if bad else 0, "", "ERROR Failed during configuration\n" if bad else "")
+
+    e.runner = F2bRunner()
+    with pytest.raises(GateError) as x:
+        su.setup(fail2ban_ignore=["124.44.207.82"], env=e)
+    assert x.value.code == "internal" and "removed" in x.value.message
+    assert not (jd / su.F2B_NAME).exists()
+    assert ["fail2ban-client", "reload"] not in e.runner.calls
+    # an existing file is put back as it was
+    (jd / su.F2B_NAME).write_text("[DEFAULT]\nignoreip = 127.0.0.1/8 ::1 10.0.0.1/32\n")
+    with pytest.raises(GateError) as x:
+        su.setup(fail2ban_ignore=["124.44.207.82"], env=e)
+    assert "restored" in x.value.message
+    assert "10.0.0.1/32" in (jd / su.F2B_NAME).read_text()
+
+
+def test_failure_keeps_keys_untouched_and_reports_progress(env):
+    e, home = env
+    (e.etc / "fail2ban" / "jail.d").mkdir(parents=True)
+    e.runner = Runner(rc=1)  # fail2ban-client -t fails
+    with pytest.raises(GateError) as x:
+        su.setup(console_user="ktakahashi", read_key=READ, ssh_gate=True,
+                 fail2ban_ignore=["124.44.207.82"], env=e)
+    assert "already applied before this step: update config" in x.value.message \
+        or "already applied before this step: create config" in x.value.message
+    assert not (home / ".ssh" / "authorized_keys").exists()   # keys go last
+    rec = json.loads(e.changes_file.read_text().splitlines()[-1])
+    assert rec["kind"] == "setup" and rec["actions"][0]["kind"] == "config"
+
+
+def test_self_update_and_allow_reboot(env):
+    e, _ = env
+    cfgp = e.etc / "kevward" / "config.toml"
+    cfgp.write_text("[ssh_gate]\nenabled = true\n")
+    d = su.setup(ssh_gate=True, self_update=True, allow_reboot=True, env=e)
+    keys = [(a["key"], a["action"]) for a in d["actions"] if a["kind"] == "config"]
+    assert keys == [("ssh_gate.enabled", "unchanged"), ("ssh_gate.self_update", "update"),
+                    ("policy.allow_reboot", "update")]
+    c = Config.load(cfgp)
+    assert c.ssh_gate.self_update is True and c.policy.allow_reboot is True
+    assert len(list(cfgp.parent.glob("config.toml.bak-*"))) == 1   # one write
+    assert su.setup(self_update=True, allow_reboot=True, env=e)["changed"] is False
+
+
+def test_cli_setup_flags(monkeypatch, capsys):
+    seen = {}
+
+    def fake(**kw):
+        seen.update(kw)
+        return {"dry_run": True, "changed": False, "actions": []}
+
+    monkeypatch.setattr(su, "setup", fake)
+    assert cli.main(["setup", "--self-update", "--allow-reboot", "--dry-run", "--json"]) == 0
+    assert seen["self_update"] is True and seen["allow_reboot"] is True

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: `reboot.status` (and `reboot.schedule` / `reboot.cancel`) failed with
+  `ValueError` when nothing was scheduled (#203).** logind reports "no schedule"
+  as `USEC_INFINITY` (2^64−1) as well as 0; both now mean none, as does any
+  out-of-range time. `scheduled_reboot()` never raises: anything unexpected is
+  `{"state": "unknown"}`. ssh-gate `internal` errors now carry the first line
+  of the message, not only the exception type.
+- **Fix: `kevward setup --fail2ban-ignore` wrote a drop-in that stops fail2ban
+  at its next start (#204).** `%(known/ignoreip)s` does not work in `[DEFAULT]`.
+  The drop-in now lists fail2ban's default, the `ignoreip` already in effect,
+  and the new addresses. It is checked with `fail2ban-client -t` and removed
+  or restored if rejected; reload only runs after the check passes.
+- **`kevward setup`: the `authorized_keys` lines are written last**, and a
+  failure reports which steps were already applied (and logs them).
+- **`kevward setup --self-update` / `--allow-reboot` (#205).** Set
+  `[ssh_gate] self_update = true` / `[policy] allow_reboot = true` in the same
+  validated, backed-up write as `--ssh-gate`.
+
 ## 0.18.0
 
 ssh-gate phase 2 for consoles such as FR Security Centre: reviewed updates

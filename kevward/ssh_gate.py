@@ -599,7 +599,8 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
     except GateError as e:
         return fail(e.code, e.message)
     except Exception as e:  # never a traceback on the wire
-        return fail("internal", f"{type(e).__name__}")
+        return fail("internal", f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"
+                    if str(e) else type(e).__name__)
 
 
 def _apply_ops(op: str, cfg: Config, args: dict, *, path: Path, changes_file: Path,

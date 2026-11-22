@@ -104,3 +104,65 @@ def test_report_header_and_json():
     r.reboot_schedule = {"state": "none"}
     assert r.to_dict()["reboot_scheduled"] is None
     assert "reboot scheduled: <b>none</b>" in render(r)
+
+
+# --- logind says "nothing scheduled" as USEC_INFINITY -----------------
+
+INF = 2**64 - 1
+
+
+def test_parse_infinity_is_none():
+    assert scheduler.parse_busctl_scheduled(f'(st) "" {INF}\n') is None
+    assert scheduler.parse_busctl_scheduled('(st) "" 0\n') is None
+    assert scheduler.parse_scheduled(f"USEC={INF}\nMODE=reboot\n") is None
+    # out of datetime's range but below infinity: also not a schedule
+    assert scheduler.parse_busctl_scheduled(f'(st) "reboot" {INF - 1}\n') is None
+    assert scheduler.parse_scheduled(f"USEC={10**20}\n") is None
+
+
+def test_scheduled_reboot_busctl_infinity(tmp_path, monkeypatch):
+    monkeypatch.setattr(scheduler, "SCHEDULED_FILE", str(tmp_path / "none"))
+    monkeypatch.setattr(scheduler, "have", lambda c: True)
+    monkeypatch.setattr(scheduler, "run",
+                        lambda *a, **k: Cmd(rc=0, out=f'(st) "" {INF}\n', err=""))
+    assert scheduler.scheduled_reboot() == {"state": "none"}
+
+
+def test_scheduled_reboot_never_raises(monkeypatch):
+    def boom(*a, **k):
+        raise ValueError("year 586524 is out of range")
+
+    monkeypatch.setattr(scheduler, "_scheduled_reboot", boom)
+    assert scheduler.scheduled_reboot() == {"state": "unknown"}
+
+
+def test_gate_reboot_status_with_infinity(tmp_path, monkeypatch):
+    from kevward import ssh_gate as g
+    from kevward import util
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[ssh_gate]\nenabled = true\n")
+    monkeypatch.setattr(scheduler, "SCHEDULED_FILE", str(tmp_path / "none"))
+    monkeypatch.setattr(scheduler, "have", lambda c: True)
+    monkeypatch.setattr(scheduler, "run",
+                        lambda *a, **k: Cmd(rc=0, out=f'(st) "" {INF}\n', err=""))
+    monkeypatch.setattr(util, "reboot_pending", lambda: False)
+    r = g.handle(b'{"op":"reboot.status"}', "read", path=cfg,
+                 changes_file=tmp_path / "c.jsonl")
+    assert r["ok"] and r["data"]["scheduled"] == {"state": "none"}
+
+
+def test_gate_internal_error_has_message(tmp_path, monkeypatch):
+    from kevward import gate_ops
+    from kevward import ssh_gate as g
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[ssh_gate]\nenabled = true\n")
+
+    def boom(**k):
+        raise ValueError("year 586524 is out of range")
+
+    monkeypatch.setattr(gate_ops, "op_reboot_status", boom)
+    r = g.handle(b'{"op":"reboot.status"}', "read", path=cfg)
+    assert r == {"ok": False, "code": "internal",
+                 "error": "ValueError: year 586524 is out of range"}
