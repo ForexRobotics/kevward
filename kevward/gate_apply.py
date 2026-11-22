@@ -142,17 +142,39 @@ def _job_path(jobs_dir: Path, job_id: str) -> Path:
     return jobs_dir / f"{job_id}.json"
 
 
+#: job.get is a read op, and the read role runs without root (#208): the jobs
+#: directory and its files are world-readable, like the reports. They hold
+#: package names and the console's address, nothing secret.
+DIR_MODE, FILE_MODE = 0o755, 0o644
+
+
+def _ensure_dir(jobs_dir: Path) -> None:
+    jobs_dir.mkdir(parents=True, exist_ok=True, mode=DIR_MODE)
+    with contextlib.suppress(OSError):  # 0.18.x created it 0750
+        if jobs_dir.stat().st_mode & 0o777 != DIR_MODE:
+            os.chmod(jobs_dir, DIR_MODE)
+
+
 def write_job(jobs_dir: Path, job: dict) -> None:
-    jobs_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
+    _ensure_dir(jobs_dir)
     path = _job_path(jobs_dir, job["job_id"])
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(job, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    os.chmod(tmp, FILE_MODE)
     os.replace(tmp, path)
 
 
-def read_job(jobs_dir: Path, job_id: str) -> dict | None:
+def read_job(jobs_dir: Path, job_id: str, *, strict: bool = False) -> dict | None:
+    """The job, or None if there is none. ``strict``: a job that exists but
+    cannot be read raises GateError instead of looking absent."""
     try:
         return json.loads(_job_path(jobs_dir, job_id).read_text(encoding="utf-8"))
+    except PermissionError:
+        if strict:
+            raise GateError("forbidden", f"{jobs_dir} is not readable for this role; "
+                            "update kevward on the host (0.18.2+) or use the operate "
+                            "role") from None
+        return None
     except (OSError, ValueError):
         return None
 
@@ -370,7 +392,7 @@ def op_job_get(args: dict, *, jobs_dir: Path = JOBS_DIR, unit_active=None) -> di
     job_id = args.get("job_id")
     if not isinstance(job_id, str) or not _JOB_ID.match(job_id):
         raise GateError("bad_request", "job_id must look like 20261122T010000Z-a1b2c3")
-    job = read_job(jobs_dir, job_id)
+    job = read_job(jobs_dir, job_id, strict=True)
     if job is None:
         raise GateError("not_found", f"no job {job_id}")
     if job.get("state") in ("starting", "running") and \
@@ -388,8 +410,9 @@ def op_job_get(args: dict, *, jobs_dir: Path = JOBS_DIR, unit_active=None) -> di
 
 def _redirect_output(log: Path) -> None:
     """Send fds 1 and 2 (and apt-get's output with them) to the job log."""
-    log.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
-    fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o640)
+    _ensure_dir(log.parent)
+    fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, FILE_MODE)
+    os.fchmod(fd, FILE_MODE)
     import sys
 
     sys.stdout.flush()
