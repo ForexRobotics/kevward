@@ -441,8 +441,8 @@ enabled = true
 
 | role | ops | how |
 |---|---|---|
-| `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema`, `reboot.status`, `schedule.status` | no sudo |
-| `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install` | `sudo -n`, with an exact-match sudoers line |
+| `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
+| `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install`, `apply.start` | `sudo -n`, with an exact-match sudoers line |
 
 ```text
 # ~/.ssh/authorized_keys of the collecting user
@@ -540,6 +540,33 @@ if the console is offline, and `shutdown -c` on the host still cancels it.
   delay is fixed from the console.
 
 Each of these writes is logged like `config.set` and shown in the report for 7 days.
+
+Updates follow the same two steps as by hand, `kevward apply` then
+`kevward apply --yes`, and what gets installed is exactly what was reviewed:
+
+1. `plan` returns what `kevward apply` would do: `items` (package, from, to,
+   kind, origin), `skipped` with the reason, `reboot_expected`, `apt_refresh`,
+   and a `plan_hash`. Taken with the read role it runs without root
+   (`"as_root": false`, apt lists not refreshed), so take it with operate
+   before applying.
+2. `apply.start` (`{"expect_plan": "<plan_hash>", "reboot": {"mode":
+   "if_required", "at": "2026-11-23T03:00+09:00"}}`) rebuilds the plan as root
+   and refuses with `conflict` (and the new hash) if it changed. It then starts
+   `kevward apply --yes --expect-plan <hash> --job <id>` in its own transient
+   systemd unit (`kevward-apply-<id>`), so a dropped SSH connection never
+   interrupts apt, and returns the `job_id` at once. The job checks the hash
+   again and installs from that same apt plan. With `if_required` it schedules
+   the reboot at `at` (or a minute later if the install ran past it) when one
+   is needed, so the window completes even if the console is asleep.
+3. `job.get` (`{"job_id": "..."}`) returns `state` (starting / running /
+   succeeded / failed), `exit_code`, `result` (installed, failed, reboot) and
+   the last lines of the log. Jobs are kept in `/var/lib/kevward/jobs/` (last 20).
+
+Apply policy (`apply_security`, `apply_minor`, per-service overrides) comes
+only from the host's config: `apply.start` takes no other arguments. It
+returns `conflict` while another job, a `self.update` or apt is running. The
+start and the result are logged, and the report shows "packages applied via
+ssh-gate (job …)" for 7 days.
 
 ## Adding a service
 

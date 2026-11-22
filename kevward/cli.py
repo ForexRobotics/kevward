@@ -211,6 +211,24 @@ def plan_tail(result, apply_minor: bool) -> tuple[list[str], bool]:
     return lines, bool(result.reboot_pending or now)
 
 
+def _apply_job(args) -> int:
+    """`apply --yes --expect-plan H [--job ID] [--reboot-at T]` (#197): install
+    only if the plan still hashes to H. Started by ssh-gate `apply.start`."""
+    from . import gate_apply
+
+    if not args.yes:
+        print("kevward: --expect-plan/--job need --yes (use `kevward ssh-gate` op plan "
+              "for a dry run)")
+        return 2
+    if args.minor or args.reboot:
+        print("kevward: --minor/--reboot cannot be combined with --expect-plan: the plan "
+              "and the reboot come from the host's policy and --reboot-at")
+        return 2
+    cfg = _mkconfig(args, side_effects=True)
+    return gate_apply.run_job(cfg, expect=args.expect_plan, job_id=args.job,
+                              reboot_at=args.reboot_at)
+
+
 def _needs_reboot(pkg: str) -> bool:
     from .plugins._apt import change_needs_reboot
 
@@ -218,6 +236,8 @@ def _needs_reboot(pkg: str) -> bool:
 
 
 def cmd_apply(args) -> int:
+    if getattr(args, "job", None) or getattr(args, "expect_plan", None):
+        return _apply_job(args)
     cfg = _mkconfig(args, side_effects=args.yes)
     if args.minor:
         cfg.policy.apply_minor = True
@@ -598,6 +618,10 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--yes", action="store_true", help="actually apply (else dry-run)")
     a.add_argument("--minor", action="store_true", help="also apply minor upgrades")
     a.add_argument("--reboot", action="store_true", help="schedule reboot if required")
+    a.add_argument("--expect-plan", metavar="SHA256",
+                   help="install only if the plan still has this plan_hash (ssh-gate)")
+    a.add_argument("--job", metavar="ID", help=argparse.SUPPRESS)
+    a.add_argument("--reboot-at", metavar="ISO8601", help=argparse.SUPPRESS)
     a.set_defaults(func=cmd_apply)
 
     r = sub.add_parser("report", help="write HTML posture report")

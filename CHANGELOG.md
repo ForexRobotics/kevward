@@ -10,7 +10,15 @@
   `shutdown -c`.
 - **ssh-gate: report timer (#199).** `schedule.status` (read) and
   `schedule.install` (operate) expose `kevward schedule status` / `install`.
-- Each gate reboot/timer change is logged to syslog and the change log, and the
+- **ssh-gate: plan / apply.start / job.get (#197).** `plan` returns the
+  dry-run plan with a `plan_hash`. `apply.start` re-plans as root, refuses
+  with `conflict` if the hash changed, and runs `kevward apply --yes
+  --expect-plan <hash> --job <id>` in a transient systemd unit, optionally
+  scheduling a reboot afterwards if one is needed. `job.get` returns the job's
+  state, result and log tail. Apply policy stays host-only.
+- **`kevward apply --expect-plan <sha256>`.** Installs only if the plan still
+  has that hash, from the same apt simulation that was hashed.
+- Each gate reboot/timer/apply change is logged to syslog and the change log, and the
   report shows it as an INFO finding for 7 days.
 
 ## 0.17.0
