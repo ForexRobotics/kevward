@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **ssh-gate `self.update` (#190).** A console can now update kevward on a host,
+  or roll it back, with `{"op":"self.update","args":{"version":"X.Y.Z"}}`
+  (operate role).
+  - Only a validated `X.Y.Z` is accepted. The package name is fixed.
+  - pip runs as `--isolated` with a clean environment and PyPI as the only
+    index, under a lock and a 300 s limit. Afterwards the new
+    `kevward --version` is checked.
+  - It is refused unless kevward runs from the `/opt/kevward` venv, the host
+    opts in with `[ssh_gate] self_update = true`, and the version is at or
+    above `[ssh_gate] min_version` (default: the first release with the op).
+  - The response carries `old`, `new`, `downgrade`, `duration_s` and
+    `pip_tail`. An unknown version returns `not_found`, and a concurrent run
+    returns `conflict`.
+  - Each update is logged and shown in the report for 7 days.
+  - The `version` op now reports `install`, `self_update` and `min_version`.
+  - `util.run` gained `clean_env`.
+
 ## 0.16.0
 
 `kevward ssh-gate`, a restricted forced command for collection and console

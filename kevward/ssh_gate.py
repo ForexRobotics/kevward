@@ -53,7 +53,15 @@ CHANGE_NOTICE_DAYS = 7
 
 ROLES = ("read", "operate")
 READ_OPS = ("version", "report.get", "config.get", "config.schema")
-OPERATE_OPS = READ_OPS + ("config.set",)
+OPERATE_OPS = READ_OPS + ("config.set", "self.update")
+
+# self.update (#190)
+SELF_UPDATE_SINCE = "0.17.0"     # default rollback floor: first release with the op
+VENV_PREFIX = Path("/opt/kevward")
+UPDATE_TIMEOUT_S = 300
+UPDATE_LOCK = Path("/var/lib/kevward/self-update.lock")
+INDEX_URL = "https://pypi.org/simple"
+_VERSION = re.compile(r"(\d{1,4})\.(\d{1,4})\.(\d{1,4})")
 
 # Keys ssh-gate may write (phase 1): none of them can weaken detection or
 # protection, and none is a path.
@@ -245,10 +253,106 @@ def _effective(cfg: Config) -> dict:
     return out
 
 
-def op_version(role: str) -> dict:
+def install_info(prefix: Path | None = None) -> dict:
+    """How this kevward is installed: the /opt/kevward venv or something else."""
+    prefix = prefix or VENV_PREFIX
+    here = Path(sys.prefix).resolve()
+    is_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    if is_venv and here == prefix.resolve() and (prefix / "bin" / "python").exists():
+        return {"method": "venv", "prefix": str(prefix)}
+    return {"method": "other", "prefix": str(here)}
+
+
+def op_version(role: str, cfg: Config | None = None) -> dict:
+    gate = cfg.ssh_gate if cfg else None
     return {"kevward": __version__, "python": platform.python_version(),
             "protocol": PROTOCOL, "role": role,
-            "ops": list(OPERATE_OPS if role == "operate" else READ_OPS)}
+            "ops": list(OPERATE_OPS if role == "operate" else READ_OPS),
+            "install": install_info(),
+            "self_update": bool(gate and gate.self_update),
+            "min_version": (gate.min_version if gate and gate.min_version
+                            else SELF_UPDATE_SINCE)}
+
+
+def _vtuple(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in v.split("."))
+
+
+def _pip_tail(text: str, n: int = 40) -> str:
+    return "\n".join((text or "").strip().splitlines()[-n:])
+
+
+def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
+                   now: datetime, runner=None, prefix: Path | None = None,
+                   lock_path: Path | None = None) -> dict:
+    """pip install kevward==<version> into the /opt/kevward venv (#190)."""
+    from .util import run as _run
+
+    runner = runner or _run
+    prefix = prefix or VENV_PREFIX
+    want = args.get("version")
+    if not isinstance(want, str) or not _VERSION.fullmatch(want):
+        raise GateError("bad_request", "args.version must be a release version like 0.17.0")
+    if not cfg.ssh_gate.self_update:
+        raise GateError("forbidden", "self.update is not enabled on this host "
+                        "([ssh_gate] self_update = true in the host's config)")
+    floor = cfg.ssh_gate.min_version or SELF_UPDATE_SINCE
+    if _vtuple(want) < _vtuple(floor):
+        raise GateError("forbidden", f"{want} is below this host's minimum {floor} "
+                        "([ssh_gate] min_version)")
+    inst = install_info(prefix)
+    if inst["method"] != "venv":
+        raise GateError("forbidden", f"not a venv install in {prefix} "
+                        f"(running from {inst['prefix']}); update it by hand")
+    old = __version__
+    if want == old:
+        return {"old": old, "new": old, "downgrade": False, "unchanged": True,
+                "duration_s": 0.0, "pip_tail": ""}
+    import fcntl
+
+    lock_path = lock_path or UPDATE_LOCK
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise GateError("conflict", "another self.update is running") from None
+        t0 = time.monotonic()
+        py = str(prefix / "bin" / "python")
+        # --isolated: ignore PIP_* variables and user/site pip config; the
+        # environment is also replaced. Only the validated version is used.
+        env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
+               "HOME": "/root", "PIP_CONFIG_FILE": "/dev/null"}
+        r = runner([py, "-m", "pip", "install", "--isolated", "--no-input",
+                    "--disable-pip-version-check", "--index-url", INDEX_URL,
+                    f"kevward=={want}"], timeout=UPDATE_TIMEOUT_S, env=env,
+                   clean_env=True)
+        out = (r.out or "") + ("\n" + r.err if r.err else "")
+        if r.rc == 124:
+            raise GateError("internal", f"pip timed out after {UPDATE_TIMEOUT_S}s")
+        if r.rc != 0:
+            if ("No matching distribution found" in out
+                    or "Could not find a version that satisfies" in out):
+                raise GateError("not_found", f"kevward {want} is not on PyPI")
+            raise GateError("internal", "pip failed: " + _pip_tail(out, 15))
+        chk = runner([str(prefix / "bin" / "kevward"), "--version"], timeout=30,
+                     env=env, clean_env=True)
+        got = (chk.out or "").strip().split()[-1:] or [""]
+        if chk.rc != 0 or got[0] != want:
+            raise GateError("internal", f"installed, but `kevward --version` says "
+                            f"{(chk.out or chk.err).strip()[:80]!r}, not {want}")
+        duration = round(time.monotonic() - t0, 1)
+    downgrade = _vtuple(want) < _vtuple(old)
+    record = {"time": now.isoformat(timespec="seconds"), "client": client,
+              "kind": "self.update", "old": old, "new": want, "downgrade": downgrade}
+    try:
+        changes_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(changes_file, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # syslog still has it
+    return {"old": old, "new": want, "downgrade": downgrade, "duration_s": duration,
+            "pip_tail": _pip_tail(out)}
 
 
 def op_report_get(cfg: Config, args: dict) -> dict:
@@ -425,7 +529,8 @@ def op_config_set(path: Path, args: dict, *, changes_file: Path, client: str,
 # --- dispatch --------------------------------------------------------------------
 
 def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FILE,
-           client: str = "", now: datetime | None = None) -> dict:
+           client: str = "", now: datetime | None = None,
+           update_opts: dict | None = None) -> dict:
     """One request -> one response. Never raises."""
     now = now or datetime.now(timezone.utc)
     try:
@@ -454,13 +559,16 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
         if op not in allowed:
             raise GateError("forbidden", f"{op} needs the operate role")
         if op == "version":
-            return ok(op_version(role))
+            return ok(op_version(role, cfg))
         if op == "report.get":
             return ok(op_report_get(cfg, args))
         if op == "config.get":
             return ok(op_config_get(path))
         if op == "config.schema":
             return ok(schema())
+        if op == "self.update":
+            return ok(op_self_update(cfg, args, changes_file=changes_file, client=client,
+                                     now=now, **(update_opts or {})))
         return ok(op_config_set(path, args, changes_file=changes_file, client=client,
                                 now=now))
     except GateError as e:
@@ -479,9 +587,12 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
             op = "?"
         status = "ok" if resp.get("ok") else f"refused:{resp.get('code')}"
         extra = ""
-        if resp.get("ok") and isinstance(resp.get("data"), dict) and "changes" in resp["data"]:
-            extra = " changes=" + json.dumps(resp["data"]["changes"], ensure_ascii=False,
+        data = resp.get("data") if resp.get("ok") else None
+        if isinstance(data, dict) and "changes" in data:
+            extra = " changes=" + json.dumps(data["changes"], ensure_ascii=False,
                                              default=str)
+        elif isinstance(data, dict) and "new" in data and "old" in data:
+            extra = f" update={data['old']}->{data['new']}"
         orig = os.environ.get("SSH_ORIGINAL_COMMAND", "")
         syslog.openlog("kevward-ssh-gate", 0, syslog.LOG_AUTH)
         syslog.syslog(syslog.LOG_NOTICE if resp.get("ok") else syslog.LOG_WARNING,

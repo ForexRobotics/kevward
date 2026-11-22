@@ -37,7 +37,9 @@ It is the forced command of an SSH key that a host owner adds on purpose
 (`[ssh_gate] enabled = true`). It never connects anywhere. With the `read`
 role it only returns reports and the config. With the `operate` role (sudo,
 exact-match sudoers line), `config.set` can change only an allowlist of keys
-that cannot weaken detection or protection. Every change is logged to syslog
+that cannot weaken detection or protection, and `self.update` (a separate
+opt-in) can install only `kevward==X.Y.Z` from PyPI, not below the host's
+`min_version`. Every change is logged to syslog
 and to `/var/lib/kevward/ssh-gate-changes.jsonl`, and is shown in the report
 for 7 days. A way around those limits through the gate — writing a key outside
 the allowlist, writing outside the config file, or running anything but the
