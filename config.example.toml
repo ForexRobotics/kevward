@@ -106,3 +106,11 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # Finding titles/details, JSON and CLI output stay English for now.
 # `kevward report --lang ja` overrides this for one run.
 # lang = "en"
+
+# --------------------------------------------------------------------------- #
+# ssh-gate: forced command for collection / console SSH keys (#185)
+[ssh_gate]
+# Off by default. Turn on only if an authorized_keys line uses
+# `kevward ssh-gate --role read|operate` as its forced command. Not writable
+# through the gate itself. See "Restricted SSH keys" in the README.
+# enabled = false

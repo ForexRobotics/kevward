@@ -77,3 +77,11 @@ def test_surfaced_in_cli_report_and_json(tmp_path, monkeypatch, capsys):
         services = None
     cli._mkconfig(A())
     assert "did you mean [audit]" in capsys.readouterr().err
+
+
+def test_example_config_has_no_ignored_settings():
+    from pathlib import Path
+
+    from kevward.config import tomllib
+    p = Path(__file__).resolve().parent.parent / "config.example.toml"
+    assert Config.from_dict(tomllib.loads(p.read_text())).warnings == []
