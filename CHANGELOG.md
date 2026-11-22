@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.19.0
+
+The report as data for consoles: `report.json` with a `summary` (counts, KEV,
+attack telemetry), ssh-gate `report.get` `format: "data"`, and count meta tags
+in report.html (#211).
 
 - **`report.json` (#211).** `kevward report` also writes the run as data
   beside report.html: the `report --json` object plus `schema_version: 1` and
