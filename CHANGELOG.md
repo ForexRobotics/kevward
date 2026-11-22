@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Config: ignored settings are reported (#186).** On 2026-11-22
+  `allowed_outbound` written below a new `[report]` table became
+  `report.allowed_outbound` and was dropped without a word, so expected tor
+  connections were listed as "unexpected outbound". Unknown tables, unknown
+  keys and known keys in the wrong table now produce a warning ("unknown
+  setting `allowed_outbound` in [report]; ignored — did you mean [audit]?") on
+  stderr for every command, a MEDIUM finding and a note on the config line in
+  the report, and `config_warnings` in the JSON. Loading still continues. The
+  audit section shows how many `allowed_outbound` / `allowed_forced_commands`
+  rules were loaded (`audit_rules` in the JSON).
+
 ## 0.15.0
 
 The HTML report can now be read in Japanese, and its layout follows the

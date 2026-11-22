@@ -39,6 +39,9 @@ JA: dict[str, str] = {
     "config: {source} (UNREADABLE — using defaults)":
         "設定: {source}（読み込めません — 既定値で動作中）",
     "config: defaults": "設定: 既定値",
+    "({n} ignored setting{s} — see findings)": "（無視された設定 {n} 件 — 指摘を参照）",
+    "rules loaded: allowed_outbound {o} · allowed_forced_commands {f}":
+        "読み込んだルール: allowed_outbound {o} 件 · allowed_forced_commands {f} 件",
     "counts include {n} audit indicator{s} (see Host compromise indicators)":
         "件数には audit の兆候 {n} 件を含みます（「侵入の痕跡」を参照）",
     "defensive posture report": "防御態勢レポート",
