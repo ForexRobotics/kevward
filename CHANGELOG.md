@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **`kevward uninstall` (#192).** Removes kevward cleanly. Without `--yes` it
+  is a dry run, and `--json` prints the ssh-gate envelope.
+  - It removes the systemd units (report, firewall, harden), the ssh-gate
+    sudoers file, ssh-gate lines in authorized_keys, setup's fail2ban
+    drop-in, the harden sysctl drop-in, the nft tables and their boot
+    persistence, the launcher, and finally `/opt/kevward`.
+  - Config, reports and state stay unless `--purge`. Collector keys are
+    removed only with `--remove-collector-keys`.
+  - The firewall is checked first. If a kevward table contains anything
+    kevward did not write (any rule other than its own set drops/accepts, a
+    `policy drop`, a jump), or `/etc/nftables.conf` mentions kevward, it
+    returns `conflict` and changes nothing.
+  - Persistence is removed before the tables, so no rule comes back after a
+    reboot (the 2026-11-08 class of accident).
+  - It is logged to syslog and the change log.
 - **`kevward setup` (#191).** One root command that makes a host console-ready.
   It replaces the authorized_keys line that was pasted by hand, which went wrong
   on 2026-11-22 and got the operator banned by fail2ban.

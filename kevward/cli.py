@@ -291,6 +291,38 @@ def cmd_setup(args) -> int:
     return 0 if resp["ok"] else 2
 
 
+def cmd_uninstall(args) -> int:
+    from .ssh_gate import GateError, dumps, fail, ok
+    from .uninstall import uninstall
+
+    try:
+        resp = ok(uninstall(yes=args.yes, purge=args.purge,
+                            remove_collector_keys=args.remove_collector_keys))
+    except GateError as e:
+        resp = fail(e.code, e.message)
+    except Exception as e:  # never a traceback in --json mode
+        resp = fail("internal", f"{type(e).__name__}: {e}")
+    if args.json:
+        sys.stdout.write(dumps(resp))
+    elif resp["ok"]:
+        d = resp["data"]
+        print("DRY RUN (pass --yes to remove)" if d["dry_run"] else "kevward uninstall")
+        verb = "would remove" if d["dry_run"] else "removed"
+        for a in d["actions"]:
+            extra = f" ({a['lines']} line(s))" if "lines" in a else ""
+            print(f"  {verb} {a['kind']:16} {a['target']}{extra}")
+        if not d["actions"]:
+            print("  nothing to remove")
+        for e in d.get("errors", []):
+            print(f"  error: {e}", file=sys.stderr)
+        if not d["purge"] and not d["dry_run"]:
+            print("kept: /etc/kevward, /var/log/kevward, /var/lib/kevward "
+                  "(use --purge to delete)")
+    else:
+        print(f"error ({resp['code']}): {resp['error']}", file=sys.stderr)
+    return 0 if resp["ok"] and not resp["data"].get("errors") else 2
+
+
 def cmd_ssh_gate(args) -> int:
     from .ssh_gate import main as gate_main
 
@@ -684,6 +716,19 @@ def build_parser() -> argparse.ArgumentParser:
     su.add_argument("--dry-run", action="store_true", help="list the changes, write nothing")
     su.add_argument("--json", action="store_true", help="one line of JSON (ssh-gate envelope)")
     su.set_defaults(func=cmd_setup)
+
+    un = sub.add_parser(
+        "uninstall",
+        help="remove kevward from this host (dry run unless --yes, #192)",
+    )
+    un.add_argument("--yes", action="store_true", help="actually remove (default: dry run)")
+    un.add_argument("--purge", action="store_true",
+                    help="also delete /etc/kevward, /var/log/kevward, /var/lib/kevward, "
+                         "/var/cache/kevward")
+    un.add_argument("--remove-collector-keys", action="store_true",
+                    help='also remove `command="cat /var/log/kevward/report.html"` keys')
+    un.add_argument("--json", action="store_true", help="one line of JSON (ssh-gate envelope)")
+    un.set_defaults(func=cmd_uninstall)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
     _add_common(lp)
