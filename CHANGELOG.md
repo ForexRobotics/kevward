@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **`kevward setup` (#191).** One root command that makes a host console-ready.
+  It replaces the authorized_keys line that was pasted by hand, which went wrong
+  on 2026-11-22 and got the operator banned by fail2ban.
+  - `--read-key` / `--operate-key` (with `--console-user`) write the
+    ssh-gate lines:
+    - Each key is validated. An existing line for the same key, or an older
+      gate line with the same comment, is replaced instead of duplicated.
+    - A symlinked or group/world-writable `.ssh` or `authorized_keys` is
+      refused, and the file is written atomically.
+  - `--operate-key` also writes the exact-match sudoers file, checked with
+    `visudo -cf` and installed 0440.
+  - `--ssh-gate` enables the gate in config.toml. The config is validated
+    (#186) and backed up first.
+  - `--timer` installs the daily report timer.
+  - `--fail2ban-ignore` adds an `ignoreip` drop-in that keeps earlier
+    settings.
+  - `--refresh` is reserved for the post-update steps of self.update.
+  - Running it twice changes nothing. `--dry-run` lists the changes,
+    `--json` prints the ssh-gate envelope, and every change is logged and
+    shown in the report for 7 days. It never enables the firewall.
 - **ssh-gate `self.update` (#190).** A console can now update kevward on a host,
   or roll it back, with `{"op":"self.update","args":{"version":"X.Y.Z"}}`
   (operate role).

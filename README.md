@@ -466,6 +466,24 @@ atomically. Every change is logged to syslog (`kevward-ssh-gate`) and to
 days. The gate rewrites the file without comments; the backup keeps them.
 `audit` recognises these two forced commands as kevward's own.
 
+Instead of pasting those lines by hand, let kevward write them (as root, once,
+right after installing into `/opt/kevward`):
+
+```console
+$ sudo /opt/kevward/bin/kevward setup --console-user collector \
+    --read-key "ssh-ed25519 AAAA… console-read" \
+    --operate-key "ssh-ed25519 AAAA… console-operate" \
+    --ssh-gate --timer --fail2ban-ignore 203.0.113.5 --dry-run
+```
+
+- `setup` validates each key, and replaces any existing line for the same key or an older gate line with the same comment, so there is never a duplicate. It refuses a symlinked or group/world-writable `.ssh` or `authorized_keys`, and writes atomically.
+- With `--operate-key` it also writes `/etc/sudoers.d/kevward-ssh-gate`, checked with `visudo -cf` and installed 0440.
+- `--ssh-gate` sets `[ssh_gate] enabled = true`. The config is validated and backed up first.
+- `--timer` installs the daily report timer.
+- `--fail2ban-ignore` adds an `ignoreip` drop-in that keeps your existing ignore list (`%(known/ignoreip)s`).
+
+Drop `--dry-run` to apply. Running it twice changes nothing, and `--json` prints the ssh-gate envelope. It never turns on kevward's firewall.
+
 `self.update` (`{"version": "0.17.0"}`) installs exactly that release into the
 `/opt/kevward` venv: `pip install --isolated --index-url https://pypi.org/simple
 "kevward==<version>"` with a clean environment, a lock, a 300 s limit, and a

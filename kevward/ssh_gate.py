@@ -445,6 +445,40 @@ def _prune_backups(path: Path, keep: int = KEEP_BACKUPS) -> None:
             pass
 
 
+def validate_candidate(path: Path, text: str) -> Config:
+    """Load ``text`` with kevward's own loader from a temp file next to
+    ``path``; GateError(bad_request) on a load error or #186 warnings."""
+    fd, cand = tempfile.mkstemp(prefix=".config.candidate.", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        cfg = Config.load(cand)
+    finally:
+        try:
+            os.unlink(cand)
+        except OSError:
+            pass
+    if cfg.load_error or cfg.warnings:
+        raise GateError("bad_request", "candidate config rejected: "
+                        + (cfg.load_error or "; ".join(cfg.warnings)))
+    return cfg
+
+
+def replace_config(path: Path, raw: bytes, text: str, now: datetime) -> Path | None:
+    """Back up the old bytes (keep the last 10) and atomically write ``text``."""
+    backup = None
+    if raw:
+        backup = path.with_name(f"{path.name}.bak-{now.strftime('%Y%m%dT%H%M%SZ')}")
+        backup.write_bytes(raw)
+        try:
+            os.chmod(backup, path.stat().st_mode & 0o7777)
+        except OSError:
+            pass
+        _prune_backups(path)
+    _atomic_write(path, text)
+    return backup
+
+
 def op_config_set(path: Path, args: dict, *, changes_file: Path, client: str,
                   now: datetime) -> dict:
     sets = args.get("set")
@@ -482,37 +516,14 @@ def op_config_set(path: Path, args: dict, *, changes_file: Path, client: str,
         changed[key] = {"old": old, "new": value}
     text = to_toml(data)
     # Validate the candidate with kevward's own loader before it is live.
-    fd, cand = tempfile.mkstemp(prefix=".config.candidate.", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-        cfg = Config.load(cand)
-    finally:
-        try:
-            os.unlink(cand)
-        except OSError:
-            pass
-    if cfg.load_error or cfg.warnings:
-        raise GateError("bad_request", "candidate config rejected: "
-                        + (cfg.load_error or "; ".join(cfg.warnings)))
+    cfg = validate_candidate(path, text)
     for key, ch in changed.items():
         tname, name = key.split(".", 1)
         eff = getattr(getattr(cfg, tname), name)
         if eff != ch["new"]:
             raise GateError("bad_request", f"{key}: {ch['new']!r} would be stored as "
                             f"{eff!r} (out of range)")
-    stamp = now.strftime("%Y%m%dT%H%M%SZ")
-    backup = None
-    if raw:
-        backup = path.with_name(f"{path.name}.bak-{stamp}")
-        backup.write_bytes(raw)
-        try:
-            st = path.stat()
-            os.chmod(backup, st.st_mode & 0o7777)
-        except OSError:
-            pass
-        _prune_backups(path)
-    _atomic_write(path, text)
+    backup = replace_config(path, raw, text, now)
     record = {"time": now.isoformat(timespec="seconds"), "client": client,
               "path": str(path), "changes": changed,
               "backup": str(backup) if backup else None}

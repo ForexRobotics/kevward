@@ -260,6 +260,37 @@ def cmd_apply(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_setup(args) -> int:
+    from .setup import setup
+    from .ssh_gate import GateError, dumps, fail, ok
+
+    try:
+        data = setup(console_user=args.console_user, read_key=args.read_key,
+                     operate_key=args.operate_key, ssh_gate=args.ssh_gate,
+                     timer=args.timer, fail2ban_ignore=args.fail2ban_ignore,
+                     refresh=args.refresh, dry_run=args.dry_run)
+        resp = ok(data)
+    except GateError as e:
+        resp = fail(e.code, e.message)
+    except Exception as e:  # never a traceback in --json mode
+        resp = fail("internal", f"{type(e).__name__}: {e}")
+    if args.json:
+        sys.stdout.write(dumps(resp))
+    elif resp["ok"]:
+        d = resp["data"]
+        print("DRY RUN (nothing written)" if d["dry_run"] else "kevward setup")
+        for a in d["actions"]:
+            verb = {"create": "would create" if d["dry_run"] else "created",
+                    "update": "would update" if d["dry_run"] else "updated"}.get(
+                a["action"], a["action"])
+            print(f"  {verb:13} {a['kind']:16} {a['path']}")
+            for ln in a.get("lines", []):
+                print(f"      {ln}")
+    else:
+        print(f"error ({resp['code']}): {resp['error']}", file=sys.stderr)
+    return 0 if resp["ok"] else 2
+
+
 def cmd_ssh_gate(args) -> int:
     from .ssh_gate import main as gate_main
 
@@ -635,6 +666,24 @@ def build_parser() -> argparse.ArgumentParser:
     sg.add_argument("--role", required=True, choices=["read", "operate"])
     sg.add_argument("-c", "--config", help="path to config.toml")
     sg.set_defaults(func=cmd_ssh_gate)
+
+    su = sub.add_parser(
+        "setup",
+        help="make this host console-ready: ssh-gate keys, sudoers, timer (#191)",
+    )
+    su.add_argument("--console-user", help="user whose authorized_keys get the gate lines")
+    su.add_argument("--read-key", help="public key line for the read role")
+    su.add_argument("--operate-key", help="public key line for the operate role "
+                    "(also writes /etc/sudoers.d/kevward-ssh-gate)")
+    su.add_argument("--ssh-gate", action="store_true", help="set [ssh_gate] enabled = true")
+    su.add_argument("--timer", action="store_true", help="install the daily report timer")
+    su.add_argument("--fail2ban-ignore", action="append", metavar="IP/CIDR",
+                    help="never ban this address (repeatable; only if fail2ban exists)")
+    su.add_argument("--refresh", action="store_true",
+                    help="post-update steps only (used by ssh-gate self.update)")
+    su.add_argument("--dry-run", action="store_true", help="list the changes, write nothing")
+    su.add_argument("--json", action="store_true", help="one line of JSON (ssh-gate envelope)")
+    su.set_defaults(func=cmd_setup)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
     _add_common(lp)
