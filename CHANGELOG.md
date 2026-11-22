@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.18.2
+
+ssh-gate `job.get` now works with the read role (#208).
 
 - **Fix: ssh-gate `job.get` with the read role said `not_found` (#208).**
   `/var/lib/kevward/jobs/` was root-only. The directory is now `0755` and job
