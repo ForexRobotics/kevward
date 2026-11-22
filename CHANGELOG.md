@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.17.0
+
+Host lifecycle for consoles such as FR Security Centre. ssh-gate `self.update`
+updates or rolls back kevward (#190). `kevward setup` writes the gate keys,
+sudoers, timer and fail2ban ignore in one command (#191). `kevward uninstall`
+removes kevward cleanly without locking out SSH (#192). `self.update` is
+available from this release, so the update to 0.17.0 itself is done by hand.
 
 - **`kevward uninstall` (#192).** Removes kevward cleanly. Without `--yes` it
   is a dry run, and `--json` prints the ssh-gate envelope.
