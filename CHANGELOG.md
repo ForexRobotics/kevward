@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.16.0
+
+`kevward ssh-gate`, a restricted forced command for collection and console
+SSH keys (#185), and config validation that reports settings kevward would
+otherwise silently ignore (#186).
 
 - **`kevward ssh-gate` (#185).** A forced command for collection and console
   SSH keys, using the same one-request JSON envelope as stille-pro
