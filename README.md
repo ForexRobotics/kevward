@@ -419,6 +419,53 @@ Treat a report as **stale** when `kevward-generated-at` is older than about
 26 hours or `last-run.json` says `"ok": false`, and surface that instead of
 "OK".
 
+### Restricted SSH keys: `kevward ssh-gate`
+
+Instead of a forced `cat`, a collection or console key can use
+`kevward ssh-gate` as its forced command. One connection carries one JSON
+request on stdin; one line of JSON comes back:
+
+```console
+$ echo '{"op":"report.get","args":{"format":"json"}}' | ssh -i read_key web-1
+{"ok":true,"data":{"format":"json","sha256":"…","mtime":"…","content":{…}}}
+$ echo '{"op":"foo"}' | ssh -i read_key web-1
+{"ok":false,"error":"unknown op: 'foo'","code":"unknown_op"}
+```
+
+It is **off by default**. Turn it on in the host's own config:
+
+```toml
+[ssh_gate]
+enabled = true
+```
+
+| role | ops | how |
+|---|---|---|
+| `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema` | no sudo |
+| `operate` | the above + `config.set` | `sudo -n`, with an exact-match sudoers line |
+
+```text
+# ~/.ssh/authorized_keys of the collecting user
+command="/opt/kevward/bin/kevward ssh-gate --role read",restrict ssh-ed25519 AAAA… read
+command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate",restrict ssh-ed25519 AAAA… operate
+
+# /etc/sudoers.d/kevward-ssh-gate (visudo -f): this exact command only
+collector ALL=(root) NOPASSWD: /opt/kevward/bin/kevward ssh-gate --role operate
+```
+
+`config.set` (`{"set": {"report.lang": "ja"}, "expect_sha256": "<from
+config.get>"}`) only writes keys that `config.schema` marks writable. Those
+are keys that cannot weaken detection or protection and are not paths, for
+example `report.lang` and the trends budgets. Audit exceptions, the firewall
+allowlist, update checks, apply/reboot policy, `[ssh_gate]` and every path
+stay host-only. A write is refused if the file changed since `config.get`
+(`conflict`), or if kevward's own loader rejects the result. The old file is
+kept as `config.toml.bak-<time>` (last 10), and the new one replaces it
+atomically. Every change is logged to syslog (`kevward-ssh-gate`) and to
+`/var/lib/kevward/ssh-gate-changes.jsonl`, and the daily report shows it for 7
+days. The gate rewrites the file without comments; the backup keeps them.
+`audit` recognises these two forced commands as kevward's own.
+
 ## Adding a service
 
 Drop one file in `kevward/plugins/` — it is auto-discovered. See

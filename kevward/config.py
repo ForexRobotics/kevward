@@ -159,6 +159,15 @@ class ReportConfig:
         self.lang = normalize(self.lang)  # ValueError on an unknown language
 
 
+@dataclass
+class SshGateConfig:
+    """`kevward ssh-gate`, the forced command for console keys (#185)."""
+
+    # Off by default. Only the host's own config can turn it on; it is never
+    # writable through the gate itself.
+    enabled: bool = False
+
+
 # Table name -> settings dataclass, plus top-level scalar keys (#186).
 TOP_LEVEL_KEYS = ("report_dir",)
 
@@ -172,6 +181,7 @@ def _tables() -> dict[str, type]:
         "trends": TrendsConfig,
         "apt": AptConfig,
         "report": ReportConfig,
+        "ssh_gate": SshGateConfig,
     }
 
 
@@ -240,6 +250,7 @@ class Config:
     trends: TrendsConfig = field(default_factory=TrendsConfig)
     apt: AptConfig = field(default_factory=AptConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
+    ssh_gate: SshGateConfig = field(default_factory=SshGateConfig)
     report_dir: Path = Path("/var/log/kevward")
     # The file actually loaded (None = built-in defaults), for display (#105).
     source: Path | None = None
@@ -324,6 +335,14 @@ class Config:
         cfg.report = ReportConfig(
             **{k: v for k, v in rp.items() if k in ReportConfig.__annotations__}
         )
+        sg = data.get("ssh_gate", {})
+        if not isinstance(sg, dict):
+            sg = {}
+        cfg.ssh_gate = SshGateConfig(
+            **{k: v for k, v in sg.items() if k in SshGateConfig.__annotations__}
+        )
+        if not isinstance(cfg.ssh_gate.enabled, bool):
+            raise ValueError("ssh_gate.enabled must be true or false")
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])
         return cfg

@@ -29,9 +29,19 @@ leaks sensitive host data.
 
 Out of scope: vulnerabilities in the third-party tools kevward invokes (apt,
 composer, npm, wp-cli, fail2ban, ...) — report those upstream. kevward is
-designed to act only on the local host; it has no remote-attack surface by
-design, and reports of "it can't scan other machines" are intended behaviour,
-not bugs.
+designed to act only on the local host, and reports of "it can't scan other
+machines" are intended behaviour, not bugs.
+
+The one way in from outside is `kevward ssh-gate`, and it is off by default.
+It is the forced command of an SSH key that a host owner adds on purpose
+(`[ssh_gate] enabled = true`). It never connects anywhere. With the `read`
+role it only returns reports and the config. With the `operate` role (sudo,
+exact-match sudoers line), `config.set` can change only an allowlist of keys
+that cannot weaken detection or protection. Every change is logged to syslog
+and to `/var/lib/kevward/ssh-gate-changes.jsonl`, and is shown in the report
+for 7 days. A way around those limits through the gate — writing a key outside
+the allowlist, writing outside the config file, or running anything but the
+listed ops — is in scope.
 
 ## Verifying a release
 

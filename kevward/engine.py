@@ -115,6 +115,24 @@ def config_warning_report(cfg: Config) -> ServiceReport:
     )
 
 
+def gate_change_findings(records: list[dict]) -> list[Finding]:
+    """Config changes made through `kevward ssh-gate` in the last days (#185),
+    so a change made with a stolen console key stays visible on the host."""
+    out = []
+    for rec in records:
+        changes = rec.get("changes") or {}
+        diff = ", ".join(f"{k}: {v.get('old')!r} → {v.get('new')!r}"
+                         for k, v in changes.items() if isinstance(v, dict))
+        out.append(Finding(
+            service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
+            title=f"config changed via ssh-gate at {rec.get('time', '?')} "
+                  f"from {rec.get('client') or 'unknown'}",
+            detail=f"{diff}. Backup: {rec.get('backup') or 'none'}. Shown for 7 days "
+                   "(/var/lib/kevward/ssh-gate-changes.jsonl); if you did not make "
+                   "this change, revoke the console key."))
+    return out
+
+
 def config_error_report(cfg: Config) -> ServiceReport:
     """A HIGH finding so an unreadable config is visible in every report."""
     return ServiceReport(
@@ -173,6 +191,15 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         result.services.append(config_error_report(cfg))
     elif cfg.warnings:
         result.services.append(config_warning_report(cfg))
+    try:
+        from .ssh_gate import recent_changes
+
+        gate = gate_change_findings(recent_changes())
+    except Exception:
+        gate = []
+    if gate:
+        result.services.append(ServiceReport(service="kevward", present=True,
+                                             findings=gate))
     claimed: set[str] = set()  # package refs already handed to apply() this run
     for p in plugins:
         sp = cfg.policy.for_service(p.name)

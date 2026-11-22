@@ -260,6 +260,12 @@ def cmd_apply(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_ssh_gate(args) -> int:
+    from .ssh_gate import main as gate_main
+
+    return gate_main(args.role, args.config)
+
+
 def _write_last_run(report_dir: Path, record: dict) -> None:
     """Best-effort ``last-run.json`` beside the report (#106). Never raises."""
     import json
@@ -621,6 +627,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common(au)
     au.set_defaults(func=cmd_audit)
+
+    sg = sub.add_parser(
+        "ssh-gate",
+        help="forced command for console keys: one JSON request on stdin (#185)",
+    )
+    sg.add_argument("--role", required=True, choices=["read", "operate"])
+    sg.add_argument("-c", "--config", help="path to config.toml")
+    sg.set_defaults(func=cmd_ssh_gate)
 
     lp = sub.add_parser("list-plugins", help="list discovered plugins")
     _add_common(lp)

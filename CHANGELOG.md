@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **`kevward ssh-gate` (#185).** A forced command for collection and console
+  SSH keys, using the same one-request JSON envelope as stille-pro
+  `dispatch`.
+  - It is off unless `[ssh_gate] enabled = true`.
+  - The `read` role (no sudo) offers `version`, `report.get` (HTML or JSON),
+    `config.get` and `config.schema` (every key, type, default, help text and
+    whether it is writable).
+  - The `operate` role (`sudo -n`, exact-match sudoers) adds `config.set`.
+  - `config.set` only writes an allowlist of keys that cannot weaken
+    detection or protection and are not paths.
+  - It refuses a write if the file changed since `config.get` (`conflict`),
+    or if kevward's own loader or the #186 validation rejects the result.
+  - It keeps the last 10 backups, replaces the file atomically, and logs each
+    change to syslog and `/var/lib/kevward/ssh-gate-changes.jsonl`.
+  - The report shows each change for 7 days.
+  - `audit` recognises the gate's own forced commands.
+
 - **Config: ignored settings are reported (#186).** On 2026-11-22
   `allowed_outbound` written below a new `[report]` table became
   `report.allowed_outbound` and was dropped without a word, so expected tor

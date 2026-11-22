@@ -504,7 +504,14 @@ def forced_commands(line: str) -> list[str]:
     return [m.replace('\\"', '"') for m in _FORCED_CMD.findall(line)]
 
 
+# kevward's own forced command (#185): `[sudo -n ]/abs/path/kevward ssh-gate
+# --role read|operate`, exactly. Not a finding; anything else still is.
+_OWN_GATE = re.compile(r"^(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (?:read|operate)$")
+
+
 def _is_allowed(cmd: str, allow: list[str]) -> bool:
+    if _OWN_GATE.match(cmd.strip()):
+        return True
     return any(fnmatch.fnmatchcase(cmd, pat) for pat in allow)
 
 
