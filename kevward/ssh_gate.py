@@ -53,9 +53,9 @@ CHANGE_NOTICE_DAYS = 7
 
 ROLES = ("read", "operate")
 READ_OPS = ("version", "report.get", "config.get", "config.schema",
-            "reboot.status", "schedule.status")
+            "reboot.status", "schedule.status", "plan", "job.get")
 OPERATE_OPS = READ_OPS + ("config.set", "self.update", "reboot.schedule", "reboot.cancel",
-                          "schedule.install")
+                          "schedule.install", "apply.start")
 
 # self.update (#190)
 SELF_UPDATE_SINCE = "0.17.0"     # default rollback floor: first release with the op
@@ -547,7 +547,9 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
     """One request -> one response. Never raises.
 
     ``op_opts`` (tests only) is passed to the phase 2 ops: ``runner`` for
-    reboot.schedule/cancel, ``paths`` for schedule.install.
+    reboot.schedule/cancel, ``paths`` for schedule.install, and ``compute`` /
+    ``launcher`` / ``busy`` / ``jobs_dir`` / ``unit_active`` for plan, apply.start
+    and job.get.
     """
     now = now or datetime.now(timezone.utc)
     try:
@@ -586,6 +588,9 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
         if op == "self.update":
             return ok(op_self_update(cfg, args, changes_file=changes_file, client=client,
                                      now=now, **(update_opts or {})))
+        if op in ("plan", "apply.start", "job.get"):
+            return ok(_apply_ops(op, cfg, args, path=path, changes_file=changes_file,
+                                 client=client, now=now, opts=op_opts or {}))
         if op.startswith(("reboot.", "schedule.")):
             return ok(_phase2(op, cfg, args, changes_file=changes_file, client=client,
                               now=now, opts=op_opts or {}))
@@ -595,6 +600,20 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
         return fail(e.code, e.message)
     except Exception as e:  # never a traceback on the wire
         return fail("internal", f"{type(e).__name__}")
+
+
+def _apply_ops(op: str, cfg: Config, args: dict, *, path: Path, changes_file: Path,
+               client: str, now: datetime, opts: dict) -> dict:
+    from . import gate_apply as ga
+
+    jobs = {"jobs_dir": opts["jobs_dir"]} if "jobs_dir" in opts else {}
+    if op == "plan":
+        return ga.op_plan(cfg, compute=opts.get("compute"))
+    if op == "job.get":
+        return ga.op_job_get(args, unit_active=opts.get("unit_active"), **jobs)
+    return ga.op_apply_start(cfg, args, config_path=path, changes_file=changes_file,
+                             client=client, now=now, compute=opts.get("compute"),
+                             launcher=opts.get("launcher"), busy=opts.get("busy"), **jobs)
 
 
 def _phase2(op: str, cfg: Config, args: dict, *, changes_file: Path, client: str,
@@ -633,6 +652,8 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
         elif isinstance(data, dict) and isinstance(data.get("scheduled"), dict) \
                 and "replaced" in data:
             extra = f" reboot_at={data['scheduled'].get('at')}"
+        elif isinstance(data, dict) and "job_id" in data and "unit" in data:
+            extra = f" job={data['job_id']} plan={str(data.get('plan_hash'))[:12]}"
         elif isinstance(data, dict) and isinstance(data.get("cancelled"), dict):
             extra = f" reboot_cancelled={data['cancelled'].get('at')}"
         orig = os.environ.get("SSH_ORIGINAL_COMMAND", "")

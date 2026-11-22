@@ -119,6 +119,7 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
     """Config changes made through `kevward ssh-gate` in the last days (#185),
     so a change made with a stolen console key stays visible on the host."""
     out = []
+    finished = {r.get("job_id") for r in records if r.get("kind") == "apply.finish"}
     for rec in records:
         if rec.get("kind") == "setup":
             acts = rec.get("actions") or []
@@ -140,6 +141,30 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
                   "did not request this, revoke the console's operate key."))
             continue
         kind = rec.get("kind")
+        if kind == "apply.start" and rec.get("job_id") in finished:
+            continue
+        if kind in ("apply.start", "apply.finish"):
+            who = f"at {rec.get('time', '?')} from {rec.get('client') or 'unknown'}"
+            res = rec.get("result") or {}
+            if kind == "apply.start":
+                title = f"apply job {rec.get('job_id')} started via ssh-gate {who}"
+                pk = rec.get("packages") or []
+            else:
+                title = (f"packages applied via ssh-gate (job {rec.get('job_id')}) {who}"
+                         if rec.get("state") == "succeeded" else
+                         f"apply via ssh-gate failed (job {rec.get('job_id')}) {who}")
+                pk = res.get("installed") or []
+            detail = (f"Installed: {', '.join(pk)}. " if pk and kind == "apply.finish" else
+                      f"Plan: {', '.join(pk) or 'nothing'}. " if kind == "apply.start" else "")
+            if rec.get("error"):
+                detail += f"Error: {rec['error']}. "
+            out.append(Finding(
+                service="kevward", kind=FindingKind.CONFIG,
+                severity=Severity.INFO if rec.get("state") != "failed" else Severity.MEDIUM,
+                title=title,
+                detail=detail + "Shown for 7 days (/var/lib/kevward/ssh-gate-changes.jsonl); "
+                "if you did not request this, revoke the console's operate key."))
+            continue
         if kind in ("reboot.schedule", "reboot.cancel", "schedule.install"):
             who = f"via ssh-gate at {rec.get('time', '?')} from {rec.get('client') or 'unknown'}"
             if kind == "reboot.schedule":
@@ -209,9 +234,13 @@ def _configure_apt(cfg: Config) -> None:
     ))
 
 
-def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
+def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
+        fresh: bool = True) -> RunResult:
+    """``fresh=False`` reuses the apt plan computed by the previous run in this
+    process, so an apply installs exactly the plan a dry run just showed (#197)."""
     only = cfg.policy.services or None
-    _configure_apt(cfg)
+    if fresh:
+        _configure_apt(cfg)
     plugins = load(only)
     result = RunResult(
         host=socket.gethostname(),
