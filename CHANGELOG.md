@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.18.1
+
+Fixes for problems found with 0.18.0 and FR Security Centre: `reboot.*` failed
+on hosts with nothing scheduled (#203), and `setup --fail2ban-ignore` wrote a
+drop-in that stops fail2ban at its next start (#204). Hosts that ran it should
+check `sudo fail2ban-client -t` (re-running setup rewrites the drop-in). Also
+`setup --self-update` / `--allow-reboot` (#205).
 
 - **Fix: `reboot.status` (and `reboot.schedule` / `reboot.cancel`) failed with
   `ValueError` when nothing was scheduled (#203).** logind reports "no schedule"
