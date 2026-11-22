@@ -139,6 +139,24 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
                 + "Shown for 7 days (/var/lib/kevward/ssh-gate-changes.jsonl); if you "
                   "did not request this, revoke the console's operate key."))
             continue
+        kind = rec.get("kind")
+        if kind in ("reboot.schedule", "reboot.cancel", "schedule.install"):
+            who = f"via ssh-gate at {rec.get('time', '?')} from {rec.get('client') or 'unknown'}"
+            if kind == "reboot.schedule":
+                title = f"reboot scheduled for {rec.get('at', '?')} {who}"
+                extra = (f"Reason: {rec['reason']}. " if rec.get("reason") else "")
+            elif kind == "reboot.cancel":
+                title = f"scheduled reboot cancelled {who}"
+                extra = f"Was: {(rec.get('was') or {}).get('at', '?')}. "
+            else:
+                title = f"report timer (re)installed {who}"
+                extra = ""
+            out.append(Finding(
+                service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
+                title=title,
+                detail=extra + "Shown for 7 days (/var/lib/kevward/ssh-gate-changes.jsonl); "
+                "if you did not request this, revoke the console's operate key."))
+            continue
         changes = rec.get("changes") or {}
         diff = ", ".join(f"{k}: {v.get('old')!r} → {v.get('new')!r}"
                          for k, v in changes.items() if isinstance(v, dict))

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **ssh-gate: reboots (#198).** `reboot.status` (read) shows the scheduled
+  reboot, who set it, and whether one is required. `reboot.schedule` (operate)
+  schedules one with the host's `shutdown -r`, only with `[policy]
+  allow_reboot = true`, 5 minutes to 7 days ahead, and `conflict` on an
+  existing schedule unless `replace`. `reboot.cancel` (operate) runs
+  `shutdown -c`.
+- **ssh-gate: report timer (#199).** `schedule.status` (read) and
+  `schedule.install` (operate) expose `kevward schedule status` / `install`.
+- Each gate reboot/timer change is logged to syslog and the change log, and the
+  report shows it as an INFO finding for 7 days.
+
 ## 0.17.0
 
 Host lifecycle for consoles such as FR Security Centre. ssh-gate `self.update`

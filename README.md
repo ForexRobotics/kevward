@@ -441,8 +441,8 @@ enabled = true
 
 | role | ops | how |
 |---|---|---|
-| `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema` | no sudo |
-| `operate` | the above + `config.set`, `self.update` | `sudo -n`, with an exact-match sudoers line |
+| `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema`, `reboot.status`, `schedule.status` | no sudo |
+| `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install` | `sudo -n`, with an exact-match sudoers line |
 
 ```text
 # ~/.ssh/authorized_keys of the collecting user
@@ -522,6 +522,24 @@ The `version` op reports `install` (`{"method": "venv", "prefix": "/opt/kevward"
 `self_update` and `min_version`, so a console knows whether to offer an update.
 Each update is logged like `config.set`, and the report shows "kevward updated
 <old> → <new> via ssh-gate" for 7 days.
+
+Reboots go through the host's own `shutdown`, so the host reboots on time even
+if the console is offline, and `shutdown -c` on the host still cancels it.
+
+- `reboot.status` returns the scheduled reboot (`state`, `at`), whether it was
+  set through the gate (`set_by`), and whether a reboot is required (`required`,
+  `packages`, `kind`).
+- `reboot.schedule` (`{"at": "2026-11-23T03:00+09:00", "reason": "kernel"}`)
+  needs `[policy] allow_reboot = true` on the host. `at` must carry a UTC
+  offset and be 5 minutes to 7 days ahead; it is rounded up to the minute.
+  An existing schedule is a `conflict` unless `"replace": true`.
+- `reboot.cancel` cancels it (`not_found` if nothing is scheduled).
+- `schedule.status` returns the report timer as `kevward schedule status`
+  sees it, with its warnings. `schedule.install` runs `kevward schedule
+  install` with the defaults, which is how a host whose timer has no random
+  delay is fixed from the console.
+
+Each of these writes is logged like `config.set` and shown in the report for 7 days.
 
 ## Adding a service
 
