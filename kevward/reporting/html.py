@@ -195,6 +195,17 @@ def _without_owned(f, owned: set):
     return replace(f, packages=left, ref=left[0], title=title)
 
 
+def _rules_note(result: RunResult, t: Translator = _EN) -> str:
+    """Rules loaded for the audit exceptions (#186), so "none loaded" shows."""
+    rules = getattr(result, "audit_rules", None) or {}
+    if not rules:
+        return ""
+    return ("<p class='muted' style='font-size:12px'>"
+            + t("rules loaded: allowed_outbound {o} · allowed_forced_commands {f}",
+                o=rules.get("allowed_outbound", 0), f=rules.get("allowed_forced_commands", 0))
+            + "</p>")
+
+
 def _allowed_note(result: RunResult, t: Translator = _EN) -> str:
     """One line for outbound connections silenced by [audit] allowed_outbound."""
     from ..audit import allowed_summary
@@ -264,7 +275,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
     <h2>{t("Host compromise indicators (audit)")}</h2>
     <p class="muted" style="font-size:12px">{t(_AUDIT_INTRO)}</p>
     <table><thead><tr><th>{t("Sev")}</th><th>{t("Indicator")}</th><th>{t("Detail")}</th></tr></thead>
-    <tbody>{audit_rows or f"<tr><td colspan=3 class='muted'>{t('No compromise indicators found.')}</td></tr>"}</tbody></table>{_allowed_note(result, t)}
+    <tbody>{audit_rows or f"<tr><td colspan=3 class='muted'>{t('No compromise indicators found.')}</td></tr>"}</tbody></table>{_allowed_note(result, t)}{_rules_note(result, t)}
   </section>"""
 
     # Audit indicators are counted in the chips too; say so, or a header of
@@ -492,6 +503,12 @@ def render(result: RunResult, lang: str | None = None) -> str:
                            source=_esc(result.config_source)) + "</b>")
     elif getattr(result, "config_source", None):
         config_cell = t("config: {source}", source=_esc(result.config_source))
+        n_warn = len(getattr(result, "config_warnings", None) or [])
+        if n_warn:
+            config_cell += (" <b style='color:#b8860b'>"
+                            + t("({n} ignored setting{s} — see findings)",
+                                n=n_warn, s="s" if n_warn != 1 else "")
+                            + "</b>")
     else:
         config_cell = t("config: defaults")
     reboot = t({"now": "YES", "after-updates": "after pending updates"}.get(

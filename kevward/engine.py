@@ -45,6 +45,10 @@ class RunResult:
     # Which config file was used (None = defaults) and why it was unusable.
     config_source: str | None = None
     config_error: str | None = None
+    # Settings in the config file that were ignored (#186).
+    config_warnings: list[str] = field(default_factory=list)
+    # How many rules the audit exceptions loaded (#186): {"allowed_outbound": n, ...}.
+    audit_rules: dict[str, int] = field(default_factory=dict)
 
     @property
     def reboot_required(self) -> bool:
@@ -77,15 +81,38 @@ class RunResult:
             "reboot_schedule_state": self.reboot_schedule.get("state", "unknown"),
             "config_source": self.config_source,
             "config_error": self.config_error,
+            "config_warnings": self.config_warnings,
             "services": [s.to_dict() for s in self.services],
             "attackers": self.attackers,
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
             "audit_allowed_outbound": self.audit_allowed_outbound,
+            "audit_rules": self.audit_rules,
             "apt_refresh": self.apt_refresh,
         }
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+
+def config_warning_report(cfg: Config) -> ServiceReport:
+    """A MEDIUM finding when settings in the file were ignored (#186): a rule
+    in the wrong table silently changes what kevward detects."""
+    n = len(cfg.warnings)
+    return ServiceReport(
+        service="kevward",
+        present=True,
+        findings=[
+            Finding(
+                service="kevward",
+                kind=FindingKind.CONFIG,
+                severity=Severity.MEDIUM,
+                title=f"{n} setting{'s' if n != 1 else ''} in {cfg.source} "
+                      f"{'are' if n != 1 else 'is'} ignored",
+                detail="; ".join(cfg.warnings) + ". Ignored settings are not in effect "
+                       "(e.g. an allowlist rule under the wrong [table]).",
+            )
+        ],
+    )
 
 
 def config_error_report(cfg: Config) -> ServiceReport:
@@ -140,9 +167,12 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True) -> RunResult:
         reboot_schedule=_reboot_schedule(),
         config_source=str(cfg.source) if cfg.source else None,
         config_error=cfg.load_error,
+        config_warnings=list(cfg.warnings),
     )
     if cfg.load_error:
         result.services.append(config_error_report(cfg))
+    elif cfg.warnings:
+        result.services.append(config_warning_report(cfg))
     claimed: set[str] = set()  # package refs already handed to apply() this run
     for p in plugins:
         sp = cfg.policy.for_service(p.name)

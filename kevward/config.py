@@ -159,6 +159,78 @@ class ReportConfig:
         self.lang = normalize(self.lang)  # ValueError on an unknown language
 
 
+# Table name -> settings dataclass, plus top-level scalar keys (#186).
+TOP_LEVEL_KEYS = ("report_dir",)
+
+
+def _tables() -> dict[str, type]:
+    return {
+        "policy": Policy,
+        "firewall": FirewallConfig,
+        "audit": AuditConfig,
+        "update": UpdateConfig,
+        "trends": TrendsConfig,
+        "apt": AptConfig,
+        "report": ReportConfig,
+    }
+
+
+def _fields(cls: type) -> list[str]:
+    return [k for k in cls.__annotations__ if not k.startswith("_")]
+
+
+def validate_config(data: dict) -> list[str]:
+    """Warnings for keys kevward would silently ignore (#186). Pure.
+
+    On 2026-11-22 ``allowed_outbound`` written below a new ``[report]`` table
+    became ``report.allowed_outbound`` and was dropped without a word, so
+    the expected tor connections showed up as "unexpected outbound". Flags
+    unknown tables, unknown keys, and known keys in the wrong table (with the
+    table they belong to). Loading continues: these are warnings, not errors.
+    """
+    tables = _tables()
+    owners: dict[str, list[str]] = {}
+    for tname, cls in tables.items():
+        for key in _fields(cls):
+            owners.setdefault(key, []).append(tname)
+
+    def hint(key: str, here: str | None) -> str:
+        homes = [f"[{t}]" for t in owners.get(key, []) if t != here]
+        if key in TOP_LEVEL_KEYS and here is not None:
+            homes.append("the top level (before any [table])")
+        return f" — did you mean {' or '.join(homes)}?" if homes else ""
+
+    warnings: list[str] = []
+    for key, value in data.items():
+        if key in tables:
+            if not isinstance(value, dict):
+                warnings.append(f"`{key}` should be a table ([{key}]); ignored")
+                continue
+            fields = _fields(tables[key])
+            for sub, subval in value.items():
+                if sub not in fields:
+                    warnings.append(f"unknown setting `{sub}` in [{key}]; ignored"
+                                    + hint(sub, key))
+                elif key == "policy" and sub == "overrides" and isinstance(subval, dict):
+                    pol = _fields(Policy)
+                    for svc, ov in subval.items():
+                        if not isinstance(ov, dict):
+                            warnings.append(f"[policy.overrides.{svc}] should be a table; "
+                                            "ignored")
+                            continue
+                        for okey in ov:
+                            if okey not in pol or okey == "overrides":
+                                warnings.append(f"unknown setting `{okey}` in "
+                                                f"[policy.overrides.{svc}]; ignored")
+        elif key in TOP_LEVEL_KEYS:
+            continue
+        elif key in owners:
+            warnings.append(f"`{key}` is not a top-level setting; ignored" + hint(key, None))
+        else:
+            warnings.append(f"unknown table or setting `{key}`; ignored")
+    return warnings
+
+
 @dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
@@ -173,6 +245,8 @@ class Config:
     source: Path | None = None
     # Why that file could not be used; the config is then all defaults (#104).
     load_error: str | None = None
+    # Settings in the file that were ignored (unknown / wrong table, #186).
+    warnings: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -203,30 +277,50 @@ class Config:
     @classmethod
     def _from_file(cls, p: Path) -> Config:
         data = tomllib.loads(p.read_text())
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Config:
+        """Build a Config from parsed TOML; ``warnings`` lists what was ignored."""
+        warnings = validate_config(data)
         pol = data.get("policy", {})
+        if not isinstance(pol, dict):
+            pol = {}
         policy = Policy(**{k: v for k, v in pol.items() if k in Policy.__annotations__})
-        cfg = cls(policy=policy)
+        cfg = cls(policy=policy, warnings=warnings)
         fw = data.get("firewall", {})
+        if not isinstance(fw, dict):
+            fw = {}
         cfg.firewall = FirewallConfig(
             **{k: v for k, v in fw.items() if k in FirewallConfig.__annotations__}
         )
         au = data.get("audit", {})
+        if not isinstance(au, dict):
+            au = {}
         cfg.audit = AuditConfig(
             **{k: v for k, v in au.items() if k in AuditConfig.__annotations__}
         )
         up = data.get("update", {})
+        if not isinstance(up, dict):
+            up = {}
         cfg.update = UpdateConfig(
             **{k: v for k, v in up.items() if k in UpdateConfig.__annotations__}
         )
         tr = data.get("trends", {})
+        if not isinstance(tr, dict):
+            tr = {}
         cfg.trends = TrendsConfig(
             **{k: v for k, v in tr.items() if k in TrendsConfig.__annotations__}
         )
         ap = data.get("apt", {})
+        if not isinstance(ap, dict):
+            ap = {}
         cfg.apt = AptConfig(
             **{k: v for k, v in ap.items() if k in AptConfig.__annotations__}
         )
         rp = data.get("report", {})
+        if not isinstance(rp, dict):
+            rp = {}
         cfg.report = ReportConfig(
             **{k: v for k, v in rp.items() if k in ReportConfig.__annotations__}
         )

@@ -53,9 +53,17 @@ def _mkconfig(args, side_effects: bool = False) -> Config:
                   file=sys.stderr)
             raise SystemExit(2)
         print(f"warning: {msg} — running with built-in defaults", file=sys.stderr)
+    for w in cfg.warnings:
+        print(f"warning: config {cfg.source}: {w}", file=sys.stderr)
     if getattr(args, "services", None):
         cfg.policy.services = args.services
     return cfg
+
+
+def audit_rule_counts(cfg: Config) -> dict[str, int]:
+    """Rules loaded for the audit exceptions (#186): "0" means none in effect."""
+    return {"allowed_outbound": len(cfg.audit.allowed_outbound),
+            "allowed_forced_commands": len(cfg.audit.allowed_forced_commands)}
 
 
 def _trends_kwargs(cfg: Config) -> dict:
@@ -321,6 +329,7 @@ def _cmd_report(args) -> Path:
         result.audit = ad.audit(cfg.audit.allowed_forced_commands,
                                 cfg.audit.allowed_outbound, notes)
         result.audit_allowed_outbound = notes.get("allowed_outbound_hits") or {}
+        result.audit_rules = audit_rule_counts(cfg)
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
     out.parent.mkdir(parents=True, exist_ok=True)
