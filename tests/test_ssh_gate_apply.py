@@ -7,6 +7,7 @@ fake systemd-run, without root."""
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 import pytest
@@ -428,3 +429,45 @@ def test_findings_for_apply_records():
         "packages applied via ssh-gate (job J1) at t3 from c",
     ]
     assert f[1].detail.startswith("Installed: a.")
+
+
+# --- the read role runs without root: jobs must be readable (#208) -------------
+
+def test_job_files_world_readable(env):
+    import stat
+
+    jobs = env["jobs"]
+    jobs.mkdir(mode=0o750)            # as 0.18.0/0.18.1 left it
+    os.chmod(jobs, 0o750)
+    h, jid = start(env)
+    assert stat.S_IMODE(jobs.stat().st_mode) == 0o755
+    assert stat.S_IMODE((jobs / f"{jid}.json").stat().st_mode) == 0o644
+
+
+def test_job_log_world_readable(env, monkeypatch):
+    import stat
+
+    jobs = env["jobs"]
+    dups = []
+    monkeypatch.setattr(ga.os, "dup2", lambda a, b: dups.append(b))
+    ga._redirect_output(jobs / "x.log")
+    assert dups == [1, 2]
+    assert stat.S_IMODE((jobs / "x.log").stat().st_mode) == 0o644
+    assert stat.S_IMODE(jobs.stat().st_mode) == 0o755
+
+
+def test_job_get_unreadable_is_not_not_found(env, monkeypatch):
+    from pathlib import Path
+
+    _h, jid = start(env)
+
+    real = Path.read_text
+
+    def denied(self, *a, **k):
+        if self.suffix == ".json":
+            raise PermissionError(13, "Permission denied")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    r = job(env, jid)
+    assert r["code"] == "forbidden" and "not readable" in r["error"]

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: ssh-gate `job.get` with the read role said `not_found` (#208).**
+  `/var/lib/kevward/jobs/` was root-only. The directory is now `0755` and job
+  files and logs `0644` (a `0750` directory from 0.18.0/0.18.1 is corrected
+  on the next job). A job that exists but cannot be read is `forbidden`, not
+  `not_found`.
+
 ## 0.18.1
 
 Fixes for problems found with 0.18.0 and FR Security Centre: `reboot.*` failed
