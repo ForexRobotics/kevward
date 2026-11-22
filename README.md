@@ -484,6 +484,26 @@ $ sudo /opt/kevward/bin/kevward setup --console-user collector \
 
 Drop `--dry-run` to apply. Running it twice changes nothing, and `--json` prints the ssh-gate envelope. It never turns on kevward's firewall.
 
+### Removing kevward: `kevward uninstall`
+
+```console
+$ sudo kevward uninstall          # dry run: lists what would be removed
+$ sudo kevward uninstall --yes    # remove
+```
+
+It removes the report, firewall and harden units, the ssh-gate sudoers file,
+ssh-gate lines in authorized_keys, setup's fail2ban drop-in, the harden sysctl
+drop-in, kevward's nft tables and their boot persistence, the launcher, and
+finally `/opt/kevward`. Config, reports and state are kept unless you pass
+`--purge`. Collector lines (`cat …/report.html`) are removed only with
+`--remove-collector-keys`.
+
+kevward's nft tables only ever drop, so removing them cannot lock you out.
+`uninstall` checks this before acting: if a kevward table holds anything it did
+not write (a hand-added rule, `policy drop`, a jump), or `/etc/nftables.conf`
+mentions kevward, it changes nothing and prints the manual steps. Boot
+persistence is removed before the tables, so nothing comes back after a reboot.
+
 `self.update` (`{"version": "0.17.0"}`) installs exactly that release into the
 `/opt/kevward` venv: `pip install --isolated --index-url https://pypi.org/simple
 "kevward==<version>"` with a clean environment, a lock, a 300 s limit, and a
