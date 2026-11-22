@@ -473,14 +473,17 @@ right after installing into `/opt/kevward`):
 $ sudo /opt/kevward/bin/kevward setup --console-user collector \
     --read-key "ssh-ed25519 AAAA… console-read" \
     --operate-key "ssh-ed25519 AAAA… console-operate" \
-    --ssh-gate --timer --fail2ban-ignore 203.0.113.5 --dry-run
+    --ssh-gate --self-update --allow-reboot --timer \
+    --fail2ban-ignore 203.0.113.5 --dry-run
 ```
 
 - `setup` validates each key, and replaces any existing line for the same key or an older gate line with the same comment, so there is never a duplicate. It refuses a symlinked or group/world-writable `.ssh` or `authorized_keys`, and writes atomically.
 - With `--operate-key` it also writes `/etc/sudoers.d/kevward-ssh-gate`, checked with `visudo -cf` and installed 0440.
-- `--ssh-gate` sets `[ssh_gate] enabled = true`. The config is validated and backed up first.
+- `--ssh-gate` sets `[ssh_gate] enabled = true`, `--self-update` sets `[ssh_gate] self_update = true`, and `--allow-reboot` sets `[policy] allow_reboot = true`. They are written together in one change; the config is validated and backed up first.
 - `--timer` installs the daily report timer.
-- `--fail2ban-ignore` adds an `ignoreip` drop-in that keeps your existing ignore list (`%(known/ignoreip)s`).
+- `--fail2ban-ignore` writes a `[DEFAULT] ignoreip` drop-in with fail2ban's default (`127.0.0.1/8 ::1`), the `ignoreip` already in effect, and the new addresses. fail2ban cannot use `%(known/ignoreip)s` in `[DEFAULT]`, so the existing list is copied in; run it again after changing `ignoreip` elsewhere. The drop-in is checked with `fail2ban-client -t` and removed (or restored) if fail2ban rejects it, so fail2ban always starts.
+
+The `authorized_keys` lines are written last. If an earlier step fails, the console's keys keep working as before, and the error lists what was already changed.
 
 Drop `--dry-run` to apply. Running it twice changes nothing, and `--json` prints the ssh-gate envelope. It never turns on kevward's firewall.
 

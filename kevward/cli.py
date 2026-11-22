@@ -288,7 +288,8 @@ def cmd_setup(args) -> int:
         data = setup(console_user=args.console_user, read_key=args.read_key,
                      operate_key=args.operate_key, ssh_gate=args.ssh_gate,
                      timer=args.timer, fail2ban_ignore=args.fail2ban_ignore,
-                     refresh=args.refresh, dry_run=args.dry_run)
+                     refresh=args.refresh, self_update=args.self_update,
+                     allow_reboot=args.allow_reboot, dry_run=args.dry_run)
         resp = ok(data)
     except GateError as e:
         resp = fail(e.code, e.message)
@@ -732,6 +733,10 @@ def build_parser() -> argparse.ArgumentParser:
     su.add_argument("--operate-key", help="public key line for the operate role "
                     "(also writes /etc/sudoers.d/kevward-ssh-gate)")
     su.add_argument("--ssh-gate", action="store_true", help="set [ssh_gate] enabled = true")
+    su.add_argument("--self-update", action="store_true",
+                    help="set [ssh_gate] self_update = true (console may update kevward)")
+    su.add_argument("--allow-reboot", action="store_true",
+                    help="set [policy] allow_reboot = true (console may schedule reboots)")
     su.add_argument("--timer", action="store_true", help="install the daily report timer")
     su.add_argument("--fail2ban-ignore", action="append", metavar="IP/CIDR",
                     help="never ban this address (repeatable; only if fail2ban exists)")

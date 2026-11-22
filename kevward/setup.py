@@ -273,7 +273,17 @@ def step_sudoers(env: Env, plan: Plan, user: str, dry_run: bool) -> None:
         raise
 
 
-def step_ssh_gate(env: Env, plan: Plan, dry_run: bool, now: datetime) -> None:
+#: Settings setup may turn on in config.toml, by flag (#191).
+CONFIG_FLAGS = {
+    "ssh_gate": ("ssh_gate", "enabled"),
+    "self_update": ("ssh_gate", "self_update"),
+    "allow_reboot": ("policy", "allow_reboot"),
+}
+
+
+def step_config(env: Env, plan: Plan, settings: list[tuple[str, str]], dry_run: bool,
+                now: datetime) -> None:
+    """Set each ``(table, key)`` to true in config.toml, in one validated write."""
     path = env.etc / "kevward" / "config.toml"
     try:
         raw = path.read_bytes()
@@ -287,15 +297,21 @@ def step_ssh_gate(env: Env, plan: Plan, dry_run: bool, now: datetime) -> None:
     if current.warnings:
         raise GateError("bad_request", f"{path} has ignored settings; fix them first: "
                         + "; ".join(current.warnings))
-    if current.ssh_gate.enabled:
-        plan.add("config", path, "unchanged", key="ssh_gate.enabled")
+    todo = []
+    for table, key in settings:
+        if getattr(getattr(current, table), key) is True:
+            plan.add("config", path, "unchanged", key=f"{table}.{key}")
+        else:
+            todo.append((table, key))
+    if not todo:
         return
-    data.setdefault("ssh_gate", {})["enabled"] = True
-    text = to_toml(data)
-    plan.add("config", path, "update" if raw else "create", key="ssh_gate.enabled",
-             value=True)
+    for table, key in todo:
+        data.setdefault(table, {})[key] = True
+        plan.add("config", path, "update" if raw else "create", key=f"{table}.{key}",
+                 value=True)
     if dry_run:
         return
+    text = to_toml(data)
     path.parent.mkdir(parents=True, exist_ok=True)
     validate_candidate(path, text)
     backup = replace_config(path, raw, text, now)
@@ -316,11 +332,54 @@ def step_timer(env: Env, plan: Plan, dry_run: bool) -> None:
         raise GateError("internal", "timer: " + "; ".join(msgs)[:300])
 
 
-def fail2ban_text(nets: list[str]) -> str:
+#: fail2ban's own default when nothing sets ignoreip.
+F2B_BASE = ["127.0.0.1/8", "::1"]
+
+
+def _f2b_files(f2b: Path) -> list[Path]:
+    """The files fail2ban reads before ours, in its order: jail.conf,
+    jail.d/*.conf, jail.local, jail.d/*.local (those after ours win anyway)."""
+    jd = f2b / "jail.d"
+    out = [f2b / "jail.conf", *sorted(jd.glob("*.conf")), f2b / "jail.local"]
+    out += [p for p in sorted(jd.glob("*.local")) if p.name < F2B_NAME]
+    return [p for p in out if p.is_file()]
+
+
+def existing_ignoreip(f2b: Path) -> list[str]:
+    """The ``[DEFAULT] ignoreip`` in effect before setup's file. Interpolations
+    (``%(...)s``) are dropped: they are what broke fail2ban (the
+    www2 setup of 2026-11-22)."""
+    import configparser
+
+    value = None
+    for path in _f2b_files(f2b):
+        cp = configparser.RawConfigParser(strict=False, interpolation=None,
+                                          inline_comment_prefixes=("#", ";"))
+        try:
+            cp.read_string(path.read_text(encoding="utf-8", errors="replace"))
+        except (configparser.Error, OSError):
+            continue
+        if cp.defaults().get("ignoreip") is not None:
+            value = cp.defaults()["ignoreip"]
+    tokens = re.split(r"[\s,]+", value or "")
+    return [t for t in tokens if t and "%(" not in t]
+
+
+def merge_ignoreip(existing: list[str], nets: list[str]) -> list[str]:
+    out: list[str] = []
+    for t in [*F2B_BASE, *existing, *nets]:
+        if t not in out:
+            out.append(t)
+    return out
+
+
+def fail2ban_text(ips: list[str]) -> str:
     return ("# Managed by `kevward setup` (#191): never ban the console's address.\n"
-            "# %(known/ignoreip)s keeps every ignoreip set before this file.\n"
+            "# fail2ban cannot use %(known/ignoreip)s in [DEFAULT], so the ignoreip\n"
+            "# in effect before this file is copied in. After changing ignoreip\n"
+            "# elsewhere, run `kevward setup --fail2ban-ignore <ip>` again.\n"
             "[DEFAULT]\n"
-            f"ignoreip = %(known/ignoreip)s {' '.join(nets)}\n")
+            f"ignoreip = {' '.join(ips)}\n")
 
 
 def step_fail2ban(env: Env, plan: Plan, nets: list[str], dry_run: bool) -> None:
@@ -330,12 +389,14 @@ def step_fail2ban(env: Env, plan: Plan, nets: list[str], dry_run: bool) -> None:
             clean.append(str(ipaddress.ip_network(n, strict=False)))
         except ValueError:
             raise GateError("bad_request", f"not an IP address or CIDR: {n!r}") from None
-    jd = env.etc / "fail2ban" / "jail.d"
+    f2b = env.etc / "fail2ban"
+    jd = f2b / "jail.d"
     if not jd.is_dir():
         plan.add("fail2ban", jd, "skipped", reason="fail2ban is not installed")
         return
     path = jd / F2B_NAME
-    text = fail2ban_text(clean)
+    ips = merge_ignoreip(existing_ignoreip(f2b), clean)
+    text = fail2ban_text(ips)
     try:
         old = _read_nofollow(path)
     except FileNotFoundError:
@@ -343,14 +404,26 @@ def step_fail2ban(env: Env, plan: Plan, nets: list[str], dry_run: bool) -> None:
     if old == text:
         plan.add("fail2ban", path, "unchanged")
         return
-    plan.add("fail2ban", path, "create" if old is None else "update", ignoreip=clean)
+    plan.add("fail2ban", path, "create" if old is None else "update", ignoreip=ips)
     if dry_run:
         return
+    runner = env.runner or run
     _atomic(path, text, 0o644)
-    r = (env.runner or run)(["fail2ban-client", "reload"], timeout=60)
+    # Never leave a file behind that stops fail2ban at its next start.
+    t = runner(["fail2ban-client", "-t"], timeout=60)
+    if t.rc != 0:
+        if old is None:
+            path.unlink(missing_ok=True)
+        else:
+            _atomic(path, old, 0o644)
+        plan.actions.pop()
+        raise GateError("internal", "fail2ban-client -t rejected the new ignoreip, so "
+                        f"{path} was {'removed' if old is None else 'restored'}: "
+                        + (t.err or t.out).strip()[-200:])
+    r = runner(["fail2ban-client", "reload"], timeout=60)
     if r.rc != 0:
-        raise GateError("internal", "fail2ban-client reload failed: "
-                        + (r.err or r.out).strip()[:200])
+        raise GateError("internal", "fail2ban-client reload failed (the file passed "
+                        "fail2ban-client -t): " + (r.err or r.out).strip()[:200])
 
 
 # --- entry point ------------------------------------------------------------------
@@ -358,6 +431,7 @@ def step_fail2ban(env: Env, plan: Plan, nets: list[str], dry_run: bool) -> None:
 def setup(*, console_user: str | None = None, read_key: str | None = None,
           operate_key: str | None = None, ssh_gate: bool = False, timer: bool = False,
           fail2ban_ignore: list[str] | None = None, refresh: bool = False,
+          self_update: bool = False, allow_reboot: bool = False,
           dry_run: bool = False, env: Env | None = None) -> dict:
     """Run the requested steps; returns the plan (what changed / would change).
     Raises GateError with an ssh-gate code."""
@@ -369,9 +443,11 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
                         "--operate-key")
     if console_user and not _USER.match(console_user):
         raise GateError("bad_request", f"invalid user name: {console_user!r}")
-    if not (read_key or operate_key or ssh_gate or timer or fail2ban_ignore or refresh):
+    if not (read_key or operate_key or ssh_gate or timer or fail2ban_ignore or refresh
+            or self_update or allow_reboot):
         raise GateError("bad_request", "nothing to do: give --read-key, --operate-key, "
-                        "--ssh-gate, --timer, --fail2ban-ignore or --refresh")
+                        "--ssh-gate, --self-update, --allow-reboot, --timer, "
+                        "--fail2ban-ignore or --refresh")
     if not dry_run and not is_root():
         raise GateError("forbidden", "kevward setup must run as root (sudo)")
     if (read_key or operate_key) and not (env.prefix / "bin" / "kevward").exists():
@@ -387,16 +463,31 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
         if k:
             parse_pubkey(k)
     plan = Plan()
-    step_keys(env, plan, console_user or "", read_key, operate_key, dry_run)
-    if operate_key:
-        step_sudoers(env, plan, console_user, dry_run)
-    if ssh_gate:
-        step_ssh_gate(env, plan, dry_run, now)
-    if timer:
-        step_timer(env, plan, dry_run)
-    if fail2ban_ignore:
-        step_fail2ban(env, plan, fail2ban_ignore, dry_run)
-    # refresh: no post-update steps exist yet (#190 calls it once there are).
+    settings = [CONFIG_FLAGS[n] for n, on in (("ssh_gate", ssh_gate),
+                                              ("self_update", self_update),
+                                              ("allow_reboot", allow_reboot)) if on]
+    # The authorized_keys lines go last: when an earlier step fails, the
+    # console's keys still work the old way and nothing points at a gate
+    # that is not ready.
+    try:
+        if settings:
+            step_config(env, plan, settings, dry_run, now)
+        if fail2ban_ignore:
+            step_fail2ban(env, plan, fail2ban_ignore, dry_run)
+        if timer:
+            step_timer(env, plan, dry_run)
+        if operate_key:
+            step_sudoers(env, plan, console_user, dry_run)
+        step_keys(env, plan, console_user or "", read_key, operate_key, dry_run)
+        # refresh: no post-update steps exist yet (#190 calls it once there are).
+    except GateError as e:
+        changed = [a for a in plan.actions if a["action"] in ("create", "update")]
+        if changed and not dry_run:
+            _record(env, now, changed)
+            done = ", ".join(f"{a['action']} {a['kind']} {a['path']}" for a in changed)
+            raise GateError(e.code, f"{e.message} (already applied before this step: "
+                            f"{done})") from None
+        raise
     changed = [a for a in plan.actions if a["action"] in ("create", "update")]
     if changed and not dry_run:
         _record(env, now, changed)
