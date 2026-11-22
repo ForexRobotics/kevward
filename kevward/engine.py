@@ -120,6 +120,15 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
     so a change made with a stolen console key stays visible on the host."""
     out = []
     for rec in records:
+        if rec.get("kind") == "setup":
+            acts = rec.get("actions") or []
+            out.append(Finding(
+                service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
+                title=f"kevward setup changed {len(acts)} item(s) at {rec.get('time', '?')}",
+                detail="; ".join(f"{a.get('action')} {a.get('kind')} {a.get('path')}"
+                                 for a in acts if isinstance(a, dict))
+                + ". Shown for 7 days (/var/lib/kevward/ssh-gate-changes.jsonl)."))
+            continue
         if rec.get("kind") == "self.update":
             out.append(Finding(
                 service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
