@@ -52,8 +52,10 @@ CHANGES_FILE = Path("/var/lib/kevward/ssh-gate-changes.jsonl")
 CHANGE_NOTICE_DAYS = 7
 
 ROLES = ("read", "operate")
-READ_OPS = ("version", "report.get", "config.get", "config.schema")
-OPERATE_OPS = READ_OPS + ("config.set", "self.update")
+READ_OPS = ("version", "report.get", "config.get", "config.schema",
+            "reboot.status", "schedule.status")
+OPERATE_OPS = READ_OPS + ("config.set", "self.update", "reboot.schedule", "reboot.cancel",
+                          "schedule.install")
 
 # self.update (#190)
 SELF_UPDATE_SINCE = "0.17.0"     # default rollback floor: first release with the op
@@ -541,8 +543,12 @@ def op_config_set(path: Path, args: dict, *, changes_file: Path, client: str,
 
 def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FILE,
            client: str = "", now: datetime | None = None,
-           update_opts: dict | None = None) -> dict:
-    """One request -> one response. Never raises."""
+           update_opts: dict | None = None, op_opts: dict | None = None) -> dict:
+    """One request -> one response. Never raises.
+
+    ``op_opts`` (tests only) is passed to the phase 2 ops: ``runner`` for
+    reboot.schedule/cancel, ``paths`` for schedule.install.
+    """
     now = now or datetime.now(timezone.utc)
     try:
         if role not in ROLES:
@@ -580,12 +586,32 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
         if op == "self.update":
             return ok(op_self_update(cfg, args, changes_file=changes_file, client=client,
                                      now=now, **(update_opts or {})))
+        if op.startswith(("reboot.", "schedule.")):
+            return ok(_phase2(op, cfg, args, changes_file=changes_file, client=client,
+                              now=now, opts=op_opts or {}))
         return ok(op_config_set(path, args, changes_file=changes_file, client=client,
                                 now=now))
     except GateError as e:
         return fail(e.code, e.message)
     except Exception as e:  # never a traceback on the wire
         return fail("internal", f"{type(e).__name__}")
+
+
+def _phase2(op: str, cfg: Config, args: dict, *, changes_file: Path, client: str,
+            now: datetime, opts: dict) -> dict:
+    from . import gate_ops as g
+
+    kw = {"changes_file": changes_file}
+    if op == "reboot.status":
+        return g.op_reboot_status(**kw)
+    if op == "schedule.status":
+        return g.op_schedule_status()
+    kw.update(client=client, now=now)
+    if op == "reboot.schedule":
+        return g.op_reboot_schedule(cfg, args, runner=opts.get("runner"), **kw)
+    if op == "reboot.cancel":
+        return g.op_reboot_cancel(runner=opts.get("runner"), **kw)
+    return g.op_schedule_install(paths=opts.get("paths"), **kw)
 
 
 def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
@@ -604,6 +630,11 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
                                              default=str)
         elif isinstance(data, dict) and "new" in data and "old" in data:
             extra = f" update={data['old']}->{data['new']}"
+        elif isinstance(data, dict) and isinstance(data.get("scheduled"), dict) \
+                and "replaced" in data:
+            extra = f" reboot_at={data['scheduled'].get('at')}"
+        elif isinstance(data, dict) and isinstance(data.get("cancelled"), dict):
+            extra = f" reboot_cancelled={data['cancelled'].get('at')}"
         orig = os.environ.get("SSH_ORIGINAL_COMMAND", "")
         syslog.openlog("kevward-ssh-gate", 0, syslog.LOG_AUTH)
         syslog.syslog(syslog.LOG_NOTICE if resp.get("ok") else syslog.LOG_WARNING,
