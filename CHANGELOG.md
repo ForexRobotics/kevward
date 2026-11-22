@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.18.0
+
+ssh-gate phase 2 for consoles such as FR Security Centre: reviewed updates
+(`plan` → `apply.start` → `job.get`, #197), reboot scheduling (#198) and the
+report timer (#199). The host's policy still decides what may be applied and
+whether it may reboot.
 
 - **ssh-gate: reboots (#198).** `reboot.status` (read) shows the scheduled
   reboot, who set it, and whether one is required. `reboot.schedule` (operate)
