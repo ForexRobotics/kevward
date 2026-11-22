@@ -363,6 +363,20 @@ def _write_last_run(report_dir: Path, record: dict) -> None:
         pass
 
 
+def _summary_counts(data_path: Path) -> dict | None:
+    """The header counts for last-run.json (#211), from the report.json just
+    written; None if it is not there."""
+    import json
+
+    try:
+        summ = json.loads(data_path.read_text(encoding="utf-8"))["summary"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    kev = summ.get("kev") or {}
+    return {**summ.get("counts", {}), "act_now": summ.get("act_now"),
+            "kev_applicable": kev.get("applicable")}
+
+
 def cmd_report(args) -> int:
     """Write the HTML report, plus ``last-run.json`` recording success or the
     one-line failure, so a collector can tell a fresh report from a stale one
@@ -392,7 +406,8 @@ def cmd_report(args) -> int:
         _write_last_run(report_dir, record)
         raise
     record.update(finished_at=_now(), ok=True, error=None, report=str(out))
-    _write_last_run(out.parent, record)
+    record["counts"] = _summary_counts(Path(out).with_suffix(".json"))
+    _write_last_run(Path(out).parent, record)
     return 0
 
 
@@ -425,6 +440,13 @@ def _cmd_report(args) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     lang = getattr(args, "lang", None) or cfg.report.lang
     out.write_text(render(result, lang=lang), encoding="utf-8")
+    # The same run as data, for consoles and collectors (#211). A failure here
+    # must not lose the HTML report that was just written.
+    try:
+        from .reporting.data import write_report_data
+        write_report_data(out.with_suffix(".json"), result)
+    except Exception as exc:  # noqa: BLE001
+        print(f"kevward: could not write {out.with_suffix('.json')}: {exc}", file=sys.stderr)
     if args.json:
         # keep stdout pure JSON so `report --json > posture.json` is valid (#113)
         print(f"wrote {out}", file=sys.stderr)
