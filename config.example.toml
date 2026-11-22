@@ -114,3 +114,8 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # `kevward ssh-gate --role read|operate` as its forced command. Not writable
 # through the gate itself. See "Restricted SSH keys" in the README.
 # enabled = false
+# Allow the `self.update` op (pip install kevward==X.Y.Z as root). Off by default.
+# self_update = false
+# Lowest version self.update may install (rollback floor). Empty = the first
+# release with self.update.
+# min_version = ""

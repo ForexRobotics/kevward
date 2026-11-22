@@ -166,6 +166,21 @@ class SshGateConfig:
     # Off by default. Only the host's own config can turn it on; it is never
     # writable through the gate itself.
     enabled: bool = False
+    # Allow the `self.update` op (pip install kevward==X.Y.Z as root, #190).
+    # A separate opt-in from `enabled`; off by default.
+    self_update: bool = False
+    # Lowest version self.update may install (rollback floor). Empty = the
+    # first release with self.update, so a stolen key cannot roll the host
+    # back to a release without the gate's safeguards.
+    min_version: str = ""
+
+    def __post_init__(self) -> None:
+        import re
+
+        if not isinstance(self.enabled, bool) or not isinstance(self.self_update, bool):
+            raise ValueError("ssh_gate.enabled / self_update must be true or false")
+        if self.min_version and not re.fullmatch(r"\d+\.\d+\.\d+", str(self.min_version)):
+            raise ValueError("ssh_gate.min_version must look like 0.17.0")
 
 
 # Table name -> settings dataclass, plus top-level scalar keys (#186).
@@ -341,8 +356,6 @@ class Config:
         cfg.ssh_gate = SshGateConfig(
             **{k: v for k, v in sg.items() if k in SshGateConfig.__annotations__}
         )
-        if not isinstance(cfg.ssh_gate.enabled, bool):
-            raise ValueError("ssh_gate.enabled must be true or false")
         if "report_dir" in data:
             cfg.report_dir = Path(data["report_dir"])
         return cfg

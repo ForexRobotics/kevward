@@ -25,14 +25,20 @@ class Cmd:
 
 
 def run(args: list[str], timeout: int = 120, input_: str | None = None,
-        cwd: str | os.PathLike | None = None, env: dict[str, str] | None = None) -> Cmd:
+        cwd: str | os.PathLike | None = None, env: dict[str, str] | None = None,
+        clean_env: bool = False) -> Cmd:
     """Run a command, capturing output. Never raises on non-zero exit.
 
     Commands are always passed as an argv list (never a shell string), so there
     is no shell interpolation of any value. ``cwd`` sets the working directory
     (e.g. a project for ``npm audit``, #154). ``env`` adds variables to the
-    current environment.
+    current environment; with ``clean_env`` it *is* the environment (nothing
+    inherited, e.g. no ``PIP_*`` for ssh-gate's self.update, #190).
     """
+    if clean_env:
+        child_env: dict[str, str] | None = dict(env or {})
+    else:
+        child_env = {**os.environ, **env} if env else None
     try:
         p = subprocess.run(
             args,
@@ -41,7 +47,7 @@ def run(args: list[str], timeout: int = 120, input_: str | None = None,
             timeout=timeout,
             input=input_,
             cwd=cwd,
-            env={**os.environ, **env} if env else None,
+            env=child_env,
             check=False,
         )
         return Cmd(p.returncode, p.stdout or "", p.stderr or "")

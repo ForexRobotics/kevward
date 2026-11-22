@@ -442,7 +442,7 @@ enabled = true
 | role | ops | how |
 |---|---|---|
 | `read` | `version`, `report.get` (`html` / `json`), `config.get`, `config.schema` | no sudo |
-| `operate` | the above + `config.set` | `sudo -n`, with an exact-match sudoers line |
+| `operate` | the above + `config.set`, `self.update` | `sudo -n`, with an exact-match sudoers line |
 
 ```text
 # ~/.ssh/authorized_keys of the collecting user
@@ -465,6 +465,25 @@ atomically. Every change is logged to syslog (`kevward-ssh-gate`) and to
 `/var/lib/kevward/ssh-gate-changes.jsonl`, and the daily report shows it for 7
 days. The gate rewrites the file without comments; the backup keeps them.
 `audit` recognises these two forced commands as kevward's own.
+
+`self.update` (`{"version": "0.17.0"}`) installs exactly that release into the
+`/opt/kevward` venv: `pip install --isolated --index-url https://pypi.org/simple
+"kevward==<version>"` with a clean environment, a lock, a 300 s limit, and a
+`kevward --version` check afterwards. A lower version rolls back and returns
+`"downgrade": true`. It needs its own opt-in, and never goes below the host's
+floor:
+
+```toml
+[ssh_gate]
+enabled = true
+self_update = true        # off by default
+# min_version = "0.17.0"  # rollback floor; default = first release with self.update
+```
+
+The `version` op reports `install` (`{"method": "venv", "prefix": "/opt/kevward"}`),
+`self_update` and `min_version`, so a console knows whether to offer an update.
+Each update is logged like `config.set`, and the report shows "kevward updated
+<old> → <new> via ssh-gate" for 7 days.
 
 ## Adding a service
 
