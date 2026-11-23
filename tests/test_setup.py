@@ -89,7 +89,7 @@ def test_keys_sudoers_idempotent_and_replaces(env):
                         "restrict " + OPERATE)
     assert len(lines) == 3 and oct(ak.stat().st_mode & 0o777) == "0o600"
     sud = e.etc / "sudoers.d" / su.SUDOERS_NAME
-    assert sud.read_text().splitlines()[1] == (
+    assert sud.read_text().splitlines()[-1] == (
         f"ktakahashi ALL=(root) NOPASSWD: {e.prefix}/bin/kevward ssh-gate --role operate")
     assert oct(sud.stat().st_mode & 0o777) == "0o440"
     assert e.runner.calls[0][:2] == ["visudo", "-cf"]

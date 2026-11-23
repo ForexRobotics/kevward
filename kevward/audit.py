@@ -515,14 +515,72 @@ def _is_allowed(cmd: str, allow: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(cmd, pat) for pat in allow)
 
 
+#: Forced-command keys kevward has already reported (#215), so a key that
+#: appears between two reports stands out from the ones seen every day.
+FORCED_STATE = "/var/lib/kevward/forced-commands.json"
+#: A key is "new" in the reports of its first two days (daily timer + a
+#: manual run the same morning).
+NEW_FOR_S = 2 * 86400
+
+
+def _key_id(path: str, line: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(f"{path}\0{line}".encode()).hexdigest()[:20]
+
+
+def _track_new(seen: dict[str, tuple[str, str]], state_path: str,
+               now: float) -> set[str]:
+    """Update the state with ``seen`` (id -> (path, command)); return the ids
+    first seen within NEW_FOR_S. The first run records a baseline and marks
+    nothing new. Keys that disappear are forgotten, so one re-added later is
+    new again. Fail-soft: without a writable state nothing is marked."""
+    import json
+
+    try:
+        with open(state_path, encoding="utf-8") as fh:
+            state = json.load(fh)
+        first = dict(state.get("first_seen") or {})
+        baseline = False
+    except FileNotFoundError:
+        first, baseline = {}, True
+    except (OSError, ValueError, AttributeError):
+        return set()
+    new = set()
+    out = {}
+    for kid in seen:
+        t = first.get(kid)
+        if t is None:
+            t = 0 if baseline else now
+        out[kid] = t
+        if t and now - float(t) < NEW_FOR_S:
+            new.add(kid)
+    try:
+        os.makedirs(os.path.dirname(state_path), exist_ok=True)
+        tmp = state_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"first_seen": out}, fh, indent=1)
+        os.replace(tmp, state_path)
+    except OSError:
+        return set()
+    return new
+
+
 def _check_authkeys(allow_forced: list[str] | None = None,
-                    paths: list[str] | None = None) -> list[Finding]:
+                    paths: list[str] | None = None,
+                    state_path: str | None = None,
+                    now: float | None = None) -> list[Finding]:
     """Only emit when something is off (world-writable or a forced command);
     an ordinary authorized_keys is not a finding. Forced commands matching
     ``allow_forced`` (``[audit] allowed_forced_commands``) are expected and
-    not reported (#87)."""
+    not reported (#87). With ``state_path``, keys that were not there at the
+    previous run are reported separately as NEW at medium (#215)."""
+    import time
+
     allow = allow_forced or []
     out: list[Finding] = []
+    seen: dict[str, tuple[str, str]] = {}
+    per_file: list[tuple[str, list[tuple[str, str]]]] = []
     if paths is None:
         paths = ["/root/.ssh/authorized_keys"]
         for home in _home_dirs():
@@ -532,7 +590,7 @@ def _check_authkeys(allow_forced: list[str] | None = None,
             st = os.stat(p)
         except OSError:
             continue
-        unexpected: list[str] = []
+        unexpected: list[tuple[str, str]] = []  # (key id, command)
         try:
             with open(p, errors="replace") as fh:
                 for ln in fh:
@@ -541,7 +599,9 @@ def _check_authkeys(allow_forced: list[str] | None = None,
                         continue
                     for cmd in forced_commands(s):
                         if not _is_allowed(cmd, allow):
-                            unexpected.append(cmd)
+                            kid = _key_id(p, s)
+                            unexpected.append((kid, cmd))
+                            seen[kid] = (p, cmd)
         except OSError:
             continue
         world_writable = bool(st.st_mode & 0o022)
@@ -549,10 +609,25 @@ def _check_authkeys(allow_forced: list[str] | None = None,
             out.append(_f(Severity.MEDIUM,
                           f"authorized_keys is group/world-writable: {p}",
                           detail=f"mode {oct(st.st_mode & 0o777)}"))
-        if unexpected:
-            shown = "; ".join(c[:80] for c in unexpected[:3])
+        per_file.append((p, unexpected))
+    new = (_track_new(seen, state_path, time.time() if now is None else now)
+           if state_path else set())
+    for p, unexpected in per_file:
+        fresh = [c for k, c in unexpected if k in new]
+        known = [c for k, c in unexpected if k not in new]
+        if fresh:
+            shown = "; ".join(c[:80] for c in fresh[:3])
+            out.append(_f(Severity.MEDIUM,
+                          f"NEW: authorized_keys has {len(fresh)} forced-command "
+                          f"key(s) added since the previous report: {p}",
+                          detail=f"command: {shown} — not there at the previous run. "
+                                 "If you did not add it, remove it and check how it got "
+                                 "there; if you did, list it in [audit] "
+                                 "allowed_forced_commands"))
+        if known:
+            shown = "; ".join(c[:80] for c in known[:3])
             out.append(_f(Severity.LOW,
-                          f"authorized_keys has {len(unexpected)} forced-command "
+                          f"authorized_keys has {len(known)} forced-command "
                           f"key(s): {p}",
                           detail=f"command: {shown} — forced commands can be "
                                  "legitimate (backup/rsync) but are worth "
@@ -573,7 +648,7 @@ def check_persistence(allow_forced: list[str] | None = None) -> list[Finding]:
     out += _check_cron()
     out += _check_units()
     out += _check_rc()
-    out += _check_authkeys(allow_forced)
+    out += _check_authkeys(allow_forced, state_path=FORCED_STATE if is_root() else None)
     out += _check_php_prepend()
     out += _check_rc_hijack()
     out += _check_at()

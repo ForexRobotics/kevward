@@ -150,3 +150,15 @@ def test_layout_logo_categories_and_summary():
     r.attackers = {"trends": {"applicable_count": 2, "matches": []}}
     assert ("actively-exploited CVEs (CISA KEV) that apply to this host: 2."
             in H.render(r))
+
+
+def test_rows_carry_untranslated_keys():
+    # #216: the Kind column is translated in ja; the keys stay in data-* for scripts.
+    r = _result()
+    r.audit = [Finding(service="audit", kind=FindingKind.CONFIG, severity=Severity.LOW,
+                       title="x")]
+    for lang in ("ja", "en"):
+        out = H.render(r, lang=lang)
+        assert "<tr data-severity='high' data-service='apt' data-kind='security_update'>" in out
+        assert "<tr data-severity='low' data-kind='audit'>" in out
+    assert "<td class='kind'>セキュリティ更新</td>" in H.render(r, lang="ja")

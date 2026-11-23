@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: changes made through ssh-gate were logged "from unknown" (#214).**
+  sudo drops `SSH_CONNECTION` for the operate role. `kevward setup` now keeps
+  it (`Defaults!… env_keep += "SSH_CONNECTION"` in the sudoers drop-in), and
+  hosts without that line get the address from the sshd session's process.
+  When neither works the log says why instead of "unknown".
+- **audit: forced-command keys added since the previous report are NEW
+  (#215).** Reported separately at medium for two days; the ones that are
+  always there stay one low finding.
+- **report: rows carry the untranslated keys (#216)** as `data-severity`,
+  `data-service` and `data-kind`, so scripts do not depend on the display
+  language (report.json remains the way to read the data).
+
 ## 0.19.0
 
 The report as data for consoles: `report.json` with a `summary` (counts, KEV,
