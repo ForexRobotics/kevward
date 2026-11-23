@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.19.1
+
+From the 2026-11-23 morning check: the ssh-gate change log records the
+console's address again (#214), forced-command keys added since the previous
+report are NEW (#215), and report rows carry untranslated data-* keys (#216).
 
 - **Fix: changes made through ssh-gate were logged "from unknown" (#214).**
   sudo drops `SSH_CONNECTION` for the operate role. `kevward setup` now keeps
