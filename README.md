@@ -270,6 +270,10 @@ Expected forced-command SSH keys (e.g. your own report-collection key) can
 be listed in `[audit] allowed_forced_commands` (globs on the `command="..."`
 value) so they stop showing up as indicators; any other forced command
 is still reported.
+A forced-command key that was not there at the previous run is reported
+separately as **NEW** at medium for two days, so a key added overnight stands
+out from the ones that are always there (state in
+`/var/lib/kevward/forced-commands.json`; the first run records a baseline).
 
 Likewise, outbound connections a service makes every day on purpose (a Tor
 client to port 9001, a metrics agent) can be listed in
@@ -482,8 +486,13 @@ command="/opt/kevward/bin/kevward ssh-gate --role read",restrict ssh-ed25519 AAA
 command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate",restrict ssh-ed25519 AAAA… operate
 
 # /etc/sudoers.d/kevward-ssh-gate (visudo -f): this exact command only
+Defaults!/opt/kevward/bin/kevward env_keep += "SSH_CONNECTION"
 collector ALL=(root) NOPASSWD: /opt/kevward/bin/kevward ssh-gate --role operate
 ```
+
+The `Defaults` line keeps the client's address for the change log and syslog
+(sudo drops `SSH_CONNECTION` otherwise; without it, the operate role looks the
+address up in its parent processes). `kevward setup` writes both lines.
 
 `config.set` (`{"set": {"report.lang": "ja"}, "expect_sha256": "<from
 config.get>"}`) only writes keys that `config.schema` marks writable. Those

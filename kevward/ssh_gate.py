@@ -683,8 +683,58 @@ def _read_stdin(limit: int = MAX_REQUEST + 1, timeout: int = READ_TIMEOUT_S) -> 
         signal.signal(signal.SIGALRM, old)
 
 
+def _ssh_ip(value: str) -> str:
+    return (value.split() or [""])[0]
+
+
+def _ancestor_ssh_connection(start: int, proc: Path = Path("/proc"),
+                             max_depth: int = 8) -> str:
+    """SSH_CONNECTION from the nearest ancestor that has it. sudo's env_reset
+    drops it for the operate role, but sudo's parent (the sshd session's
+    forced command) still has it. Reading another process's environ needs the
+    same uid or root, which the operate role is. "" if not found."""
+    pid = start
+    for _ in range(max_depth):
+        if pid <= 1:
+            return ""
+        try:
+            env = (proc / str(pid) / "environ").read_bytes().split(b"\0")
+        except OSError:
+            env = []
+        for item in env:
+            if item.startswith(b"SSH_CONNECTION="):
+                return _ssh_ip(item[15:].decode("ascii", "replace"))
+        try:
+            stat = (proc / str(pid) / "stat").read_text()
+            pid = int(stat.rsplit(")", 1)[1].split()[1])  # field 4: ppid
+        except (OSError, ValueError, IndexError):
+            return ""
+    return ""
+
+
+def client_address(environ=None, ppid: int | None = None, proc: Path = Path("/proc")) -> str:
+    """The SSH client's IP for logs and the change log (#214).
+
+    1. ``SSH_CONNECTION`` (read role; operate when sudoers keeps it, as
+       ``kevward setup`` writes since 0.19.1)
+    2. the same variable of an ancestor process (operate under a sudoers line
+       without env_keep)
+    3. a reason instead of a bare "unknown"
+    """
+    environ = os.environ if environ is None else environ
+    ip = _ssh_ip(environ.get("SSH_CONNECTION", ""))
+    if ip:
+        return ip
+    ip = _ancestor_ssh_connection(os.getppid() if ppid is None else ppid, proc)
+    if ip:
+        return ip
+    if environ.get("SUDO_USER"):
+        return f"unknown (sudo from {environ['SUDO_USER']}, SSH_CONNECTION not passed)"
+    return "local"
+
+
 def main(role: str, config: str | None = None) -> int:
-    client = (os.environ.get("SSH_CONNECTION", "").split() or [""])[0]
+    client = client_address()
     try:
         raw = _read_stdin()
     except TimeoutError:

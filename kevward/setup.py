@@ -237,8 +237,12 @@ def step_keys(env: Env, plan: Plan, user: str, read_key: str | None,
 
 
 def sudoers_text(user: str, prefix: Path = VENV_PREFIX) -> str:
+    exe = f"{prefix}/bin/kevward"
     return ("# Managed by `kevward setup` (#191): the ssh-gate operate role only.\n"
-            f"{user} ALL=(root) NOPASSWD: {prefix}/bin/kevward ssh-gate --role operate\n")
+            "# SSH_CONNECTION is kept so the change log records the console's\n"
+            "# address (#214); sshd sets it and the forced command cannot change it.\n"
+            f'Defaults!{exe} env_keep += "SSH_CONNECTION"\n'
+            f"{user} ALL=(root) NOPASSWD: {exe} ssh-gate --role operate\n")
 
 
 def step_sudoers(env: Env, plan: Plan, user: str, dry_run: bool) -> None:

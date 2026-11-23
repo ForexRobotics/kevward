@@ -288,7 +288,11 @@ def render(result: RunResult, lang: str | None = None) -> str:
             sev = f.severity if isinstance(f.severity, str) else f.severity.value
             kind = f.kind if isinstance(f.kind, str) else f.kind.value
             rows.append(
-                f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
+                # data-* carry the untranslated keys (#216): scripts read these
+                # (or report.json), never the displayed words.
+                f"<tr data-severity='{_esc(sev)}' data-service='{_esc(f.service)}' "
+                f"data-kind='{_esc(kind)}'>"
+                f"<td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
                 f"{_esc(t(sev))}</span></td><td>{_esc(f.service)}</td>"
                 f"<td class='kind'>{_esc(t(kind))}</td><td>{_esc(f.title)}{_finding_extra(f, t)}</td>"
                 f"<td class='cve'>{_esc(f.cve or '')}</td></tr>"
@@ -299,7 +303,8 @@ def render(result: RunResult, lang: str | None = None) -> str:
     for f in (result.audit or []):
         sev = f.severity if isinstance(f.severity, str) else f.severity.value
         audit_rows += (
-            f"<tr><td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
+            f"<tr data-severity='{_esc(sev)}' data-kind='audit'>"
+            f"<td><span class='pill' style='background:{_SEV_COLOR.get(sev,'#777')}'>"
             f"{_esc(t(sev))}</span></td><td>{_esc(f.title)}</td>"
             f"<td class='muted'>{_esc(f.detail)}</td></tr>"
         )
