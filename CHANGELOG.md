@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.19.3
+
+The report timer's `apt-get update` works under the read-only service: a
+writable TMPDIR for apt's signature checks (#231). No extra step after
+updating if `kevward schedule install` already ran with 0.19.2.
 
 - **Fix: the report timer's `apt-get update` failed signature checks (#231).**
   `ProtectSystem=strict` also keeps /tmp read-only, where apt writes a
