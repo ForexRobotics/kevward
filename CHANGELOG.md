@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.19.2
+
+The report timer can refresh the apt lists again (#227); stale or failed
+lists are now reported (#179). **After updating, run `sudo kevward schedule
+install` (or ssh-gate `schedule.install`) once on each host.** Also:
+allowed_forced_commands match counts (#224) and sshd failures compared with
+the previous report (#225).
 
 - **Fix: the report timer could not refresh the apt lists or write kevward's
   state (#227).** The service runs with `ProtectSystem=strict` and only
