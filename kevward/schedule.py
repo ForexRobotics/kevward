@@ -186,10 +186,57 @@ def plan_install(paths: Paths, at: str, jitter: str, exe: str,
     return out
 
 
-def install(at: str = DEFAULT_AT, jitter: str = DEFAULT_JITTER, *, dry_run: bool = False,
-            paths: Paths | None = None, exe: str | None = None) -> tuple[bool, list[str]]:
-    """Write units/drop-in, reload systemd, enable and restart the timer."""
+def recorded(paths: Paths | None = None) -> tuple[str, str]:
+    """The schedule the last ``install`` used (#235), else the defaults."""
     paths = paths or Paths()
+    state = _read_state(paths)
+    at, jitter = state.get("at"), state.get("jitter")
+    if isinstance(at, str) and isinstance(jitter, str) and validate(at, jitter) is None:
+        return at, jitter
+    return DEFAULT_AT, DEFAULT_JITTER
+
+
+def refresh(*, dry_run: bool = False, paths: Paths | None = None) -> tuple[bool, list[str]]:
+    """Bring kevward's managed service drop-in up to date (#235); run by
+    ``self.update`` through ``setup --refresh``. Never creates a timer, never
+    touches the schedule or the operator's unit; nothing to do when the report
+    service is not installed."""
+    paths = paths or Paths()
+    if not paths.service.exists():
+        return True, [f"{SERVICE} is not installed: nothing to refresh"]
+    text = render_service_dropin()
+    try:
+        current = paths.service_dropin.read_text()
+    except OSError:
+        current = None
+    if current == text:
+        return True, [f"{paths.service_dropin} is up to date"]
+    if dry_run:
+        return True, [f"would {'create' if current is None else 'update'} "
+                      f"{paths.service_dropin}"]
+    if not is_root():
+        return False, ["refreshing the report service drop-in requires root"]
+    try:
+        _write(paths.service_dropin, text)
+    except OSError as e:
+        return False, [f"failed to write {paths.service_dropin}: {e}"]
+    msgs = [f"{'created' if current is None else 'updated'} {paths.service_dropin}"]
+    if have("systemctl"):
+        r = run(["systemctl", "daemon-reload"], timeout=30)
+        if not r.ok:
+            return False, msgs + [f"systemctl daemon-reload failed: {(r.err or r.out).strip()}"]
+    return True, msgs
+
+
+def install(at: str | None = None, jitter: str | None = None, *, dry_run: bool = False,
+            paths: Paths | None = None, exe: str | None = None) -> tuple[bool, list[str]]:
+    """Write units/drop-in, reload systemd, enable and restart the timer.
+    ``at`` / ``jitter`` default to what the previous install recorded (#235),
+    so re-running it (or ssh-gate ``schedule.install``) never moves the timer."""
+    paths = paths or Paths()
+    rec_at, rec_jitter = recorded(paths)
+    at = at or rec_at
+    jitter = jitter or rec_jitter
     err = validate(at, jitter)
     if err:
         return False, [err]

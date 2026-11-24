@@ -16,7 +16,11 @@ mixed up several times and fail2ban ended up blocking the operator:
 - ``--ssh-gate``: ``[ssh_gate] enabled = true`` (validated, backed up)
 - ``--timer``: the daily report timer, as ``kevward schedule install``
 - ``--fail2ban-ignore``: an additive ``ignoreip`` drop-in, if fail2ban exists
-- ``--refresh``: post-update steps (none yet; called by ssh-gate self.update)
+- ``--refresh``: post-update steps, run by ssh-gate self.update with the new
+  version (#235): bring kevward's managed unit drop-ins up to date.
+- ``--restore``: re-apply what ``kevward uninstall`` saved in
+  /var/lib/kevward/setup-snapshot.json (keys, timer, fail2ban), so removing
+  and reinstalling kevward needs no hand work (#236).
 
 Running it twice gives the same result. ``--dry-run`` lists the changes and
 writes nothing. It never turns on kevward's nft firewall.
@@ -322,16 +326,19 @@ def step_config(env: Env, plan: Plan, settings: list[tuple[str, str]], dry_run: 
     plan.actions[-1]["backup"] = str(backup) if backup else None
 
 
-def step_timer(env: Env, plan: Plan, dry_run: bool) -> None:
+def step_timer(env: Env, plan: Plan, dry_run: bool, at: str | None = None,
+               jitter: str | None = None) -> None:
     from . import schedule as sch
 
     paths = sch.Paths(unit_dir=env.unit_dir)
     exe = str(env.prefix / "bin" / "kevward")
-    for path, _text, new in sch.plan_install(paths, sch.DEFAULT_AT, sch.DEFAULT_JITTER, exe):
+    rec_at, rec_jitter = sch.recorded(paths)
+    at, jitter = at or rec_at, jitter or rec_jitter
+    for path, _text, new in sch.plan_install(paths, at, jitter, exe):
         plan.add("timer", path, "create" if new else "update")
     if dry_run:
         return
-    ok, msgs = sch.install(paths=paths, exe=exe)
+    ok, msgs = sch.install(at, jitter, paths=paths, exe=exe)
     if not ok:
         raise GateError("internal", "timer: " + "; ".join(msgs)[:300])
 
@@ -432,10 +439,108 @@ def step_fail2ban(env: Env, plan: Plan, nets: list[str], dry_run: bool) -> None:
 
 # --- entry point ------------------------------------------------------------------
 
+# --- refresh (#235) and snapshot / restore (#236) ---------------------------------
+
+SNAPSHOT = Path("/var/lib/kevward/setup-snapshot.json")
+_ROLE = re.compile(r"ssh-gate --role (read|operate)")
+
+
+def step_refresh(env: Env, plan: Plan, dry_run: bool) -> None:
+    from . import schedule as sch
+
+    paths = sch.Paths(unit_dir=env.unit_dir)
+    ok_, msgs = sch.refresh(dry_run=dry_run, paths=paths)
+    if not ok_:
+        raise GateError("internal", "refresh: " + "; ".join(msgs)[:300])
+    changed = any(m.startswith(("created", "updated", "would")) for m in msgs)
+    plan.add("refresh", paths.service_dropin, "update" if changed else "unchanged",
+             messages=msgs)
+
+
+def _key_part(line: str) -> str | None:
+    """``type base64 [comment]`` of an authorized_keys line, options dropped."""
+    toks = line.strip().split()
+    for i, t in enumerate(toks):
+        if t in KEY_TYPES and i + 1 < len(toks):
+            return " ".join(toks[i:])
+    return None
+
+
+def snapshot_host(etc: Path, homes: list[tuple[str, Path]], state_file: Path) -> dict:
+    """What setup put on this host, in setup's own terms, so ``setup
+    --restore`` can put it back after an uninstall (#236). Pure apart from
+    reading files; holds public keys and addresses only."""
+    users = []
+    for name, home in homes:
+        try:
+            text = (home / ".ssh" / "authorized_keys").read_text(errors="replace")
+        except OSError:
+            continue
+        keys: dict[str, str] = {}
+        for ln in text.splitlines():
+            m = _ROLE.search(ln)
+            if m and "kevward" in ln and m.group(1) not in keys:
+                k = _key_part(ln)
+                if k:
+                    keys[m.group(1)] = k
+        if keys:
+            users.append({"user": name, "read_key": keys.get("read"),
+                          "operate_key": keys.get("operate")})
+    timer = None
+    try:
+        st = json.loads(state_file.read_text())
+        if st.get("at"):
+            timer = {"at": st["at"], "jitter": st.get("jitter")}
+    except (OSError, ValueError, AttributeError):
+        pass
+    f2b: list[str] = []
+    try:
+        for ln in (etc / "fail2ban" / "jail.d" / F2B_NAME).read_text().splitlines():
+            if ln.strip().startswith("ignoreip"):
+                f2b = [t for t in re.split(r"[\s,]+", ln.split("=", 1)[1])
+                       if t and t not in F2B_BASE and "%(" not in t]
+    except (OSError, IndexError):
+        pass
+    return {"version": 1, "users": users, "timer": timer, "fail2ban_ignore": f2b}
+
+
+def restore(*, dry_run: bool = False, env: Env | None = None,
+            path: Path = SNAPSHOT) -> dict:
+    """``setup --restore``: run setup with what the snapshot recorded."""
+    try:
+        snap = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise GateError("not_found", f"no snapshot at {path} (kevward uninstall writes one; "
+                        "--purge does not keep it)") from None
+    except (OSError, ValueError) as e:
+        raise GateError("internal", f"unreadable snapshot {path}: {e}") from None
+    users = snap.get("users") or []
+    timer = snap.get("timer")
+    f2b = snap.get("fail2ban_ignore") or []
+    if not (users or timer or f2b):
+        raise GateError("not_found", f"{path} records nothing to restore")
+    actions: list[dict] = []
+    first = True
+    for u in users or [{}]:
+        d = setup(console_user=u.get("user"), read_key=u.get("read_key"),
+                  operate_key=u.get("operate_key"),
+                  ssh_gate=bool(u.get("read_key") or u.get("operate_key")),
+                  timer=bool(timer) and first,
+                  timer_at=(timer or {}).get("at"), timer_jitter=(timer or {}).get("jitter"),
+                  fail2ban_ignore=f2b if (first and f2b) else None,
+                  dry_run=dry_run, env=env)
+        actions += d["actions"]
+        first = False
+    return {"dry_run": dry_run, "restored_from": str(path),
+            "changed": any(a["action"] in ("create", "update") for a in actions),
+            "actions": actions}
+
+
 def setup(*, console_user: str | None = None, read_key: str | None = None,
           operate_key: str | None = None, ssh_gate: bool = False, timer: bool = False,
           fail2ban_ignore: list[str] | None = None, refresh: bool = False,
           self_update: bool = False, allow_reboot: bool = False,
+          timer_at: str | None = None, timer_jitter: str | None = None,
           dry_run: bool = False, env: Env | None = None) -> dict:
     """Run the requested steps; returns the plan (what changed / would change).
     Raises GateError with an ssh-gate code."""
@@ -479,11 +584,12 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
         if fail2ban_ignore:
             step_fail2ban(env, plan, fail2ban_ignore, dry_run)
         if timer:
-            step_timer(env, plan, dry_run)
+            step_timer(env, plan, dry_run, timer_at, timer_jitter)
         if operate_key:
             step_sudoers(env, plan, console_user, dry_run)
         step_keys(env, plan, console_user or "", read_key, operate_key, dry_run)
-        # refresh: no post-update steps exist yet (#190 calls it once there are).
+        if refresh:
+            step_refresh(env, plan, dry_run)
     except GateError as e:
         changed = [a for a in plan.actions if a["action"] in ("create", "update")]
         if changed and not dry_run:

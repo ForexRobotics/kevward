@@ -39,3 +39,35 @@ def test_status_warns_on_old_unit():
     new = " ".join("-" + p for p in sch.RW_PATHS)
     assert sch.status_warnings(props, True, new) == []
     assert sch.status_warnings(props, True, None) == []      # unit not loaded: no claim
+
+
+# --- #235: refresh, and install keeps the recorded time --------------------------
+
+def test_recorded_and_install_keeps_time(tmp_path, monkeypatch):
+    from kevward import schedule as sch
+
+    paths = sch.Paths(unit_dir=tmp_path, state_file=tmp_path / "s.json")
+    assert sch.recorded(paths) == (sch.DEFAULT_AT, sch.DEFAULT_JITTER)
+    paths.state_file.write_text('{"at": "05:30", "jitter": "10min"}')
+    assert sch.recorded(paths) == ("05:30", "10min")
+    paths.state_file.write_text('{"at": "99:99", "jitter": "x"}')
+    assert sch.recorded(paths) == (sch.DEFAULT_AT, sch.DEFAULT_JITTER)
+    paths.state_file.write_text('{"at": "05:30", "jitter": "10min"}')
+    ok, msgs = sch.install(dry_run=True, paths=paths, exe="/opt/kevward/bin/kevward")
+    assert ok and any("OnCalendar=*-*-* 05:30:00" in m for m in msgs)
+
+
+def test_refresh_only_touches_the_managed_dropin(tmp_path, monkeypatch):
+    from kevward import schedule as sch
+
+    paths = sch.Paths(unit_dir=tmp_path, state_file=tmp_path / "s.json")
+    ok, msgs = sch.refresh(paths=paths)
+    assert ok and "nothing to refresh" in msgs[0] and not paths.service_dropin.exists()
+    paths.service.write_text("[Service]\nExecStart=/x\n")
+    monkeypatch.setattr(sch, "is_root", lambda: True)
+    monkeypatch.setattr(sch, "have", lambda c: False)
+    ok, msgs = sch.refresh(paths=paths)
+    assert ok and msgs == [f"created {paths.service_dropin}"]
+    assert paths.service.read_text() == "[Service]\nExecStart=/x\n"
+    assert not paths.timer.exists() and not paths.dropin.exists()
+    assert sch.refresh(paths=paths)[1] == [f"{paths.service_dropin} is up to date"]
