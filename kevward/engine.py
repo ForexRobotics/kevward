@@ -31,6 +31,7 @@ class RunResult:
     audit: list[Finding] | None = None
     # [audit] allowed_outbound matches: rule -> connections silenced (#155).
     audit_allowed_outbound: dict[str, int] = field(default_factory=dict)
+    audit_allowed_forced: dict[str, int] = field(default_factory=dict)
     # How `apt-get update` went before the plan was computed (#171):
     # {"state": "ok" | "failed" | "skipped", "seconds", "error"}; {} if no apt.
     apt_refresh: dict = field(default_factory=dict)
@@ -86,6 +87,7 @@ class RunResult:
             "attackers": self.attackers,
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
             "audit_allowed_outbound": self.audit_allowed_outbound,
+            "audit_allowed_forced": self.audit_allowed_forced,
             "audit_rules": self.audit_rules,
             "apt_refresh": self.apt_refresh,
         }
@@ -113,6 +115,75 @@ def config_warning_report(cfg: Config) -> ServiceReport:
             )
         ],
     )
+
+
+#: Package lists older than this (hours) make pending updates suspect (#179).
+APT_LISTS_STALE_H = 48
+
+
+def lists_age_hours(refresh: dict, now=None) -> float | None:
+    from datetime import datetime, timezone
+
+    at = (refresh or {}).get("lists_updated_at")
+    if not at:
+        return None
+    try:
+        when = datetime.fromisoformat(at)
+    except ValueError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return max(0.0, (now - when).total_seconds() / 3600)
+
+
+def apt_refresh_findings(refresh: dict, now=None) -> list[Finding]:
+    """A failed ``apt-get update`` or old lists, as one MEDIUM apt finding
+    (#179): the updates listed may be incomplete. Pure."""
+    refresh = refresh or {}
+    age = lists_age_hours(refresh, now)
+    age_txt = f"; lists last updated {age:.0f} h ago" if age is not None else ""
+    if refresh.get("state") == "failed":
+        err = refresh.get("error") or "unknown error"
+        hint = ""
+        if "changed its" in err and "value from" in err:
+            hint = (" A repository changed its Release information (Label/Origin/Suite). "
+                    "If the change is expected, accept it once with "
+                    "`apt-get update --allow-releaseinfo-change-label` (or the matching "
+                    "--allow-releaseinfo-change-* option); kevward never does this itself.")
+        return [Finding(service="apt", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
+                        title=f"apt lists could not be refreshed: {err}",
+                        detail="Pending updates below may be incomplete or out of date"
+                               + age_txt + "." + hint)]
+    if age is not None and age > APT_LISTS_STALE_H:
+        return [Finding(service="apt", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
+                        title=f"apt lists are stale: last updated {age:.0f} h ago",
+                        detail="Security updates published since then are missing from this "
+                               "report. Run kevward report as root (it refreshes the lists) "
+                               "or `apt-get update`.")]
+    return []
+
+
+#: An sshd surge worth a note (#225): at least this factor and this many more
+#: failures in the last 24 h than at the previous report.
+SSH_SURGE_FACTOR, SSH_SURGE_MIN = 2.0, 50
+
+
+def ssh_surge_findings(attackers: dict) -> list[Finding]:
+    """INFO when sshd failures in the last 24 h jumped since the previous
+    report. Pure."""
+    lw = (attackers or {}).get("logwatch") or {}
+    prev = (attackers or {}).get("previous") or {}
+    cur, before = lw.get("ssh_attempts_24h"), prev.get("ssh_failed_24h")
+    if not isinstance(cur, int) or not isinstance(before, int):
+        return []
+    if cur - before < SSH_SURGE_MIN or cur < SSH_SURGE_FACTOR * max(before, 1):
+        return []
+    pct = f"+{round(100 * (cur - before) / before)}%" if before else "from 0"
+    return [Finding(service="sshd", kind=FindingKind.CONFIG, severity=Severity.INFO,
+                    title=f"sshd failed logins rose to {cur} in the last 24 h "
+                          f"(previous report: {before}, {pct})",
+                    detail=f"Previous report: {prev.get('generated_at') or '?'}. Usually a "
+                           "scanner wave; check the top sources below and that fail2ban "
+                           "is banning them.")]
 
 
 def gate_change_findings(records: list[dict]) -> list[Finding]:
@@ -283,4 +354,11 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
     from .plugins import _apt
 
     result.apt_refresh = dict(_apt.REFRESH or {})
+    stale = apt_refresh_findings(result.apt_refresh)
+    if stale:
+        apt_svc = next((s for s in result.services if s.service == "apt"), None)
+        if apt_svc is not None:
+            apt_svc.findings[:0] = stale
+        else:
+            result.services.append(ServiceReport(service="apt", present=True, findings=stale))
     return result

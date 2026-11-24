@@ -29,6 +29,8 @@ INDIRECT = [
     "No package or config findings (audit indicators are listed below).", "No findings.",
     "{line} — matched <code>[audit] allowed_outbound</code>",
     "{line} — configured in <code>[audit] allowed_outbound</code>",
+    "{line} — matched <code>[audit] allowed_forced_commands</code>",
+    "{line} — configured in <code>[audit] allowed_forced_commands</code>",
     H._AUDIT_INTRO,
 ]
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: the report timer could not refresh the apt lists or write kevward's
+  state (#227).** The service runs with `ProtectSystem=strict` and only
+  `/var/log/kevward` and `/var/cache/kevward` were writable, so `apt-get
+  update` failed ("Read-only file system") in every timer run and the lists
+  were only as fresh as Ubuntu's own apt-daily timer; the NEW forced-command
+  state (#215) was never saved either. `kevward schedule install` now writes
+  a managed drop-in (`kevward-report.service.d/50-kevward-paths.conf`) adding
+  `/var/lib/kevward`, `/var/lib/apt/lists` and `/var/cache/apt`, and
+  `schedule status` warns when they are missing. **Run `sudo kevward schedule
+  install` (or ssh-gate `schedule.install`) once on existing hosts.**
+- **report: a failed `apt-get update` or stale package lists are a MEDIUM
+  apt finding (#179),** with a hint when a repository changed its Release
+  Label/Origin (kevward never accepts that itself). The header shows when the
+  lists were last updated; `apt_refresh.lists_updated_at` in the JSON.
+- **audit: whether `[audit] allowed_forced_commands` matched (#224).** A line
+  under the audit table per pattern, the loaded patterns on forced-command
+  findings that are still reported, and `audit_allowed_forced` in the JSON.
+- **report: sshd failures compared with the previous report (#225).** The
+  last-24h line shows the previous value and the change; report.json has
+  `summary.attack.previous` and `ssh_failed_24h_change_pct`; an INFO finding
+  when failures at least double (and rise by 50 or more).
+
 ## 0.19.1
 
 From the 2026-11-23 morning check: the ssh-gate change log records the
