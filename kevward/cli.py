@@ -285,11 +285,15 @@ def cmd_setup(args) -> int:
     from .ssh_gate import GateError, dumps, fail, ok
 
     try:
-        data = setup(console_user=args.console_user, read_key=args.read_key,
-                     operate_key=args.operate_key, ssh_gate=args.ssh_gate,
-                     timer=args.timer, fail2ban_ignore=args.fail2ban_ignore,
-                     refresh=args.refresh, self_update=args.self_update,
-                     allow_reboot=args.allow_reboot, dry_run=args.dry_run)
+        if args.restore:
+            from .setup import restore
+            data = restore(dry_run=args.dry_run)
+        else:
+            data = setup(console_user=args.console_user, read_key=args.read_key,
+                         operate_key=args.operate_key, ssh_gate=args.ssh_gate,
+                         timer=args.timer, fail2ban_ignore=args.fail2ban_ignore,
+                         refresh=args.refresh, self_update=args.self_update,
+                         allow_reboot=args.allow_reboot, dry_run=args.dry_run)
         resp = ok(data)
     except GateError as e:
         resp = fail(e.code, e.message)
@@ -693,9 +697,12 @@ def build_parser() -> argparse.ArgumentParser:
     sc = sub.add_parser("schedule", help="install / inspect / remove the daily report timer")
     _add_common(sc)
     sc.add_argument("action", choices=["install", "status", "uninstall"])
-    sc.add_argument("--at", default="07:00", help="daily time, HH:MM local (install)")
-    sc.add_argument("--jitter", default="20min",
-                    help="random delay, fixed per host (install; e.g. 20min, 900s)")
+    sc.add_argument("--at", default=None,
+                    help="daily time, HH:MM local (install; default: the time the "
+                         "previous install used, else 07:00)")
+    sc.add_argument("--jitter", default=None,
+                    help="random delay, fixed per host (install; e.g. 20min, 900s; "
+                         "default: as before, else 20min)")
     sc.add_argument("--yes", action="store_true",
                     help="actually write/remove units (otherwise a dry run)")
     sc.set_defaults(func=cmd_schedule)
@@ -780,6 +787,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="never ban this address (repeatable; only if fail2ban exists)")
     su.add_argument("--refresh", action="store_true",
                     help="post-update steps only (used by ssh-gate self.update)")
+    su.add_argument("--restore", action="store_true",
+                    help="put back what `kevward uninstall` saved (keys, timer, fail2ban)")
     su.add_argument("--dry-run", action="store_true", help="list the changes, write nothing")
     su.add_argument("--json", action="store_true", help="one line of JSON (ssh-gate envelope)")
     su.set_defaults(func=cmd_setup)

@@ -308,8 +308,13 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
                         f"(running from {inst['prefix']}); update it by hand")
     old = __version__
     if want == old:
+        # Nothing to install, but still bring the host in line with this
+        # version (#235): "update to the version you have" is the safe way to
+        # re-apply its post-update steps.
+        post = _post_update(runner, prefix, {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                                             "LANG": "C.UTF-8", "HOME": "/root"})
         return {"old": old, "new": old, "downgrade": False, "unchanged": True,
-                "duration_s": 0.0, "pip_tail": ""}
+                "duration_s": 0.0, "pip_tail": "", "post": post}
     import fcntl
 
     lock_path = lock_path or UPDATE_LOCK
@@ -344,6 +349,7 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
             raise GateError("internal", f"installed, but `kevward --version` says "
                             f"{(chk.out or chk.err).strip()[:80]!r}, not {want}")
         duration = round(time.monotonic() - t0, 1)
+        post = _post_update(runner, prefix, env)
     downgrade = _vtuple(want) < _vtuple(old)
     record = {"time": now.isoformat(timespec="seconds"), "client": client,
               "kind": "self.update", "old": old, "new": want, "downgrade": downgrade}
@@ -354,7 +360,25 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
     except OSError:
         pass  # syslog still has it
     return {"old": old, "new": want, "downgrade": downgrade, "duration_s": duration,
-            "pip_tail": _pip_tail(out)}
+            "pip_tail": _pip_tail(out), "post": post}
+
+
+def _post_update(runner, prefix: Path, env: dict) -> dict:
+    """Run the *new* version's ``setup --refresh`` (#235), so fixes to
+    kevward's managed unit drop-ins reach the host with the update itself.
+    Its failure is reported, never fatal: the update already succeeded."""
+    r = runner([str(prefix / "bin" / "kevward"), "setup", "--refresh", "--json"],
+               timeout=60, env=env, clean_env=True)
+    try:
+        resp = json.loads((r.out or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        resp = None
+    if isinstance(resp, dict) and resp.get("ok"):
+        acts = (resp.get("data") or {}).get("actions") or []
+        return {"refresh": "ok", "messages": [m for a in acts for m in a.get("messages", [])]}
+    err = (resp or {}).get("error") if isinstance(resp, dict) else None
+    return {"refresh": "failed",
+            "error": (err or (r.err or r.out or f"exit {r.rc}").strip())[:300]}
 
 
 def op_report_get(cfg: Config, args: dict) -> dict:

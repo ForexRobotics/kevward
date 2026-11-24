@@ -548,10 +548,27 @@ not write (a hand-added rule, `policy drop`, a jump), or `/etc/nftables.conf`
 mentions kevward, it changes nothing and prints the manual steps. Boot
 persistence is removed before the tables, so nothing comes back after a reboot.
 
+Before removing anything (unless `--purge`), `uninstall` saves what `setup`
+put on the host to `/var/lib/kevward/setup-snapshot.json`: each console user's
+read / operate public keys, the timer's time, and the fail2ban exemption. After
+reinstalling kevward, put all of it back with one command:
+
+```console
+$ sudo kevward setup --restore --dry-run   # what would be written
+$ sudo kevward setup --restore
+```
+
+While `[ssh_gate] enabled = true`, the report warns (medium) when no
+authorized_keys entry uses the gate, or operate keys lack their sudoers file —
+the state in which the console cannot connect.
+
 `self.update` (`{"version": "0.17.0"}`) installs exactly that release into the
 `/opt/kevward` venv: `pip install --isolated --index-url https://pypi.org/simple
 "kevward==<version>"` with a clean environment, a lock, a 300 s limit, and a
-`kevward --version` check afterwards. A lower version rolls back and returns
+`kevward --version` check afterwards, then runs the new version's `kevward
+setup --refresh`, which brings kevward's managed unit drop-ins up to date (the
+response's `post`), so a fix there needs no step on the host. Updating to the
+version already installed only runs that refresh. A lower version rolls back and returns
 `"downgrade": true`. It needs its own opt-in, and never goes below the host's
 floor:
 

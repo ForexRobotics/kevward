@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **No more manual steps after an update (#235).** `self.update` runs the new
+  version's `kevward setup --refresh`, which rewrites kevward's managed unit
+  drop-ins (the report service's `ReadWritePaths`, #227) and reloads systemd.
+  `kevward schedule install` (and ssh-gate `schedule.install`, and `setup
+  --timer`) now keep the recorded time instead of resetting it to 07:00.
+- **Uninstall and reinstall without hand work (#236).** `kevward uninstall`
+  saves `/var/lib/kevward/setup-snapshot.json` (public keys, timer time,
+  fail2ban exemption) before removing anything; `kevward setup --restore`
+  puts it all back.
+- **The report warns when the console cannot get in (#237):** ssh-gate
+  enabled but no authorized_keys entry uses it, or operate keys without
+  `/etc/sudoers.d/kevward-ssh-gate`.
+- **Fix: uninstall rejected kevward's own timed block-list elements (#234)**
+  when nft printed several on one line.
+
 ## 0.19.3
 
 The report timer's `apt-get update` works under the read-only service: a

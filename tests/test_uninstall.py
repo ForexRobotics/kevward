@@ -181,3 +181,114 @@ def test_cli_json(monkeypatch, capsys):
                                                        "actions": []})
     rc = cli.main(["uninstall", "--json"])
     assert rc == 0 and json.loads(capsys.readouterr().out)["data"]["dry_run"] is True
+
+
+# --- #234: several timed elements per line ----------------------------------------
+
+def test_timed_elements_several_per_line_are_ours():
+    # real nft 1.0.9 shape (www2, 2026-11-24): several timed elements per line
+    e1 = "2.57.122.74 timeout 14d expires 9d20h28m23s400ms"
+    e2 = "2.57.122.76 timeout 14d expires 9d20h28m23s400ms"
+    e3 = "45.148.10.61 timeout 14d expires 13d1h2m3s"
+    e4 = "195.178.110.218 timeout 14d expires 2d4h"
+    listing = "\n".join([
+        "table inet kevward {",
+        "\tset block4 {",
+        "\t\ttype ipv4_addr",
+        "\t\tflags interval,timeout",
+        "\t\tauto-merge",
+        f"\t\telements = {{ {e1}, {e2},",
+        f"\t\t\t     {e3}, {e4} }}",
+        "\t}",
+        "\tset block6 {",
+        "\t\ttype ipv6_addr",
+        "\t\tflags interval,timeout",
+        "\t\telements = { 2001:db8::1 timeout 14d expires 3d, 2001:db8::2 timeout 14d "
+        "expires 1h }",
+        "\t}",
+        "\tset cidr4 {",
+        "\t\ttype ipv4_addr",
+        "\t\tflags interval",
+        "\t\telements = { 10.0.0.0/8, 192.0.2.0/24 }",
+        "\t}",
+        "}",
+    ]) + "\n"
+    assert un.nft_table_safe(listing) == []
+    assert un.nft_table_safe(listing.replace("2d4h }", "2d4h }\n\t\tip saddr 1.2.3.4 accept"))
+    assert un.nft_table_safe("elements = { 1.2.3.4 timeout 14d; drop }")
+    assert un.nft_table_safe("elements = { 1.2.3.4 } jump other")
+
+
+# --- #236: uninstall saves what setup put there; setup --restore puts it back ------
+
+def test_snapshot_and_restore_roundtrip(tmp_path):
+    import json
+
+    from kevward import setup as su
+
+    etc = tmp_path / "etc"
+    home = tmp_path / "home" / "ktakahashi"
+    (home / ".ssh").mkdir(parents=True)
+    (etc / "fail2ban" / "jail.d").mkdir(parents=True)
+    read = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQCr fr-security-centre"
+    op = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQDB fr-security-centre-operate"
+    (home / ".ssh" / "authorized_keys").write_text(
+        "ssh-ed25519 AAAAC3Nza me@pc\n"
+        f'command="/opt/kevward/bin/kevward ssh-gate --role read",restrict {read}\n'
+        f'command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate",restrict {op}\n')
+    (etc / "fail2ban" / "jail.d" / su.F2B_NAME).write_text(
+        "# x\n[DEFAULT]\nignoreip = 127.0.0.1/8 ::1 124.44.207.82/32\n")
+    state = tmp_path / "schedule.json"
+    state.write_text('{"created": [], "at": "05:30", "jitter": "10min"}')
+    snap = su.snapshot_host(etc, [("ktakahashi", home)], state)
+    assert snap == {"version": 1,
+                    "users": [{"user": "ktakahashi", "read_key": read, "operate_key": op}],
+                    "timer": {"at": "05:30", "jitter": "10min"},
+                    "fail2ban_ignore": ["124.44.207.82/32"]}
+    path = tmp_path / "snap.json"
+    path.write_text(json.dumps(snap))
+    seen = []
+
+    def fake_setup(**kw):
+        seen.append(kw)
+        return {"dry_run": kw["dry_run"], "changed": True,
+                "actions": [{"kind": "x", "path": "p", "action": "create"}]}
+
+    real = su.setup
+    su.setup = fake_setup
+    try:
+        out = su.restore(path=path, dry_run=True)
+    finally:
+        su.setup = real
+    assert out["changed"] and out["restored_from"] == str(path)
+    (kw,) = seen
+    assert kw["console_user"] == "ktakahashi" and kw["read_key"] == read
+    assert kw["operate_key"] == op and kw["ssh_gate"] is True and kw["timer"] is True
+    assert (kw["timer_at"], kw["timer_jitter"]) == ("05:30", "10min")
+    assert kw["fail2ban_ignore"] == ["124.44.207.82/32"]
+
+
+def test_restore_without_snapshot(tmp_path):
+    import pytest
+
+    from kevward import setup as su
+    from kevward.ssh_gate import GateError
+
+    with pytest.raises(GateError) as e:
+        su.restore(path=tmp_path / "none.json")
+    assert e.value.code == "not_found" and "--purge" in e.value.message
+
+
+def test_uninstall_writes_snapshot_first(host):
+    env, _, ak = host
+    d = un.uninstall(env=env)
+    assert d["actions"][0] == {"kind": "snapshot",
+                               "target": str(env.data_dirs[1] / "setup-snapshot.json")}
+    assert not (env.data_dirs[1] / "setup-snapshot.json").exists()   # dry run writes nothing
+    un.uninstall(yes=True, env=env)
+    snap = json.loads((env.data_dirs[1] / "setup-snapshot.json").read_text())
+    assert [bool(u["read_key"] or u["operate_key"]) for u in snap["users"]] == [True]
+    assert oct((env.data_dirs[1] / "setup-snapshot.json").stat().st_mode & 0o777) == "0o600"
+    # --purge keeps nothing, so it promises no snapshot
+    assert all(a["kind"] != "snapshot"
+               for a in un.uninstall(purge=True, env=env)["actions"])

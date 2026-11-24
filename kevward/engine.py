@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
+import re
 import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,7 +18,7 @@ from . import __version__
 from .config import Config
 from .model import Finding, FindingKind, ServiceReport, Severity
 from .plugin import load
-from .util import reboot_kind, reboot_pending, reboot_pending_pkgs
+from .util import is_root, reboot_kind, reboot_pending, reboot_pending_pkgs
 
 
 @dataclass
@@ -186,6 +188,47 @@ def ssh_surge_findings(attackers: dict) -> list[Finding]:
                            "is banning them.")]
 
 
+SUDOERS_GATE = "/etc/sudoers.d/kevward-ssh-gate"
+_GATE_ROLE = re.compile(r'command="(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (read|operate)')
+
+
+def gate_access(homes: list[str], sudoers: str = SUDOERS_GATE) -> dict:
+    """Which ssh-gate keys exist in the given home directories and whether the
+    operate role's sudoers drop-in is there (#237). Read-only."""
+    roles = {"read": 0, "operate": 0}
+    for home in homes:
+        try:
+            with open(os.path.join(home, ".ssh", "authorized_keys"), errors="replace") as fh:
+                for ln in fh:
+                    m = _GATE_ROLE.search(ln)
+                    if m:
+                        roles[m.group(1)] += 1
+        except OSError:
+            continue
+    return {**roles, "sudoers": os.path.exists(sudoers)}
+
+
+def gate_access_findings(enabled: bool, access: dict, snapshot_exists: bool) -> list[Finding]:
+    """MEDIUM when ssh-gate is on but a console could not get in (#237):
+    no gate key at all, or operate keys without their sudoers drop-in. Pure."""
+    if not enabled:
+        return []
+    fix = ("Put it back with `sudo kevward setup --restore` (from the snapshot "
+           "`kevward uninstall` saved)" if snapshot_exists else
+           "Run `sudo kevward setup --console-user … --read-key … --operate-key …`")
+    if not access.get("read") and not access.get("operate"):
+        return [Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
+                        title="ssh-gate is enabled but no authorized_keys entry uses it",
+                        detail="The console cannot connect to this host. " + fix + ".")]
+    if access.get("operate") and not access.get("sudoers"):
+        return [Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
+                        title=f"ssh-gate operate key without {SUDOERS_GATE}",
+                        detail="The operate role runs through `sudo -n` and fails without "
+                               "this file, so updates, apply and reboots from the console "
+                               "do not work. " + fix + ".")]
+    return []
+
+
 def gate_change_findings(records: list[dict]) -> list[Finding]:
     """Config changes made through `kevward ssh-gate` in the last days (#185),
     so a change made with a stolen console key stays visible on the host."""
@@ -334,6 +377,16 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
         gate = gate_change_findings(recent_changes())
     except Exception:
         gate = []
+    try:
+        if cfg.ssh_gate.enabled and is_root():
+            import pwd
+
+            homes = sorted({pw.pw_dir for pw in pwd.getpwall() if pw.pw_dir})
+            gate += gate_access_findings(
+                True, gate_access(homes),
+                os.path.exists("/var/lib/kevward/setup-snapshot.json"))
+    except Exception:
+        pass
     if gate:
         result.services.append(ServiceReport(service="kevward", present=True,
                                              findings=gate))

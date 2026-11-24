@@ -52,14 +52,16 @@ _OWN_GATE = re.compile(r'command="(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role
 _COLLECTOR = re.compile(r'command="cat /var/log/kevward/report\.html"')
 
 # Lines a kevward table may contain (nft list output), anything else -> conflict.
+_ELEM = r"[0-9a-fA-F.:/]+(?: timeout [0-9a-z]+)?(?: expires [0-9a-z]+)?"
 _SAFE_NFT = [
     re.compile(r"^table inet kevward(_harden)? \{$"),
     re.compile(r"^set \w+ \{$"),
     re.compile(r"^type ipv[46]_addr$"),
     re.compile(r"^flags [a-z, ]+$"),
     re.compile(r"^auto-merge$"),
-    re.compile(r"^elements = \{.*$"),
-    re.compile(r"^[0-9a-fA-F.:/,\s]+(timeout \S+)?( expires \S+)?[,\s}]*$"),
+    # Set elements: address/prefix, optionally "timeout X" / "expires Y" each;
+    # nft prints several per line (#234). The first line starts "elements = {".
+    re.compile(rf"^(?:elements = \{{\s*)?(?:{_ELEM}[,\s}}]*)+$"),
     re.compile(r"^chain \w+ \{$"),
     re.compile(r"^type filter hook (input|prerouting) priority [-\w +]+; policy accept;$"),
     re.compile(r"^size \d+$"),
@@ -278,6 +280,29 @@ def execute(env: Env, plan: Plan, *, remove_collector_keys: bool) -> list[str]:
     return errors
 
 
+def _user_of(home: Path) -> str:
+    for pw in pwd.getpwall():
+        if Path(pw.pw_dir) == home:
+            return pw.pw_name
+    return home.name
+
+
+def _write_snapshot(env: Env, path: Path) -> None:
+    from .setup import snapshot_host
+
+    try:
+        snap = snapshot_host(env.etc, [(_user_of(h), h) for h in env.home_dirs()],
+                             env.data_dirs[1] / "schedule.json")
+        snap["time"] = (env.now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(snap, indent=1) + "\n", encoding="utf-8")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except OSError:
+        pass  # the uninstall itself must not fail over this
+
+
 def uninstall(*, yes: bool = False, purge: bool = False,
               remove_collector_keys: bool = False, env: Env | None = None) -> dict:
     env = env or Env()
@@ -286,8 +311,15 @@ def uninstall(*, yes: bool = False, purge: bool = False,
     if yes and not is_root():
         raise GateError("forbidden", "kevward uninstall must run as root (sudo)")
     plan = plan_uninstall(env, purge=purge, remove_collector_keys=remove_collector_keys)
+    snap_path = env.data_dirs[1] / "setup-snapshot.json"
+    if not purge:
+        # Saved first, so `kevward setup --restore` can put the keys, timer and
+        # fail2ban exemption back after a reinstall (#236). --purge keeps nothing.
+        plan.actions.insert(0, {"kind": "snapshot", "target": str(snap_path)})
     if not yes:
         return {"dry_run": True, "purge": purge, "actions": plan.actions}
+    if not purge:
+        _write_snapshot(env, snap_path)
     summary = ", ".join(f"{a['kind']} {a['target']}" for a in plan.actions) or "nothing"
     if not purge:
         try:

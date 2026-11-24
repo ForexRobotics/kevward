@@ -35,10 +35,16 @@ class FakeRunner:
     def __init__(self, pip=PIP_OK, version=None):
         self.pip, self.version, self.calls = pip, version, []
 
+    refresh = Cmd(0, '{"ok":true,"data":{"dry_run":false,"changed":true,"actions":'
+                     '[{"kind":"refresh","path":"/x","action":"update",'
+                     '"messages":["updated /x"]}]}}', "")
+
     def __call__(self, args, timeout=120, env=None, clean_env=False):
         self.calls.append((args, timeout, env, clean_env))
         if args[1:3] == ["-m", "pip"]:
             return self.pip
+        if args[1:3] == ["setup", "--refresh"]:
+            return self.refresh
         want = args and self.calls[0][0][-1].split("==")[1]
         return self.version or Cmd(0, f"kevward {want}\n", "")
 
@@ -131,7 +137,29 @@ def test_lock_conflict_and_unchanged(tmp_path):
             run(tmp_path, {"version": "99.0.0"})
         assert e.value.code == "conflict"
     data, r = run(tmp_path, {"version": __version__}, c=cfg(min_version="0.1.0"))
-    assert data["unchanged"] is True and r.calls == []
+    assert data["unchanged"] is True
+    assert [c[0][1:] for c in r.calls] == [["setup", "--refresh", "--json"]]   # #235
+    assert data["post"] == {"refresh": "ok", "messages": ["updated /x"]}
+
+
+@needs_venv
+def test_update_runs_new_versions_refresh(tmp_path):
+    data, r = run(tmp_path, {"version": "99.0.0"})
+    last = r.calls[-1]
+    assert last[0] == [str(VENV / "bin" / "kevward"), "setup", "--refresh", "--json"]
+    assert last[3] is True and data["post"]["refresh"] == "ok"
+
+
+@needs_venv
+def test_refresh_failure_is_reported_not_fatal(tmp_path):
+    fr = FakeRunner()
+    fr.refresh = Cmd(2, '{"ok":false,"error":"refresh: needs root","code":"internal"}', "")
+    data, _ = run(tmp_path, {"version": "99.0.0"}, runner=fr)
+    assert data["new"] == "99.0.0"
+    assert data["post"] == {"refresh": "failed", "error": "refresh: needs root"}
+    fr.refresh = Cmd(1, "", "Traceback …")
+    data, _ = run(tmp_path, {"version": "99.0.0"}, runner=fr)
+    assert data["post"]["refresh"] == "failed" and "Traceback" in data["post"]["error"]
 
 
 def test_through_handle_roles_and_version_op(tmp_path):
