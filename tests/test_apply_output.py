@@ -93,7 +93,9 @@ def test_refresh_runs_once_per_run_and_is_recorded(monkeypatch):
     monkeypatch.setattr(_apt, "is_root", lambda: False)
     _apt.reset_simulation()
     _apt._simulate_upgrade()
-    assert _apt.REFRESH == {"state": "skipped", "seconds": 0.0, "error": "not root"}
+    assert {k: _apt.REFRESH[k] for k in ("state", "seconds", "error")} == \
+        {"state": "skipped", "seconds": 0.0, "error": "not root"}
+    assert "lists_updated_at" in _apt.REFRESH
     assert calls.count(["apt-get", "update"]) == 1
 
 

@@ -33,6 +33,11 @@ JA: dict[str, str] = {
     "no": "不要",
     "after pending updates": "保留中の更新を入れた後に必要",
     "reboot scheduled: <b>{when}</b>": "再起動の予約: <b>{when}</b>",
+    "apt lists: <b>refresh FAILED</b>": "apt リスト: <b>更新に失敗</b>",
+    "apt lists: <b>{when} UTC ({hours} h ago)</b>":
+        "apt リスト: <b>{when} UTC（{hours} 時間前）</b>",
+    "apt lists: {when} UTC ({hours} h ago)": "apt リスト: {when} UTC（{hours} 時間前）",
+    "(previous report: {before}, {change})": "（前回のレポート: {before}、{change}）",
     "none": "なし",
     "unknown": "不明",
     "config: {source}": "設定: {source}",
@@ -206,6 +211,10 @@ JA: dict[str, str] = {
         "{line} — <code>[audit] allowed_outbound</code> に一致",
     "{line} — configured in <code>[audit] allowed_outbound</code>":
         "{line} — <code>[audit] allowed_outbound</code> で設定済み",
+    "{line} — matched <code>[audit] allowed_forced_commands</code>":
+        "{line} — <code>[audit] allowed_forced_commands</code> に一致",
+    "{line} — configured in <code>[audit] allowed_forced_commands</code>":
+        "{line} — <code>[audit] allowed_forced_commands</code> で設定済み（一致なし）",
 }
 
 CATALOGS: dict[str, dict[str, str]] = {"ja": JA}

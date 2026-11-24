@@ -509,10 +509,23 @@ def forced_commands(line: str) -> list[str]:
 _OWN_GATE = re.compile(r"^(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (?:read|operate)$")
 
 
-def _is_allowed(cmd: str, allow: list[str]) -> bool:
+def _is_allowed(cmd: str, allow: list[str], hits: dict[str, int] | None = None) -> bool:
+    """``hits`` (pattern -> keys it matched) is counted when given (#224)."""
     if _OWN_GATE.match(cmd.strip()):
         return True
-    return any(fnmatch.fnmatchcase(cmd, pat) for pat in allow)
+    matched = [pat for pat in allow if fnmatch.fnmatchcase(cmd, pat)]
+    if hits is not None:
+        for pat in matched:
+            hits[pat] = hits.get(pat, 0) + 1
+    return bool(matched)
+
+
+def _loaded(allow: list[str]) -> str:
+    """Which patterns were loaded, so a non-matching one is visible (#224)."""
+    if not allow:
+        return ""
+    return (" (loaded, none matched this command: "
+            + ", ".join(repr(p) for p in allow[:5]) + ")")
 
 
 #: Forced-command keys kevward has already reported (#215), so a key that
@@ -569,7 +582,8 @@ def _track_new(seen: dict[str, tuple[str, str]], state_path: str,
 def _check_authkeys(allow_forced: list[str] | None = None,
                     paths: list[str] | None = None,
                     state_path: str | None = None,
-                    now: float | None = None) -> list[Finding]:
+                    now: float | None = None,
+                    hits: dict[str, int] | None = None) -> list[Finding]:
     """Only emit when something is off (world-writable or a forced command);
     an ordinary authorized_keys is not a finding. Forced commands matching
     ``allow_forced`` (``[audit] allowed_forced_commands``) are expected and
@@ -598,7 +612,7 @@ def _check_authkeys(allow_forced: list[str] | None = None,
                     if not s or s.startswith("#"):
                         continue
                     for cmd in forced_commands(s):
-                        if not _is_allowed(cmd, allow):
+                        if not _is_allowed(cmd, allow, hits):
                             kid = _key_id(p, s)
                             unexpected.append((kid, cmd))
                             seen[kid] = (p, cmd)
@@ -623,7 +637,7 @@ def _check_authkeys(allow_forced: list[str] | None = None,
                           detail=f"command: {shown} — not there at the previous run. "
                                  "If you did not add it, remove it and check how it got "
                                  "there; if you did, list it in [audit] "
-                                 "allowed_forced_commands"))
+                                 "allowed_forced_commands" + _loaded(allow)))
         if known:
             shown = "; ".join(c[:80] for c in known[:3])
             out.append(_f(Severity.LOW,
@@ -632,11 +646,12 @@ def _check_authkeys(allow_forced: list[str] | None = None,
                           detail=f"command: {shown} — forced commands can be "
                                  "legitimate (backup/rsync) but are worth "
                                  "confirming; list expected ones in [audit] "
-                                 "allowed_forced_commands"))
+                                 "allowed_forced_commands" + _loaded(allow)))
     return out
 
 
-def check_persistence(allow_forced: list[str] | None = None) -> list[Finding]:
+def check_persistence(allow_forced: list[str] | None = None,
+                      forced_hits: dict[str, int] | None = None) -> list[Finding]:
     out: list[Finding] = []
     try:
         if os.path.getsize("/etc/ld.so.preload") > 0:
@@ -648,7 +663,8 @@ def check_persistence(allow_forced: list[str] | None = None) -> list[Finding]:
     out += _check_cron()
     out += _check_units()
     out += _check_rc()
-    out += _check_authkeys(allow_forced, state_path=FORCED_STATE if is_root() else None)
+    out += _check_authkeys(allow_forced, state_path=FORCED_STATE if is_root() else None,
+                           hits=forced_hits)
     out += _check_php_prepend()
     out += _check_rc_hijack()
     out += _check_at()
@@ -1186,14 +1202,32 @@ def audit(allow_forced: list[str] | None = None,
     hits: dict[str, int] = {r.text: 0 for r in rules}
     bad = [_f(Severity.LOW, f"[audit] allowed_outbound: ignored entry {e}")
            for e in errors]
+    forced_hits: dict[str, int] = {p: 0 for p in (allow_forced or [])}
     findings = (bad + check_reverse_ssh() + check_connections(allow=rules, hits=hits)
-                + check_persistence(allow_forced)
+                + check_persistence(allow_forced, forced_hits)
                 + _check_proc_origin() + _check_pkg_integrity()
                 + _check_accounts() + _check_accepted_password() + _check_suid())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
     if notes is not None:
         notes["allowed_outbound_hits"] = hits
+        notes["allowed_forced_hits"] = forced_hits
     return findings
+
+
+def forced_summary(hits: dict[str, int] | None) -> str:
+    """``allowed forced commands: 1 key (pattern)``, or with patterns that
+    matched nothing ``…: 0 (patterns: …; no key matched)`` (#224); "" when no
+    pattern is configured."""
+    if not hits:
+        return ""
+    total = sum(hits.values())
+    if total == 0:
+        return (f"allowed forced commands: 0 (patterns: {', '.join(sorted(hits))}; "
+                "no authorized_keys entry matched)")
+    matched = ", ".join(sorted(k for k, v in hits.items() if v))
+    idle = sorted(k for k, v in hits.items() if not v)
+    tail = f"; no match: {', '.join(idle)}" if idle else ""
+    return f"allowed forced commands: {total} ({matched}{tail})"
 
 
 def allowed_summary(hits: dict[str, int] | None) -> str:

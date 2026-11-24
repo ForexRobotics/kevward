@@ -434,9 +434,25 @@ def _cmd_report(args) -> Path:
         result.audit = ad.audit(cfg.audit.allowed_forced_commands,
                                 cfg.audit.allowed_outbound, notes)
         result.audit_allowed_outbound = notes.get("allowed_outbound_hits") or {}
+        result.audit_allowed_forced = notes.get("allowed_forced_hits") or {}
         result.audit_rules = audit_rule_counts(cfg)
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
+    # Day-over-day (#225): the previous report.json, before it is replaced.
+    try:
+        from .engine import ssh_surge_findings
+        from .model import ServiceReport
+        from .reporting.data import previous_attack
+
+        prev = previous_attack(out.with_suffix(".json"))
+        if prev and isinstance(result.attackers, dict):
+            result.attackers["previous"] = prev
+            surge = ssh_surge_findings(result.attackers)
+            if surge:
+                result.services.append(ServiceReport(service="sshd", present=True,
+                                                     findings=surge))
+    except Exception:
+        pass  # a comparison must never break a report
     out.parent.mkdir(parents=True, exist_ok=True)
     lang = getattr(args, "lang", None) or cfg.report.lang
     out.write_text(render(result, lang=lang), encoding="utf-8")

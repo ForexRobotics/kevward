@@ -61,7 +61,32 @@ def _attack(att: dict) -> dict:
         # Counters reset when the ruleset is reloaded: "since" is that time
         # (epoch seconds), so a console can turn totals into per-day numbers.
         "fw_drops": None if drops is None else {**drops, "since": att.get("firewall_since")},
+        # The previous report's numbers (#225); null on the first report.
+        "previous": att.get("previous"),
+        "ssh_failed_24h_change_pct": change_pct(lw.get("ssh_attempts_24h"),
+                                                (att.get("previous") or {}).get("ssh_failed_24h")),
     }
+
+
+def previous_attack(path: Path) -> dict | None:
+    """The attack numbers of the previous report.json at ``path`` (read before
+    it is replaced), for day-over-day comparison (#225). None if absent."""
+    try:
+        prev = json.loads(path.read_text(encoding="utf-8"))
+        att = prev["summary"]["attack"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return {"generated_at": prev.get("generated_at"),
+            "ssh_failed_24h": att.get("ssh_failed_24h"),
+            "ssh_failed_total": att.get("ssh_failed_total"),
+            "fail2ban_bans_total": att.get("fail2ban_bans_total")}
+
+
+def change_pct(cur, prev) -> int | None:
+    """Percent change, None when there is nothing to compare."""
+    if cur is None or prev is None or not isinstance(prev, (int, float)) or prev <= 0:
+        return None
+    return round(100 * (cur - prev) / prev)
 
 
 def summarize(result: RunResult) -> dict:

@@ -18,6 +18,7 @@ Concrete plugins typically only declare ``name``, ``packages`` and
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 from dataclasses import dataclass, field, replace
 
@@ -147,21 +148,45 @@ def reset_simulation() -> None:
     REFRESH, _SIM = None, None
 
 
+APT_LISTS = "/var/lib/apt/lists"
+
+
+def lists_updated_at(lists_dir: str = APT_LISTS) -> str | None:
+    """When the package lists were last refreshed: the newest ``*Release``
+    file apt keeps per repository (#179). ISO 8601 UTC, None if unknown."""
+    import glob
+    from datetime import datetime, timezone
+
+    newest = 0.0
+    for path in glob.glob(os.path.join(lists_dir, "*Release")):
+        try:
+            newest = max(newest, os.path.getmtime(path))
+        except OSError:
+            continue
+    if not newest:
+        return None
+    return datetime.fromtimestamp(newest, tz=timezone.utc).isoformat(timespec="seconds")
+
+
 def refresh_lists() -> dict:
-    """``apt-get update`` and how it went. Skipped without root, where it
+    """``apt-get update`` and how it went, plus when the lists were last
+    refreshed (by this run or anything else). Skipped without root, where it
     could not write the lists anyway. Never raises."""
     import time
 
     if not is_root():
-        return {"state": "skipped", "seconds": 0.0, "error": "not root"}
+        return {"state": "skipped", "seconds": 0.0, "error": "not root",
+                "lists_updated_at": lists_updated_at()}
     t0 = time.monotonic()
     r = run(["apt-get", "update", "-qq"], timeout=180)
     secs = round(time.monotonic() - t0, 1)
     if r.ok:
-        return {"state": "ok", "seconds": secs, "error": ""}
+        return {"state": "ok", "seconds": secs, "error": "",
+                "lists_updated_at": lists_updated_at()}
     first = next((ln.strip() for ln in (r.err or r.out).splitlines() if ln.strip()),
                  f"exit {r.rc}")
-    return {"state": "failed", "seconds": secs, "error": first[:200]}
+    return {"state": "failed", "seconds": secs, "error": first[:200],
+            "lists_updated_at": lists_updated_at()}
 
 
 def _simulate_upgrade() -> list[dict]:

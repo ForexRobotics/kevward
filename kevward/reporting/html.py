@@ -35,7 +35,7 @@ def _esc(s) -> str:
     return html.escape(str(s if s is not None else ""))
 
 
-def _ssh_window(lw: dict, t: Translator = _EN) -> tuple[str, str]:
+def _ssh_window(lw: dict, t: Translator = _EN, prev: dict | None = None) -> tuple[str, str]:
     """Label the sshd failure totals with the period they cover, and add the
     last-24h / 7-day slice, so an all-time total from rotated logs is not read
     as a current attack. Returns (suffix for the totals line, recent line)."""
@@ -49,11 +49,18 @@ def _ssh_window(lw: dict, t: Translator = _EN) -> tuple[str, str]:
     n24 = int(lw.get("ssh_attempts_24h") or 0)
     n7 = int(lw.get("ssh_attempts_7d") or 0)
     s24 = int(lw.get("ssh_sources_24h") or 0)
+    before = (prev or {}).get("ssh_failed_24h")
+    vs = ""
+    if isinstance(before, int):
+        from .data import change_pct
+        pct = change_pct(n24, before)
+        vs = " " + t("(previous report: {before}, {change})", before=f"{before:,}",
+                     change=(f"{pct:+d}%" if pct is not None else "—"))
     recent = (
         "<p class='muted' style='margin-top:-6px'>"
         + t("last 24h: <b>{n24}</b> attempts from <b>{s24}</b> sources · "
             "last 7d: <b>{n7}</b>", n24=f"{n24:,}", s24=s24, n7=f"{n7:,}")
-        + "</p>"
+        + vs + "</p>"
     )
     return suffix, recent
 
@@ -218,6 +225,19 @@ def _allowed_note(result: RunResult, t: Translator = _EN) -> str:
     return f"<p class='muted' style='font-size:12px'>{t(msg, line=_esc(line))}</p>"
 
 
+def _forced_note(result: RunResult, t: Translator = _EN) -> str:
+    """Same for forced-command keys silenced by allowed_forced_commands (#224)."""
+    from ..audit import forced_summary
+    hits = getattr(result, "audit_allowed_forced", None)
+    line = forced_summary(hits)
+    if not line:
+        return ""
+    msg = ("{line} — matched <code>[audit] allowed_forced_commands</code>"
+           if sum(hits.values())
+           else "{line} — configured in <code>[audit] allowed_forced_commands</code>")
+    return f"<p class='muted' style='font-size:12px'>{t(msg, line=_esc(line))}</p>"
+
+
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 
 
@@ -317,7 +337,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
     <h2>{t("Host compromise indicators (audit)")}</h2>
     <p class="muted" style="font-size:12px">{t(_AUDIT_INTRO)}</p>
     <table><thead><tr><th>{t("Sev")}</th><th>{t("Indicator")}</th><th>{t("Detail")}</th></tr></thead>
-    <tbody>{audit_rows or f"<tr><td colspan=3 class='muted'>{t('No compromise indicators found.')}</td></tr>"}</tbody></table>{_allowed_note(result, t)}{_rules_note(result, t)}
+    <tbody>{audit_rows or f"<tr><td colspan=3 class='muted'>{t('No compromise indicators found.')}</td></tr>"}</tbody></table>{_allowed_note(result, t)}{_forced_note(result, t)}{_rules_note(result, t)}
   </section>"""
 
     # Audit indicators are counted in the chips too; say so, or a header of
@@ -387,7 +407,7 @@ def render(result: RunResult, lang: str | None = None) -> str:
         _bar(ip, c, max_ssh, "#50607a") for ip, c in ssh[:20]
     ) or f"<p class='muted'>{t('No sshd auth failures found.')}</p>"
 
-    ssh_window, ssh_recent = _ssh_window(lw, t)
+    ssh_window, ssh_recent = _ssh_window(lw, t, att.get("previous"))
 
     # --- firewall drops (issue #42 follow-up): packets dropped per kevward set.
     fw = att.get("firewall") or {}
@@ -565,6 +585,22 @@ def render(result: RunResult, lang: str | None = None) -> str:
     when = _describe_schedule(sched)
     sched_cell = t("reboot scheduled: <b>{when}</b>",
                    when=_esc(t(when) if when in ("none", "unknown") else when))
+
+    # apt lists freshness (#179)
+    from ..engine import APT_LISTS_STALE_H, lists_age_hours
+    refresh = getattr(result, "apt_refresh", None) or {}
+    age = lists_age_hours(refresh)
+    if refresh.get("state") == "failed":
+        apt_cell = t("apt lists: <b>refresh FAILED</b>")
+    elif age is None:
+        apt_cell = ""
+    else:
+        upd = _esc(str(refresh.get("lists_updated_at", ""))[:16].replace("T", " "))
+        apt_cell = t("apt lists: <b>{when} UTC ({hours} h ago)</b>" if age > APT_LISTS_STALE_H
+                     else "apt lists: {when} UTC ({hours} h ago)",
+                     when=upd, hours=f"{age:.0f}")
+    if apt_cell:
+        sched_cell += " · " + apt_cell
 
     return f"""<!doctype html>
 <html lang="{lang}"><head><meta charset="utf-8">

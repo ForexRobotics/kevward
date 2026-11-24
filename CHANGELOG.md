@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **report: a failed `apt-get update` or stale package lists are a MEDIUM
+  apt finding (#179),** with a hint when a repository changed its Release
+  Label/Origin (kevward never accepts that itself). The header shows when the
+  lists were last updated; `apt_refresh.lists_updated_at` in the JSON.
+- **audit: whether `[audit] allowed_forced_commands` matched (#224).** A line
+  under the audit table per pattern, the loaded patterns on forced-command
+  findings that are still reported, and `audit_allowed_forced` in the JSON.
+- **report: sshd failures compared with the previous report (#225).** The
+  last-24h line shows the previous value and the change; report.json has
+  `summary.attack.previous` and `ssh_failed_24h_change_pct`; an INFO finding
+  when failures at least double (and rise by 50 or more).
+
 ## 0.19.1
 
 From the 2026-11-23 morning check: the ssh-gate change log records the
