@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Fix: the report timer could not refresh the apt lists or write kevward's
+  state (#227).** The service runs with `ProtectSystem=strict` and only
+  `/var/log/kevward` and `/var/cache/kevward` were writable, so `apt-get
+  update` failed ("Read-only file system") in every timer run and the lists
+  were only as fresh as Ubuntu's own apt-daily timer; the NEW forced-command
+  state (#215) was never saved either. `kevward schedule install` now writes
+  a managed drop-in (`kevward-report.service.d/50-kevward-paths.conf`) adding
+  `/var/lib/kevward`, `/var/lib/apt/lists` and `/var/cache/apt`, and
+  `schedule status` warns when they are missing. **Run `sudo kevward schedule
+  install` (or ssh-gate `schedule.install`) once on existing hosts.**
 - **report: a failed `apt-get update` or stale package lists are a MEDIUM
   apt finding (#179),** with a hint when a repository changed its Release
   Label/Origin (kevward never accepts that itself). The header shows when the

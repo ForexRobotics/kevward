@@ -38,6 +38,13 @@ DROPIN_NAME = "50-kevward.conf"
 DEFAULT_AT = "07:00"
 DEFAULT_JITTER = "20min"
 DEFAULT_ARGS = "report --trends --audit -o /var/log/kevward/report.html"
+#: What the read-only report service must still write (#227): its reports,
+#: caches and state, and apt's package lists (``apt-get update``, #171).
+RW_PATHS = ("/var/log/kevward", "/var/cache/kevward", "/var/lib/kevward",
+            "/var/lib/apt/lists", "/var/cache/apt")
+#: Managed drop-in for the service: always rewritten, so hosts whose unit was
+#: written by an older kevward get the paths without touching the unit.
+SERVICE_DROPIN_NAME = "50-kevward-paths.conf"
 
 _AT = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 _SPAN = re.compile(r"^\d+\s*(us|ms|s|sec|m|min|h|hr|d)?$")
@@ -59,6 +66,10 @@ class Paths:
     @property
     def dropin(self) -> Path:
         return self.unit_dir / f"{TIMER}.d" / DROPIN_NAME
+
+    @property
+    def service_dropin(self) -> Path:
+        return self.unit_dir / f"{SERVICE}.d" / SERVICE_DROPIN_NAME
 
 
 def validate(at: str, jitter: str) -> str | None:
@@ -92,7 +103,7 @@ Type=oneshot
 # Read-only: findings, attacker IPs, CISA KEV trends, audit. Makes no changes.
 ExecStart={exe} {args}
 ProtectSystem=strict
-ReadWritePaths=/var/log/kevward /var/cache/kevward
+ReadWritePaths={" ".join("-" + p for p in RW_PATHS)}
 NoNewPrivileges=true
 """
 
@@ -143,6 +154,23 @@ def _write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def render_service_dropin() -> str:
+    """ReadWritePaths for the report service (#227). Additive to the unit's own
+    list; "-" so a missing directory never stops the report from starting."""
+    return f"""# Written by `kevward schedule install` (#227); rewritten on every install.
+# ProtectSystem=strict keeps the report read-only; these are the exceptions:
+# kevward's own logs/cache/state and apt's lists for `apt-get update`.
+[Service]
+ReadWritePaths={" ".join("-" + p for p in RW_PATHS)}
+"""
+
+
+def missing_rw_paths(value: str) -> list[str]:
+    """RW_PATHS not in a ``systemctl show -p ReadWritePaths`` value. Pure."""
+    have_ = {tok.lstrip("-+") for tok in (value or "").split()}
+    return [p for p in RW_PATHS if p not in have_]
+
+
 def plan_install(paths: Paths, at: str, jitter: str, exe: str,
                  args: str = DEFAULT_ARGS) -> list[tuple[Path, str, bool]]:
     """Files ``install`` would write: (path, content, newly created). Pure
@@ -153,6 +181,8 @@ def plan_install(paths: Paths, at: str, jitter: str, exe: str,
     if not paths.timer.exists():
         out.append((paths.timer, render_timer(), True))
     out.append((paths.dropin, render_dropin(at, jitter), not paths.dropin.exists()))
+    out.append((paths.service_dropin, render_service_dropin(),
+                not paths.service_dropin.exists()))
     return out
 
 
@@ -182,9 +212,14 @@ def install(at: str = DEFAULT_AT, jitter: str = DEFAULT_JITTER, *, dry_run: bool
             _write(path, text)
         except OSError as e:
             return False, msgs + [f"failed to write {path}: {e}"]
-        if new and path != paths.dropin:
+        if new and path not in (paths.dropin, paths.service_dropin):
             created.add(str(path))
         msgs.append(f"{'created' if new else 'updated'} {path}")
+    for d in ("/var/lib/kevward", "/var/cache/kevward", "/var/log/kevward"):
+        try:  # ReadWritePaths needs them to exist to make them writable
+            os.makedirs(d, mode=0o755, exist_ok=True)
+        except OSError:
+            pass
     try:
         _write(paths.state_file, json.dumps(
             {"created": sorted(created), "at": at, "jitter": jitter}, indent=2) + "\n")
@@ -211,7 +246,7 @@ def uninstall(*, paths: Paths | None = None) -> tuple[bool, list[str]]:
     if paths.timer in created and have("systemctl"):
         run(["systemctl", "disable", "--now", TIMER], timeout=30)
         msgs.append(f"disabled {TIMER}")
-    for path in [paths.dropin, *created]:
+    for path in [paths.dropin, paths.service_dropin, *created]:
         try:
             path.unlink()
             msgs.append(f"removed {path}")
@@ -219,10 +254,11 @@ def uninstall(*, paths: Paths | None = None) -> tuple[bool, list[str]]:
             pass
         except OSError as e:
             msgs.append(f"could not remove {path}: {e}")
-    try:
-        paths.dropin.parent.rmdir()  # only if now empty: other drop-ins stay
-    except OSError:
-        pass
+    for d in (paths.dropin.parent, paths.service_dropin.parent):
+        try:
+            d.rmdir()  # only if now empty: other drop-ins stay
+        except OSError:
+            pass
     try:
         paths.state_file.unlink()
     except OSError:
@@ -258,7 +294,8 @@ def calendar_of(timers_calendar: str) -> str:
     return m.group(1).strip() if m else (timers_calendar or "").strip()
 
 
-def status_warnings(props: dict[str, str], dropin_exists: bool) -> list[str]:
+def status_warnings(props: dict[str, str], dropin_exists: bool,
+                    rw_paths: str | None = None) -> list[str]:
     """What looks wrong compared with what ``install`` would set. Pure."""
     warn: list[str] = []
     if props.get("UnitFileState") not in ("enabled", "enabled-runtime", "static"):
@@ -272,6 +309,12 @@ def status_warnings(props: dict[str, str], dropin_exists: bool) -> list[str]:
         warn.append("FixedRandomDelay=no: the delay changes every day")
     if not dropin_exists:
         warn.append(f"no {DROPIN_NAME} drop-in: the timer is not managed by kevward")
+    if rw_paths is not None:
+        missing = missing_rw_paths(rw_paths)
+        if missing:
+            warn.append(f"{SERVICE} cannot write {', '.join(missing)}: apt-get update and "
+                        "kevward's state fail in timer runs (run `sudo kevward schedule "
+                        "install`)")
     return warn
 
 
@@ -284,8 +327,11 @@ def status(paths: Paths | None = None) -> tuple[dict, list[str]]:
     r = run(args, timeout=15)
     props = parse_show(r.out) if r.ok else {}
     svc = parse_show(run(["systemctl", "show", SERVICE, "-p", "Result", "-p",
-                          "ExecMainStatus"], timeout=15).out)
+                          "ExecMainStatus", "-p", "ReadWritePaths", "-p", "LoadState"],
+                         timeout=15).out)
     props["ServiceResult"] = svc.get("Result", "")
     props["ExecMainStatus"] = svc.get("ExecMainStatus", "")
+    props["ReadWritePaths"] = svc.get("ReadWritePaths", "")
     props["dropin"] = str(paths.dropin) if paths.dropin.exists() else ""
-    return props, status_warnings(props, paths.dropin.exists())
+    rw = props["ReadWritePaths"] if svc.get("LoadState") == "loaded" else None
+    return props, status_warnings(props, paths.dropin.exists(), rw)
