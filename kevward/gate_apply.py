@@ -294,6 +294,22 @@ def _launcher_exe() -> str:
     return kevward_exe()
 
 
+def last_apply(jobs_dir: Path = JOBS_DIR) -> dict | None:
+    """The most recent finished apply job, for report.json (#240)."""
+    try:
+        ids = sorted((p.stem for p in jobs_dir.glob("*.json") if _JOB_ID.match(p.stem)),
+                     reverse=True)
+    except OSError:
+        return None
+    for jid in ids:
+        job = read_job(jobs_dir, jid) or {}
+        if job.get("state") in ("succeeded", "failed") and job.get("finished"):
+            res = job.get("result") or {}
+            return {"job_id": jid, "finished": job["finished"], "state": job["state"],
+                    "installed_count": len(res.get("installed") or [])}
+    return None
+
+
 # --- gate ops --------------------------------------------------------------------
 
 def op_plan(cfg: Config, *, compute=None) -> dict:
@@ -444,7 +460,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
             reboot_at: str | None = None, jobs_dir: Path = JOBS_DIR,
             changes_file: Path = CHANGES_FILE, engine_run=None, runner=None,
             reboot_pending=None, now_fn=None, lock_path: Path = UPDATE_LOCK,
-            redirect: bool = True) -> int:
+            redirect: bool = True, report_paths=None) -> int:
     """Body of a gate apply job. Returns the exit code."""
     import fcntl
 
@@ -516,6 +532,16 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
         else:
             res["reboot"] = {"error": "[policy] allow_reboot is off on this host"}
         print(f"reboot: {json.dumps(res['reboot'], ensure_ascii=False)}", flush=True)
+    # Rebuild the report so the console sees the result now, not tomorrow
+    # morning (#240): whenever something was installed, even if another
+    # action failed. restart: a report already running predates this apply.
+    if res["installed"]:
+        from .schedule import start_report
+        res["report_refresh"] = start_report(restart=True, runner=runner,
+                                             paths=report_paths)
+    else:
+        res["report_refresh"] = "skipped"
+    print(f"report: {json.dumps(res['report_refresh'], ensure_ascii=False)}", flush=True)
     if failed:
         return finish("failed", 1, res, error=f"{len(failed)} install action(s) failed")
     return finish("succeeded", 0, res)

@@ -228,6 +228,28 @@ def refresh(*, dry_run: bool = False, paths: Paths | None = None) -> tuple[bool,
     return True, msgs
 
 
+def report_active(runner=None) -> bool:
+    """Whether the report service is running right now (#240)."""
+    r = (runner or run)(["systemctl", "is-active", SERVICE], timeout=10)
+    return (r.out or "").strip() in ("active", "activating", "reloading")
+
+
+def start_report(*, restart: bool = False, runner=None,
+                 paths: Paths | None = None) -> str | dict:
+    """Start the daily report service now, without waiting (#240): the same
+    unit as the timer, so the same arguments and sandbox. ``restart`` replaces
+    a run already in progress (it may predate an apply). Returns "started",
+    "skipped" (no report service on this host) or {"error": …}."""
+    paths = paths or Paths()
+    if not paths.service.exists():
+        return "skipped"
+    r = (runner or run)(["systemctl", "restart" if restart else "start", "--no-block",
+                         SERVICE], timeout=30)
+    if r.rc != 0:
+        return {"error": ((r.err or r.out or "").strip() or f"exit {r.rc}")[:200]}
+    return "started"
+
+
 def install(at: str | None = None, jitter: str | None = None, *, dry_run: bool = False,
             paths: Paths | None = None, exe: str | None = None) -> tuple[bool, list[str]]:
     """Write units/drop-in, reload systemd, enable and restart the timer.

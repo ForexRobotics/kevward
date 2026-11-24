@@ -173,12 +173,17 @@ class SshGateConfig:
     # first release with self.update, so a stolen key cannot roll the host
     # back to a release without the gate's safeguards.
     min_version: str = ""
+    # Shortest interval between two `report.refresh` requests (#240).
+    report_refresh_min_interval_s: int = 300
 
     def __post_init__(self) -> None:
         import re
 
         if not isinstance(self.enabled, bool) or not isinstance(self.self_update, bool):
             raise ValueError("ssh_gate.enabled / self_update must be true or false")
+        v = self.report_refresh_min_interval_s
+        if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 86400:
+            raise ValueError("ssh_gate.report_refresh_min_interval_s must be 0-86400")
         if self.min_version and not re.fullmatch(r"\d+\.\d+\.\d+", str(self.min_version)):
             raise ValueError("ssh_gate.min_version must look like 0.17.0")
 

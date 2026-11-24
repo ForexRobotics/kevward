@@ -279,6 +279,8 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
                 detail=detail + "Shown for 7 days (/var/lib/kevward/ssh-gate-changes.jsonl); "
                 "if you did not request this, revoke the console's operate key."))
             continue
+        if kind == "report.refresh":
+            continue  # rebuilding the report changes nothing on the host
         if kind in ("reboot.schedule", "reboot.cancel", "schedule.install"):
             who = f"via ssh-gate at {rec.get('time', '?')} from {rec.get('client') or 'unknown'}"
             if kind == "reboot.schedule":
