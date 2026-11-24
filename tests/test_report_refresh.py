@@ -9,7 +9,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from test_ssh_gate_apply import FINDINGS, NOW, FakeEngine, env, start  # noqa: F401
+from test_ssh_gate_apply import BASE, FINDINGS, NOW, FakeEngine, start
 
 from kevward import gate_apply as ga
 from kevward import schedule as sch
@@ -29,6 +29,16 @@ class Systemctl:
         if argv[:1] == ["systemctl"]:
             return Cmd(self.rc, "", "Failed to restart" if self.rc else "")
         return Cmd(0, "", "")
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    import kevward.util as util
+
+    path = tmp_path / "config.toml"
+    path.write_text(BASE)
+    monkeypatch.setattr(util, "is_root", lambda: True)
+    return {"path": path, "changes": tmp_path / "changes.jsonl", "jobs": tmp_path / "jobs"}
 
 
 @pytest.fixture
