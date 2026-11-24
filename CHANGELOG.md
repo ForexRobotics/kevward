@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.20.1
+
+The report is rebuilt after a console apply and on request (`report.refresh`),
+and report.json records the last apply (#240).
 
 - **The report is rebuilt after an apply (#240).** report.html is now written
   via a temporary file and rename, like report.json. An apply job that
