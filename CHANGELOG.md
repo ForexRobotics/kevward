@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.20.0
+
+No manual steps on the host after an update or a reinstall: `self.update`
+refreshes kevward's unit drop-ins (#235), `uninstall` saves a snapshot that
+`setup --restore` puts back (#236), and the report warns when the console
+cannot get in (#237). Also #234.
 
 - **No more manual steps after an update (#235).** `self.update` runs the new
   version's `kevward setup --refresh`, which rewrites kevward's managed unit
