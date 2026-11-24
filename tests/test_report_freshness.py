@@ -26,13 +26,19 @@ def _iso(hours_ago):
 # --- #179 -----------------------------------------------------------------------
 
 def test_lists_updated_at(tmp_path):
-    assert _apt.lists_updated_at(str(tmp_path)) is None
+    stamp = str(tmp_path / "no-stamp")
+    assert _apt.lists_updated_at(str(tmp_path), stamp) is None
     for name, ago in (("a_InRelease", 30), ("b_Release", 5), ("b_Packages", 0)):
         p = tmp_path / name
         p.write_text("x")
         t = (NOW - timedelta(hours=ago)).timestamp()
         os.utime(p, (t, t))
-    assert _apt.lists_updated_at(str(tmp_path)) == _iso(5)   # *Packages ignored
+    assert _apt.lists_updated_at(str(tmp_path), stamp) == _iso(5)   # *Packages ignored
+    st = tmp_path / "update-success-stamp"
+    st.write_text("")
+    t = (NOW - timedelta(hours=1)).timestamp()
+    os.utime(st, (t, t))
+    assert _apt.lists_updated_at(str(tmp_path), str(st)) == _iso(1)  # apt-daily stamp
 
 
 def test_refresh_failed_is_medium_with_hint():
@@ -150,3 +156,57 @@ def test_cli_compares_with_previous_report_json(tmp_path, monkeypatch):
     assert second["summary"]["attack"]["ssh_failed_24h_change_pct"] == 206
     assert any(s["service"] == "sshd" for s in second["services"])
     assert "(previous report: 36, +206%)" in out.read_text()
+
+
+# --- #231: apt-get update needs a writable TMPDIR under ProtectSystem=strict ----
+
+def test_refresh_uses_private_tmpdir(tmp_path, monkeypatch):
+    from kevward.util import Cmd
+
+    seen = {}
+    tmp = tmp_path / "cache" / "tmp"
+    monkeypatch.setattr(_apt, "is_root", lambda: True)
+
+    def fake(argv, timeout=0, env=None, **k):
+        seen["argv"], seen["env"] = argv, env
+        return Cmd(rc=0, out="", err="")
+
+    monkeypatch.setattr(_apt, "run", fake)
+    real = _apt._apt_tmpdir
+    monkeypatch.setattr(_apt, "_apt_tmpdir",
+                        lambda path=None: real(str(tmp), sandbox_user="no-such-user-x"))
+    r = _apt.refresh_lists()
+    assert r["state"] == "ok" and seen["argv"] == ["apt-get", "update", "-qq"]
+    assert seen["env"] == {"TMPDIR": str(tmp)}
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(r["lists_updated_at"])
+    assert age.total_seconds() < 60          # our own refresh: now, not Last-Modified
+    assert oct(tmp.stat().st_mode & 0o7777) == "0o1777"   # no _apt user: like /tmp
+
+
+def test_apt_tmpdir_owned_by_sandbox_user(tmp_path, monkeypatch):
+    import pwd
+
+    me = pwd.getpwuid(os.getuid()).pw_name
+    calls = []
+    monkeypatch.setattr(_apt.os, "chown", lambda p, u, g: calls.append((p, u, g)))
+    d = tmp_path / "t"
+    assert _apt._apt_tmpdir(str(d), sandbox_user=me) == str(d)
+    assert calls == [(str(d), os.getuid(), 0)]
+    assert oct(d.stat().st_mode & 0o7777) == "0o700"
+
+
+def test_refresh_error_prefers_E_line(monkeypatch):
+    from kevward.util import Cmd
+
+    out = ("W: An error occurred during the signature verification. The repository is not "
+           "updated and the previous index files will be used. GPG error: http://archive."
+           "ubuntu.com/ubuntu noble InRelease: Couldn't create temporary file /tmp/apt.conf.x\n"
+           "E: The repository 'http://example.test noble InRelease' is not signed.\n")
+    monkeypatch.setattr(_apt, "is_root", lambda: True)
+    monkeypatch.setattr(_apt, "_apt_tmpdir", lambda path=None: None)
+    monkeypatch.setattr(_apt, "run", lambda *a, **k: Cmd(rc=100, out="", err=out))
+    r = _apt.refresh_lists()
+    assert r["error"] == "E: The repository 'http://example.test noble InRelease' is not signed."
+    assert _apt._first_error("W: only a warning " + "x" * 400, 1).startswith("W: only")
+    assert len(_apt._first_error("W: " + "x" * 400, 1)) == 300
+    assert _apt._first_error("", 7) == "exit 7"
