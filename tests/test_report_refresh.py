@@ -9,14 +9,13 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from test_ssh_gate_apply import FINDINGS, NOW, FakeEngine, env, start  # noqa: F401
 
 from kevward import gate_apply as ga
 from kevward import schedule as sch
 from kevward import ssh_gate as g
 from kevward.config import Config
 from kevward.util import Cmd
-
-from test_ssh_gate_apply import FINDINGS, FakeEngine, NOW, env, start  # noqa: F401
 
 
 class Systemctl:
