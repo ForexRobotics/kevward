@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- **The report is rebuilt after an apply (#240).** An apply job that
+- **The report is rebuilt after an apply (#240).** report.html is now written
+  via a temporary file and rename, like report.json. An apply job that
   installed something restarts the daily report unit at its end
   (`result.report_refresh`), so the console shows the result right away.
   ssh-gate `report.refresh` (operate) does the same on request

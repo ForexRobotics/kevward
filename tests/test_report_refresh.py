@@ -150,3 +150,31 @@ def test_last_apply(tmp_path):
     d = report_data(RunResult(host="h", generated_at="t", os="Linux"), jobs_dir=jobs)
     assert d["last_apply"]["installed_count"] == 2
     assert datetime.fromisoformat(d["last_apply"]["finished"]).tzinfo == timezone.utc
+
+
+def test_report_html_written_atomically(tmp_path, monkeypatch):
+    import stat
+
+    from kevward import cli
+    from kevward.engine import RunResult
+
+    cfg = tmp_path / "c.toml"
+    cfg.write_text("[update]\ncheck = false\n")
+    monkeypatch.setattr(cli, "run_engine",
+                        lambda *a, **k: RunResult(host="h", generated_at="t", os="Linux"))
+    monkeypatch.setattr(cli, "_collect_attackers", lambda *a, **k: {})
+    out = tmp_path / "report.html"
+    out.write_text("old")
+    seen = []
+    real = type(out).replace
+
+    def spy(self, target):
+        seen.append((self.name, getattr(target, "name", str(target))))
+        return real(self, target)
+
+    monkeypatch.setattr(type(out), "replace", spy)
+    assert cli.main(["report", "-c", str(cfg), "-o", str(out)]) == 0
+    assert (".report.html.tmp", "report.html") in seen
+    assert out.read_text().startswith("<!doctype html>")
+    assert stat.S_IMODE(out.stat().st_mode) == 0o644
+    assert not list(tmp_path.glob(".*.tmp"))
