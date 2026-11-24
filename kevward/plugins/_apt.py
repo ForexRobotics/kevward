@@ -17,6 +17,7 @@ Concrete plugins typically only declare ``name``, ``packages`` and
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import os
 import re
@@ -151,13 +152,29 @@ def reset_simulation() -> None:
 APT_LISTS = "/var/lib/apt/lists"
 
 
-def lists_updated_at(lists_dir: str = APT_LISTS) -> str | None:
-    """When the package lists were last refreshed: the newest ``*Release``
-    file apt keeps per repository (#179). ISO 8601 UTC, None if unknown."""
+#: Written by apt-daily (APT::Periodic) after each successful `apt-get update`.
+APT_SUCCESS_STAMP = "/var/lib/apt/periodic/update-success-stamp"
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def lists_updated_at(lists_dir: str = APT_LISTS,
+                     stamp: str = APT_SUCCESS_STAMP) -> str | None:
+    """When the package lists were last refreshed by someone else (#179): the
+    apt-daily success stamp, or the newest ``*Release`` file. apt gives those
+    the repository's Last-Modified time, so they can be older than the actual
+    refresh; after kevward's own successful refresh the current time is used
+    instead. ISO 8601 UTC, None if unknown."""
     import glob
     from datetime import datetime, timezone
 
     newest = 0.0
+    with contextlib.suppress(OSError):
+        newest = os.path.getmtime(stamp)
     for path in glob.glob(os.path.join(lists_dir, "*Release")):
         try:
             newest = max(newest, os.path.getmtime(path))
@@ -166,6 +183,44 @@ def lists_updated_at(lists_dir: str = APT_LISTS) -> str | None:
     if not newest:
         return None
     return datetime.fromtimestamp(newest, tz=timezone.utc).isoformat(timespec="seconds")
+
+
+#: apt-get update writes temporary files (apt-key's config, #231) to $TMPDIR.
+#: The report service keeps /tmp read-only (ProtectSystem=strict), so point
+#: apt at kevward's own writable cache instead of opening up /tmp.
+APT_TMPDIR = "/var/cache/kevward/tmp"
+
+
+def _apt_tmpdir(path: str = APT_TMPDIR, sandbox_user: str = "_apt") -> str | None:
+    """A writable TMPDIR for apt, or None to leave apt's default.
+
+    apt's download and gpgv methods run as the sandbox user ``_apt`` and fall
+    back to /tmp when $TMPDIR is not writable for them, so the directory is
+    owned by ``_apt`` (0700). Without that user, a sticky 1777 directory like
+    /tmp itself."""
+    import pwd
+
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        try:
+            uid = pwd.getpwnam(sandbox_user).pw_uid
+        except KeyError:
+            os.chmod(path, 0o1777)
+        else:
+            os.chown(path, uid, 0)
+            os.chmod(path, 0o700)
+        return path
+    except OSError:
+        return None
+
+
+def _first_error(text: str, rc: int) -> str:
+    """The most useful line of apt's output: an ``E:`` line, else the first."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    for ln in lines:
+        if ln.startswith("E:"):
+            return ln[:300]
+    return (lines[0] if lines else f"exit {rc}")[:300]
 
 
 def refresh_lists() -> dict:
@@ -178,14 +233,15 @@ def refresh_lists() -> dict:
         return {"state": "skipped", "seconds": 0.0, "error": "not root",
                 "lists_updated_at": lists_updated_at()}
     t0 = time.monotonic()
-    r = run(["apt-get", "update", "-qq"], timeout=180)
+    tmp = _apt_tmpdir()
+    r = run(["apt-get", "update", "-qq"], timeout=180,
+            env={"TMPDIR": tmp} if tmp else None)
     secs = round(time.monotonic() - t0, 1)
     if r.ok:
         return {"state": "ok", "seconds": secs, "error": "",
-                "lists_updated_at": lists_updated_at()}
-    first = next((ln.strip() for ln in (r.err or r.out).splitlines() if ln.strip()),
-                 f"exit {r.rc}")
-    return {"state": "failed", "seconds": secs, "error": first[:200],
+                "lists_updated_at": _now_iso()}
+    first = _first_error((r.err or "") + "\n" + (r.out or ""), r.rc)
+    return {"state": "failed", "seconds": secs, "error": first,
             "lists_updated_at": lists_updated_at()}
 
 

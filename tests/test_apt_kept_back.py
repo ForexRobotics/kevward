@@ -89,7 +89,7 @@ def test_simulate_upgrade_runs_both_and_merges(monkeypatch):
         def __init__(self, out):
             self.out, self.ok = out, True
 
-    def fake_run(args, timeout=120, input_=None):
+    def fake_run(args, timeout=120, input_=None, **_k):
         calls.append(args[-1])
         return R({"upgrade": UPGRADE, "dist-upgrade": DIST}.get(args[-1], ""))
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: the report timer's `apt-get update` failed signature checks (#231).**
+  `ProtectSystem=strict` also keeps /tmp read-only, where apt writes a
+  temporary config for apt-key/gpgv ("Couldn't create temporary file
+  /tmp/apt.conf…"), so the old index files were kept. kevward now runs it
+  with `TMPDIR=/var/cache/kevward/tmp` (owned by apt's sandbox user `_apt`);
+  /tmp stays read-only. `lists_updated_at` is the time of kevward's own
+  successful refresh (the `*Release` files carry the repository's
+  Last-Modified time), and the recorded error prefers an `E:` line.
+
 ## 0.19.2
 
 The report timer can refresh the apt lists again (#227); stale or failed
