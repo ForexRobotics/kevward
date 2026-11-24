@@ -166,3 +166,57 @@ def op_schedule_install(*, changes_file: Path, client: str, now: datetime,
     _record(changes_file, {"time": now.isoformat(timespec="seconds"), "client": client,
                            "kind": "schedule.install", "messages": msgs})
     return {"messages": msgs}
+
+
+# --- report refresh (#240) -----------------------------------------------------------
+
+def _generated_at(report_dir: Path) -> str | None:
+    try:
+        return json.loads((report_dir / "report.json").read_text(encoding="utf-8")).get(
+            "generated_at")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _last_refresh(changes_file: Path) -> datetime | None:
+    try:
+        lines = changes_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for ln in reversed(lines):
+        try:
+            rec = json.loads(ln)
+            if rec.get("kind") == "report.refresh":
+                return datetime.fromisoformat(rec["time"])
+        except (ValueError, KeyError, TypeError):
+            continue
+    return None
+
+
+def op_report_refresh(cfg: Config, *, changes_file: Path, client: str, now: datetime,
+                      runner=None, paths=None) -> dict:
+    """Rebuild the report now (operate). The console waits until report.get
+    shows a ``generated_at`` newer than ``previous_generated_at``."""
+    from . import schedule as sch
+
+    paths = paths or sch.Paths()
+    if not paths.service.exists():
+        raise GateError("not_found", f"{sch.SERVICE} is not installed; install the timer "
+                        "first (kevward schedule install / ssh-gate schedule.install)")
+    prev = _generated_at(cfg.report_dir)
+    base = {"unit": sch.SERVICE, "previous_generated_at": prev}
+    if sch.report_active(runner):
+        return {"started": False, "running": True, **base}
+    last = _last_refresh(changes_file)
+    gap = cfg.ssh_gate.report_refresh_min_interval_s
+    if last is not None and (now - last).total_seconds() < gap:
+        wait = int(gap - (now - last).total_seconds())
+        raise GateError("conflict", f"the report was rebuilt at {last.isoformat()}; "
+                        f"try again in {wait} s")
+    out = sch.start_report(restart=False, runner=runner, paths=paths)
+    if out != "started":
+        raise GateError("internal", f"could not start {sch.SERVICE}: "
+                        f"{out.get('error') if isinstance(out, dict) else out}")
+    _record(changes_file, {"time": now.isoformat(timespec="seconds"), "client": client,
+                           "kind": "report.refresh"})
+    return {"started": True, "running": False, **base}

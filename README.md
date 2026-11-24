@@ -602,6 +602,15 @@ if the console is offline, and `shutdown -c` on the host still cancels it.
 
 Each of these writes is logged like `config.set` and shown in the report for 7 days.
 
+`report.refresh` (operate) rebuilds the report now with the daily unit
+(`systemctl start --no-block kevward-report.service`) and returns the current
+report's `generated_at` as `previous_generated_at`; wait until `report.get`
+(`format: "data"`) shows a newer one. It returns `running: true` when a run is
+already in progress, and `conflict` within `[ssh_gate]
+report_refresh_min_interval_s` (default 300) of the previous request. An apply
+job that installed something rebuilds the report itself
+(`result.report_refresh`), and `report.json` carries `last_apply`.
+
 Updates follow the same two steps as by hand, `kevward apply` then
 `kevward apply --yes`, and what gets installed is exactly what was reviewed:
 

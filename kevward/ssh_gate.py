@@ -55,7 +55,7 @@ ROLES = ("read", "operate")
 READ_OPS = ("version", "report.get", "config.get", "config.schema",
             "reboot.status", "schedule.status", "plan", "job.get")
 OPERATE_OPS = READ_OPS + ("config.set", "self.update", "reboot.schedule", "reboot.cancel",
-                          "schedule.install", "apply.start")
+                          "schedule.install", "apply.start", "report.refresh")
 
 # self.update (#190)
 SELF_UPDATE_SINCE = "0.17.0"     # default rollback floor: first release with the op
@@ -617,6 +617,12 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
         if op in ("plan", "apply.start", "job.get"):
             return ok(_apply_ops(op, cfg, args, path=path, changes_file=changes_file,
                                  client=client, now=now, opts=op_opts or {}))
+        if op == "report.refresh":
+            from .gate_ops import op_report_refresh
+            o = op_opts or {}
+            return ok(op_report_refresh(cfg, changes_file=changes_file, client=client,
+                                        now=now, runner=o.get("runner"),
+                                        paths=o.get("paths")))
         if op.startswith(("reboot.", "schedule.")):
             return ok(_phase2(op, cfg, args, changes_file=changes_file, client=client,
                               now=now, opts=op_opts or {}))

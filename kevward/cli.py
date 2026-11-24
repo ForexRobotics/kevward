@@ -23,6 +23,7 @@ read-only. Reboots require both --reboot/`schedule-reboot` AND policy opt-in.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -459,7 +460,12 @@ def _cmd_report(args) -> Path:
         pass  # a comparison must never break a report
     out.parent.mkdir(parents=True, exist_ok=True)
     lang = getattr(args, "lang", None) or cfg.report.lang
-    out.write_text(render(result, lang=lang), encoding="utf-8")
+    # temp file + rename (#240): a report run stopped by `systemctl restart`
+    # never leaves a half-written report.html behind.
+    tmp_html = out.with_name(f".{out.name}.tmp")
+    tmp_html.write_text(render(result, lang=lang), encoding="utf-8")
+    os.chmod(tmp_html, 0o644)
+    tmp_html.replace(out)
     # The same run as data, for consoles and collectors (#211). A failure here
     # must not lose the HTML report that was just written.
     try:

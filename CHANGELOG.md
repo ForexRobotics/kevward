@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **The report is rebuilt after an apply (#240).** report.html is now written
+  via a temporary file and rename, like report.json. An apply job that
+  installed something restarts the daily report unit at its end
+  (`result.report_refresh`), so the console shows the result right away.
+  ssh-gate `report.refresh` (operate) does the same on request
+  (`previous_generated_at`, `running`, a minimum interval), and
+  `report.json` has `last_apply` (job, finished, state, installed count).
+
 ## 0.20.0
 
 No manual steps on the host after an update or a reinstall: `self.update`

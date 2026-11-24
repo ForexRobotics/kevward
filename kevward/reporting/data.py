@@ -103,8 +103,13 @@ def summarize(result: RunResult) -> dict:
     }
 
 
-def report_data(result: RunResult) -> dict:
+def report_data(result: RunResult, jobs_dir: Path | None = None) -> dict:
+    from ..gate_apply import JOBS_DIR, last_apply
+
     return {"schema_version": SCHEMA_VERSION, **result.to_dict(),
+            # The latest console apply (#240): the report reflects it when
+            # generated_at is later than last_apply.finished.
+            "last_apply": last_apply(jobs_dir or JOBS_DIR),
             "summary": summarize(result)}
 
 
