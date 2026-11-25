@@ -148,3 +148,11 @@ if __name__ == "__main__":
             obj()
             print(f"ok  {name}")
     print("all audit tests passed")
+
+
+def test_own_gate_with_key_name_is_allowed():
+    from kevward.audit import _is_allowed
+    assert _is_allowed("sudo -n /opt/kevward/bin/kevward ssh-gate --role operate "
+                       "--key-name console-operate", [])
+    assert _is_allowed("/opt/kevward/bin/kevward ssh-gate --role read", [])
+    assert not _is_allowed("/opt/kevward/bin/kevward ssh-gate --role read --key-name X;id", [])

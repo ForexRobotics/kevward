@@ -561,8 +561,10 @@ def forced_commands(line: str) -> list[str]:
 
 
 # kevward's own forced command (#185): `[sudo -n ]/abs/path/kevward ssh-gate
-# --role read|operate`, exactly. Not a finding; anything else still is.
-_OWN_GATE = re.compile(r"^(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (?:read|operate)$")
+# --role read|operate [--key-name NAME]`, exactly (#223). Not a finding;
+# anything else still is.
+_OWN_GATE = re.compile(r"^(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (?:read|operate)"
+                       r"(?: --key-name [a-z0-9._-]{1,40})?$")
 
 
 def _is_allowed(cmd: str, allow: list[str], hits: dict[str, int] | None = None) -> bool:

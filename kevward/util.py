@@ -61,6 +61,48 @@ def run(args: list[str], timeout: int = 120, input_: str | None = None,
         return Cmd(124, "", f"timed out after {timeout}s: {' '.join(args)}")
 
 
+@dataclass
+class BytesCmd:
+    rc: int            # 124 on timeout
+    out: bytes
+    timed_out: bool = False
+
+
+def run_bytes(args: list[str], input_: bytes, timeout: float, env: dict[str, str],
+              kill_grace: float = 5.0) -> BytesCmd:
+    """Run a command with ``input_`` on stdin and a clean ``env``; stdout as
+    bytes, stderr discarded (#219, the truthgate relay). The child gets its own
+    process group; on timeout the group gets SIGTERM, then SIGKILL after
+    ``kill_grace`` seconds. argv list, never a shell. Never raises."""
+    import signal
+
+    try:
+        p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, env=dict(env),
+                             start_new_session=True)
+    except (FileNotFoundError, PermissionError, OSError):
+        return BytesCmd(127, b"")
+    try:
+        out, _ = p.communicate(input_, timeout=timeout)
+        return BytesCmd(p.returncode, out or b"")
+    except subprocess.TimeoutExpired:
+        for sig, wait in ((signal.SIGTERM, kill_grace), (signal.SIGKILL, None)):
+            try:
+                os.killpg(p.pid, sig)
+            except (ProcessLookupError, PermissionError):
+                break
+            try:
+                p.wait(timeout=wait)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        try:
+            p.communicate(timeout=1)
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            pass
+        return BytesCmd(124, b"", timed_out=True)
+
+
 def run_stream(args: list[str], timeout: int | None = None,
                env: dict[str, str] | None = None, prefix: str = "  | ",
                stream=None) -> Cmd:

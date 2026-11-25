@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 
+from kevward import stale_libs
 from kevward.model import Severity
 from kevward.plugins.apt_base import stale_code_finding
 from kevward.stale_libs import StaleUnit, deleted_code_files, scan, unit_of
@@ -102,3 +103,51 @@ def test_finding_notes_partial_view_as_non_root():
     cron = StaleUnit("cron.service", [7], ["cron"], [LIBC])
     f = stale_code_finding("apt", [cron], complete=False)
     assert "run as root to see all" in f.detail
+
+
+# --- #254: VMs on an old qemu ---------------------------------------------------------
+
+def _vm(proc, pid, exe, argv):
+    d = proc / str(pid)
+    d.mkdir(parents=True)
+    os.symlink(exe, d / "exe")
+    (d / "cmdline").write_bytes(b"\0".join(a.encode() for a in argv) + b"\0")
+
+
+def test_vm_name():
+    assert stale_libs.vm_name(["qemu", "-name", "guest=web1,debug-threads=on"]) == "web1"
+    assert stale_libs.vm_name(["qemu", "-name", "db"]) == "db"
+    assert stale_libs.vm_name(
+        ["qemu", "-drive", "file=/var/snap/multipass/common/data/multipassd/vault/"
+         "instances/tg-test/ubuntu.img"]) == "tg-test"
+    assert stale_libs.vm_name(["qemu"]) == ""
+
+
+def test_scan_vms(tmp_path):
+    proc, snap = tmp_path / "proc", tmp_path / "snap"
+    (snap / "multipass").mkdir(parents=True)
+    os.symlink("14002", snap / "multipass" / "current")
+    _vm(proc, 10, "/usr/bin/qemu-system-x86_64 (deleted)", ["qemu", "-name", "guest=web1"])
+    _vm(proc, 11, "/snap/multipass/13900/usr/bin/qemu-system-x86_64",
+        ["qemu", "-drive", "file=/x/multipassd/vault/instances/tg-test/a.img"])
+    _vm(proc, 12, "/snap/multipass/14002/usr/bin/qemu-system-x86_64", ["qemu"])  # current
+    _vm(proc, 13, "/usr/bin/qemu-system-x86_64", ["qemu", "-name", "fine"])       # current
+    _vm(proc, 14, "/usr/sbin/nginx (deleted)", ["nginx"])                          # not a VM
+    _vm(proc, 15, "/usr/bin/swtpm (deleted)", ["swtpm"])
+    got = {v.pid: (v.name, v.reason, v.snap) for v in
+           stale_libs.scan_vms(str(proc), str(snap))}
+    assert got == {10: ("web1", "deleted", ""),
+                   11: ("tg-test", "snap revision 13900, current 14002", "multipass"),
+                   15: ("pid 15", "deleted", "")}
+
+
+def test_stale_vm_finding():
+    from kevward.plugins.apt_base import stale_vm_finding
+
+    vms = [stale_libs.StaleVM(10, "/usr/bin/qemu-system-x86_64", "web1", "deleted"),
+           stale_libs.StaleVM(11, "/snap/multipass/1/usr/bin/qemu-system-x86_64", "tg-test",
+                              "snap revision 1, current 2", snap="multipass")]
+    f = stale_vm_finding("apt", vms)
+    assert f.severity.value == "medium" and "2 VM(s) still run the old binary" in f.title
+    assert "multipass restart <name>" in f.detail and "virsh reboot" in f.detail
+    assert stale_vm_finding("apt", []) is None

@@ -66,6 +66,9 @@ class FirewallConfig:
     block: list[str] = field(default_factory=list)
     # Install a systemd unit so the blocklist is re-applied on boot.
     persist: bool = True
+    # In a multipass guest, never block the host's side of the NAT (the
+    # default gateway), which `multipass shell/exec` come from (#251).
+    allow_gateway: bool = True
     # Optional DNSBL cross-check (off by default -> no network call).
     check_dnsbl: bool = False
     # DNSBL zone to query (e.g. a Spamhaus DQS zone "<key>.zen.dq.spamhaus.net").
@@ -175,9 +178,24 @@ class SshGateConfig:
     min_version: str = ""
     # Shortest interval between two `report.refresh` requests (#240).
     report_refresh_min_interval_s: int = 300
+    # truthgate relay (#219): `truthgate.*` ops go to `<truthgate_path>
+    # ssh-gate --role <role>`. A path: never writable through the gate.
+    truthgate_path: str = "/usr/bin/truthgate"
+    truthgate_timeout_s: int = 120
+    # `gate.capabilities` asks truthgate too; the console calls it first on
+    # every connection, so it has its own short limit.
+    truthgate_capabilities_timeout_s: int = 5
 
     def __post_init__(self) -> None:
         import re
+
+        for name, hi in (("truthgate_timeout_s", 3600),
+                         ("truthgate_capabilities_timeout_s", 60)):
+            v = getattr(self, name)
+            if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= hi:
+                raise ValueError(f"ssh_gate.{name} must be 1-{hi}")
+        if not isinstance(self.truthgate_path, str) or not self.truthgate_path.startswith("/"):
+            raise ValueError("ssh_gate.truthgate_path must be an absolute path")
 
         if not isinstance(self.enabled, bool) or not isinstance(self.self_update, bool):
             raise ValueError("ssh_gate.enabled / self_update must be true or false")

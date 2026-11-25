@@ -221,6 +221,59 @@ def current_admin_ips() -> set[str]:
     return ips
 
 
+def default_gateways(route: str, route6: str) -> list[str]:
+    """IPv4/IPv6 default gateways from /proc/net/route and
+    /proc/net/ipv6_route text. Pure."""
+    out: list[str] = []
+    for ln in route.splitlines()[1:]:
+        p = ln.split()
+        if len(p) >= 3 and p[1] == "00000000" and p[2] != "00000000":
+            try:
+                out.append(str(ipaddress.IPv4Address(bytes.fromhex(p[2])[::-1])))
+            except ValueError:
+                continue
+    for ln in route6.splitlines():
+        p = ln.split()
+        if len(p) >= 5 and p[0] == "0" * 32 and p[1] == "00" and p[4] != "0" * 32:
+            try:
+                out.append(str(ipaddress.IPv6Address(bytes.fromhex(p[4]))))
+            except ValueError:
+                continue
+    return sorted(set(out))
+
+
+def multipass_guest(cloud_id: str, keys_texts: list[str]) -> bool:
+    """A multipass guest, conservatively: cloud-init's NoCloud datasource
+    (what multipass uses) and an authorized_keys entry carrying multipass's
+    key comment. Pure."""
+    if cloud_id.strip().lower() != "nocloud":
+        return False
+    return any("multipass" in ln and not ln.lstrip().startswith("#")
+               for t in keys_texts for ln in t.splitlines())
+
+
+def _read(path: str) -> str:
+    try:
+        with open(path, errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def multipass_gateways(root: str = "") -> list[str]:
+    """The multipass host's address(es) when this host is a multipass guest:
+    private / link-local default gateways only. [] otherwise. Read-only."""
+    import glob
+
+    keys = [_read(p) for p in glob.glob(f"{root}/home/*/.ssh/authorized_keys")]
+    if not multipass_guest(_read(f"{root}/run/cloud-init/cloud-id"), keys):
+        return []
+    gws = default_gateways(_read(f"{root}/proc/net/route"),
+                           _read(f"{root}/proc/net/ipv6_route"))
+    return [g for g in gws
+            if ipaddress.ip_address(g).is_private or ipaddress.ip_address(g).is_link_local]
+
+
 # --------------------------------------------------------------------------- #
 # nftables backend (only ever touches kevward's own table)
 # --------------------------------------------------------------------------- #
@@ -829,8 +882,12 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
             block: list[str] | None = None, persist: bool = True,
             check_dnsbl: bool = False, require_reputation: bool = False,
             dnsbl_zone: str = "zen.spamhaus.org", dnsbl_resolver: str | None = None,
-            dnsbl_top_n: int = 10, dnsbl_cache_days: float = 7.0) -> int:
+            dnsbl_top_n: int = 10, dnsbl_cache_days: float = 7.0,
+            allow_gateway: bool = True, gateways=None) -> int:
     block = list(block or [])
+    gws = (gateways if gateways is not None else multipass_gateways()) \
+        if allow_gateway else []
+    extra_allow = list(extra_allow) + [g for g in gws if g not in extra_allow]
     if action in ("plan", "apply"):
         data = _plan_data(min_sshd, extra_allow, block)
         to_add = data["to_add"]
@@ -853,6 +910,7 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 "allowlisted_skipped": data["allowlisted_skipped"],
                 "cidr_covered": data["cidr_covered"],
                 "permanent_blocks": block,
+                "multipass_host": gws,
                 "persist": persist,
                 "dnsbl": {"enabled": check_dnsbl,
                           "mode": "confirm" if require_reputation else "enrich",
@@ -864,6 +922,8 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                 print("note: nftables (nft) not found -- showing candidates only.")
             if not data["root"]:
                 print("note: not root -- evidence and set state may be incomplete.")
+            for g in gws:
+                print(f"allowlisted: {g} (multipass host)")
             if check_dnsbl:
                 mode = "confirm (block only DNSBL-malicious)" if require_reputation \
                     else "enrich (annotate only)"
