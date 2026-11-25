@@ -9,6 +9,12 @@ protocol is written down (CC0, with test vectors). Also: multipass / snap /
 qemu awareness, and versioned JSON with a 1.x stability policy. Updating with
 `self.update` is enough; existing console keys keep working.
 
+- **report: phpMyAdmin (#139).** A report-only `phpmyadmin` plugin (KEV term
+  `phpmyadmin`): apt (/usr/share/phpmyadmin) and tarball installs are
+  reported as INFO with their version (Version.php for 5.x/6.x, Config.php for
+  4.x); an install under a web root, or one aliased by the apache/nginx
+  config, is LOW so the operator confirms it is access-restricted.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
