@@ -644,6 +644,7 @@ def cmd_firewall(args) -> int:
         dnsbl_zone=args.dnsbl_zone or cfg.firewall.dnsbl_zone,
         dnsbl_resolver=args.dnsbl_resolver or cfg.firewall.dnsbl_resolver,
         dnsbl_top_n=top_n, dnsbl_cache_days=cfg.firewall.dnsbl_cache_days,
+        allow_gateway=cfg.firewall.allow_gateway,
     )
 
 
