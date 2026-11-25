@@ -467,6 +467,15 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
             gate += sandbox_findings(report_sandbox())
     except Exception:
         pass
+    updaters: list[Finding] = []
+    try:
+        if is_root() and not do_apply:
+            from .updaters import host_findings
+
+            updaters = host_findings(cfg)   # #229 #247
+            gate += [f for f in updaters if f.service == "kevward"]
+    except Exception:
+        pass
     if gate:
         result.services.append(ServiceReport(service="kevward", present=True,
                                              findings=gate))
@@ -487,7 +496,8 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
     from .plugins import _apt
 
     result.apt_refresh = dict(_apt.REFRESH or {})
-    stale = apt_refresh_findings(result.apt_refresh)
+    stale = apt_refresh_findings(result.apt_refresh) + [
+        f for f in updaters if f.service == "apt"]
     if stale:
         apt_svc = next((s for s in result.services if s.service == "apt"), None)
         if apt_svc is not None:

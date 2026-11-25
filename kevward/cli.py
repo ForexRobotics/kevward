@@ -245,6 +245,20 @@ def cmd_apply(args) -> int:
     dry = not args.yes
     if dry:
         print("DRY RUN (pass --yes to actually apply)")
+    else:
+        from .updaters import (
+            EXIT_REFUSED,
+            apply_refusal,
+            record_refusal,
+            refusal_source,
+            truthgate_status,
+        )
+
+        why = apply_refusal(truthgate_status(cfg))   # #247
+        if why:
+            record_refusal(why, refusal_source())
+            print(f"kevward: {why}. Nothing was installed and no reboot was scheduled.")
+            return EXIT_REFUSED
     result = run_engine(cfg, do_apply=True, dry_run=dry)
     failed = False
     line, warn = refresh_line(result.apt_refresh)

@@ -398,6 +398,16 @@ sudo cp systemd/kevward-apply.* /etc/systemd/system/
 sudo systemctl enable --now kevward-apply.timer      # weekly security patching
 ```
 
+On a host where truthgate enforces its execution allow-list, packages can
+only change inside a maintenance window. `kevward apply --yes` (from a shell,
+this timer, or a console job) asks `truthgate.status` first and refuses, with
+exit code 5, when truthgate enforces and no `apply` window is open, or when
+truthgate is installed but its status cannot be read. Nothing is installed
+and no reboot is scheduled. The report then shows the refusal
+(`apply_refused` in report.json), warns when `kevward-apply.timer` or
+unattended-upgrades would run on an enforcing host, and lists what
+unattended-upgrades installed in the last 7 days.
+
 ### Collecting reports from several hosts
 
 If you fetch `report.html` from each host (e.g. over SSH with a forced

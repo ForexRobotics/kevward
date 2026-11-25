@@ -320,6 +320,12 @@ def _launcher_exe() -> str:
     return kevward_exe()
 
 
+def _guard(cfg: Config) -> str | None:
+    from .updaters import apply_refusal, truthgate_status
+
+    return apply_refusal(truthgate_status(cfg))
+
+
 def last_apply(jobs_dir: Path = JOBS_DIR) -> dict | None:
     """The most recent finished apply job, for report.json (#240)."""
     try:
@@ -488,7 +494,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
             reboot_at: str | None = None, jobs_dir: Path = JOBS_DIR,
             changes_file: Path = CHANGES_FILE, engine_run=None, runner=None,
             reboot_pending=None, now_fn=None, lock_path: Path = UPDATE_LOCK,
-            redirect: bool = True, report_paths=None) -> int:
+            redirect: bool = True, report_paths=None, guard=None) -> int:
     """Body of a gate apply job. Returns the exit code."""
     import fcntl
 
@@ -531,6 +537,12 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             return finish("failed", EXIT_BUSY, error="a self.update or apply is running")
+        why = (guard or _guard)(cfg)   # #247: second check, the console opened a window
+        if why:
+            from .updaters import EXIT_REFUSED, record_refusal
+
+            record_refusal(why, "job")
+            return finish("failed", EXIT_REFUSED, error=f"{why}; nothing was installed")
         plan, _ = compute_plan(cfg, engine_run=engine_run)
         print(f"plan {plan['plan_hash']}: {len(plan['items'])} package(s)", flush=True)
         if expect and plan["plan_hash"] != expect:
