@@ -117,9 +117,26 @@ def build_plan(result, cfg: Config) -> dict:
     skipped.sort(key=lambda x: x["package"])
     policy = plan_policy(cfg)
     _tail, reboot = plan_tail(result, cfg.policy.apply_minor)
+    runs = sum(1 for svc in result.services for a in svc.actions
+               if a.description.startswith("install: "))
     return {"plan_hash": plan_hash(items, policy), "items": items, "skipped": skipped,
             "policy": policy, "reboot_expected": bool(reboot),
+            "apply_timeout_s": apply_timeout_s(runs, cfg.apt.install_timeout_s),
             "generated_at": result.generated_at, "apt_refresh": result.apt_refresh}
+
+
+#: What an apply job does besides installing: apt-get update (its own 180 s
+#: limit), the second plan, the report restart, a reboot schedule.
+APPLY_OVERHEAD_S = 300
+
+
+def apply_timeout_s(install_runs: int, install_timeout_s: int) -> int | None:
+    """Upper bound for one apply job (#220), to size truthgate's maintenance
+    window. ``install_timeout_s`` limits each install run (one per service
+    with packages); 0 means no limit, so there is no bound (None). Pure."""
+    if not install_timeout_s:
+        return None
+    return APPLY_OVERHEAD_S + max(0, install_runs) * install_timeout_s
 
 
 def compute_plan(cfg: Config, *, engine_run=None, fresh: bool = True) -> tuple[dict, object]:
