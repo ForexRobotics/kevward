@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **report: MongoDB (#127).** An apt `mongodb` plugin (KEV term
+  `mongodb`). Updates from repo.mongodb.org are minor upgrades unless that
+  origin is in `[apt] security_origins`. `/etc/mongod.conf` is read as text
+  (no YAML dependency): `bindIp` 0.0.0.0 / :: or `bindIpAll` without
+  `security.authorization: enabled` (or a `keyFile`) is MEDIUM.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
