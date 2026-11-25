@@ -53,7 +53,8 @@ CHANGE_NOTICE_DAYS = 7
 
 ROLES = ("read", "operate")
 READ_OPS = ("version", "report.get", "config.get", "config.schema",
-            "reboot.status", "schedule.status", "plan", "job.get", "gate.capabilities")
+            "reboot.status", "schedule.status", "plan", "job.get", "gate.capabilities",
+            "gate.selfpaths")
 OPERATE_OPS = READ_OPS + ("config.set", "self.update", "reboot.schedule", "reboot.cancel",
                           "schedule.install", "apply.start", "report.refresh")
 
@@ -615,6 +616,9 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
             raise GateError("forbidden", f"{op} needs the operate role")
         if op == "version":
             return ok(op_version(role, cfg))
+        if op == "gate.selfpaths":
+            from .selfpaths import selfpaths
+            return ok(selfpaths())
         if op == "gate.capabilities":
             from .truthgate import capabilities
             return ok(capabilities(role, cfg, list(allowed), client=client, key=_KEY,

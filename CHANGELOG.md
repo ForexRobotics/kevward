@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **ssh-gate: `gate.selfpaths` (#222)** for truthgate's enforce mode:
+  launcher (+ sha256), interpreter (path, realpath, sha256), the gate user's
+  login shell, sudo, package directory, every external program kevward may
+  run (a test fails when the code runs one that is not listed), and the apply
+  unit names and ExecStart shape (#247).
 - **ssh-gate: truthgate relay and `gate.capabilities` (#219).** `truthgate.*`
   ops go unparsed to `truthgate ssh-gate --role <role>` (root-owned path
   check, clean environment with `TRUTHGATE_GATE_CLIENT` / `_ROLE` /
