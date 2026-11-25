@@ -23,7 +23,8 @@ TMP=$(mktemp -d)
 
 step() { echo; echo "=== $* ==="; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
-jget() { "$PY" -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {}, {'d': d}))" "$@"; }
+# system python3: /opt/kevward is gone between uninstall and reinstall
+jget() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {}, {'d': d}))" "$@"; }
 gate() {  # gate <role> <json>  -> one JSON line, as the console would get it
     local role=$1 req=$2
     if [ "$role" = read ]; then
