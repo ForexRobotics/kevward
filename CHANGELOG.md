@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **report: Node-RED (#140).** A read-only `nodered` plugin: detects a global
+  or per-user npm install, `~/.node-red` or `nodered.service`, reports the
+  version (INFO) and matches CISA KEV on `node-red`. A `settings.js` with no
+  active `adminAuth` while the editor listens on a non-loopback address
+  (`uiHost` unset or not loopback, editor not disabled) is MEDIUM: the editor
+  can run any code. `settings.js` is read as text and never executed.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
