@@ -9,6 +9,15 @@ protocol is written down (CC0, with test vectors). Also: multipass / snap /
 qemu awareness, and versioned JSON with a 1.x stability policy. Updating with
 `self.update` is enough; existing console keys keep working.
 
+- **audit: rootkit indicators (#40).** Read-only, root only, conservative: a
+  process that exists but is absent from two `/proc` listings (hidden PID,
+  threads excluded, time-bounded probe), a TCP listener netlink (`ss`) reports
+  but `/proc/net/tcp*` does not (hidden port, HIGH), a userspace listener
+  (inode ≠ 0) with no owning process (MEDIUM; kernel nfsd/lockd skipped), a
+  module in `/sys/module` missing from `/proc/modules` (hidden module, HIGH),
+  and out-of-tree / unsigned / force-loaded modules other than well-known
+  vendor/DKMS drivers (LOW).
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
