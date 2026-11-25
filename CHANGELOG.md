@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **audit: outbound implants and tunnels (#31).** The outbound-connection check
+  now also flags (HIGH, on any port) an established external connection whose
+  process runs from a temp/hidden or deleted executable, is a known tunnel/relay
+  tool (GSocket `gs-netcat`/`gs-dbus`…, `revsocks`, `pysoxy`), wears a
+  kernel-thread name, or has `HISTFILE=/dev/null` in its environment — with pid,
+  owner uid, remote ip:port and the reason. `allowed_outbound` never silences
+  these; an ordinary client (curl to a mirror) is not flagged.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,

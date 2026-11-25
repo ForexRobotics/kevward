@@ -11,6 +11,10 @@ host kevward runs on for the tell-tale signs of a post-intrusion foothold:
 - **Suspicious outbound / listeners** — an established *outbound* connection to
   an external host owned by a shell/interpreter (a reverse shell), or a shell
   listening on a non-loopback address (a bind backdoor).
+  Beyond shells, an outbound connection from a process with implant traits
+  (a temp/hidden or deleted executable, a known tunnel/relay tool name, a
+  kernel-thread disguise, or ``HISTFILE=/dev/null`` in its environment) is
+  flagged too, on any port (#31).
 - **Persistence** — ``/etc/ld.so.preload``, cron, admin-added systemd units,
   shell rc / ``profile.d``, ``authorized_keys`` carrying reverse-shell or
   downloader patterns, forced commands or world-writable permissions, a PHP
@@ -201,6 +205,49 @@ def is_masqueraded(exe: str, comm: str) -> bool:
     return len(comm) > 2 and comm.startswith("[") and comm.endswith("]")
 
 
+
+#: Tunnel / relay tools seen beaconing in real campaigns (Unit 42 CL-UNK-1211):
+#: GSocket (gs-netcat, gs-dbus ...), revsocks, pysoxy. Kept deliberately small;
+#: socat/nc are already covered as shells. Compared against the process name
+#: and the executable's basename.
+_TUNNEL_NAMES = {
+    "gs-netcat", "gs-dbus", "gs-sftp", "gs-mount", "gsocket",
+    "revsocks", "pysoxy",
+}
+
+
+def classify_outbound_proc(exe: str, comm: str = "",
+                           histfile_null: bool = False) -> str | None:
+    """Why the owner of an external outbound connection looks like an implant
+    or tunnel, or None (#31). ``exe`` is the ``/proc/<pid>/exe`` target (may
+    end in ``' (deleted)'``), ``comm`` the process name. Pure.
+
+    Ordinary clients (``/usr/bin/curl`` to a mirror, a browser, apt) have none
+    of these traits and are not flagged."""
+    where = classify_proc_exe(exe, comm)
+    if where:
+        return where
+    if "/." in exe:
+        return "runs from a hidden directory"
+    if exe.endswith(" (deleted)"):
+        return "runs from a deleted executable (or a daemon not restarted after an upgrade)"
+    path = exe[: -len(" (deleted)")] if exe.endswith(" (deleted)") else exe
+    names = {comm.strip().lower(), os.path.basename(path).lower()} - {""}
+    hit = names & _TUNNEL_NAMES
+    if hit:
+        return f"tunnel/relay tool ({sorted(hit)[0]})"
+    if is_masqueraded(exe, comm):
+        return f"wears a kernel-thread name ({comm})"
+    if histfile_null:
+        return "HISTFILE=/dev/null in its environment"
+    return None
+
+
+def histfile_disabled(environ: bytes) -> bool:
+    """``HISTFILE=/dev/null`` in a NUL-separated ``/proc/<pid>/environ``. Pure."""
+    return any(v.strip() == b"HISTFILE=/dev/null" for v in environ.split(b"\x00"))
+
+
 def classify_dpkg_verify(line: str) -> tuple[str, str] | None:
     """Parse one ``dpkg --verify`` line; return ``(path, reason)`` for a
     security-relevant change (a non-conffile whose checksum no longer matches
@@ -318,6 +365,29 @@ def _exe_of(pid: int | None) -> str:
         return ""
 
 
+
+def _proc_info(pid: int | None) -> tuple[str, str, bool, str]:
+    """(exe, comm, HISTFILE=/dev/null, owner uid) for a pid; blanks when
+    unreadable (needs root for other users' processes)."""
+    if pid is None:
+        return "", "", False, ""
+    exe = _exe_of(pid)
+    comm = uid = ""
+    env = b""
+    try:
+        with open(f"/proc/{pid}/comm") as fh:
+            comm = fh.read().strip()
+        with open(f"/proc/{pid}/status") as fh:
+            for ln in fh:
+                if ln.startswith("Uid:"):
+                    uid = ln.split()[1]
+                    break
+        with open(f"/proc/{pid}/environ", "rb") as fh:
+            env = fh.read(65536)
+    except OSError:
+        pass
+    return exe, comm, histfile_disabled(env), uid
+
 # multipass's own plumbing on a Linux host (#252): only when the executable
 # really is multipass's / LXD's (from the snap) and the address is private.
 _VM_PLUMBING = {
@@ -394,13 +464,14 @@ def check_connections(max_info: int = 15,
                       allow: list[OutboundRule] | None = None,
                       hits: dict[str, int] | None = None,
                       recognised: dict[str, int] | None = None,
-                      exe_of=None) -> list[Finding]:
+                      exe_of=None, proc_info=None) -> list[Finding]:
     """Established outbound + listeners via ``ss``. Inbound to our own listening
     ports is skipped (it is not a foothold signal).
 
     ``allow`` (``[audit] allowed_outbound``, #155) silences the INFO
     "unexpected outbound" rows it matches and counts them in ``hits`` (rule
-    text -> connections). It never silences a shell-owned socket."""
+    text -> connections). It never silences a shell-owned socket, nor one whose
+    process has implant traits (``classify_outbound_proc``, #31)."""
     out: list[Finding] = []
     allow = allow or []
     r = run(["ss", "-tnap"], timeout=20)
@@ -420,6 +491,7 @@ def check_connections(max_info: int = 15,
                 listen_ports.add(lport)
     info_count = 0
     exe_of = exe_of or _exe_of
+    proc_info = proc_info or _proc_info
     for state, local, peer, line in rows:
         proc = _proc_of(line)
         if recognised is not None and proc in _VM_PLUMBING:
@@ -446,6 +518,15 @@ def check_connections(max_info: int = 15,
             out.append(_f(Severity.HIGH,
                           f"possible reverse shell: {proc or '?'} -> {phost}:{pport}",
                           detail=line.strip()[:200]))
+            continue
+        pid = _pid_of(line)
+        exe, comm, histnull, uid = proc_info(pid)
+        why = classify_outbound_proc(exe, comm or proc, histnull)
+        if why:
+            out.append(_f(Severity.HIGH,
+                          f"possible implant/tunnel: {proc or '?'} (pid {pid}, uid "
+                          f"{uid or '?'}) -> {phost}:{pport}: {why}",
+                          detail=f"{exe} | {line.strip()}"[:200]))
         elif pport not in _WELL_KNOWN_OUT:
             rule = next((a for a in allow if a.matches(proc, phost, pport)), None)
             if rule is not None:
