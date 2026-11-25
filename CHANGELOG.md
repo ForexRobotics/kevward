@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **report: ProFTPD and vsftpd (#134).** Two apt plugins (`proftpd`:
+  `proftpd-basic` on 22.04 / `proftpd-core` on 24.04; `vsftpd`), KEV terms
+  `proftpd` / `vsftpd`. Configs are read as text (ProFTPD's `Include`s
+  followed): anonymous login is MEDIUM, no TLS is LOW.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
