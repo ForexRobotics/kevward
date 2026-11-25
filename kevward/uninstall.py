@@ -291,8 +291,10 @@ def _write_snapshot(env: Env, path: Path) -> None:
     from .setup import snapshot_host
 
     try:
+        fw_used = ((env.data_dirs[1] / "firewall.json").exists()
+                   or (env.etc / "systemd" / "system" / "kevward-firewall.service").exists())
         snap = snapshot_host(env.etc, [(_user_of(h), h) for h in env.home_dirs()],
-                             env.data_dirs[1] / "schedule.json")
+                             env.data_dirs[1] / "schedule.json", firewall_used=fw_used)
         snap["time"] = (env.now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")

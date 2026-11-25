@@ -443,6 +443,16 @@ def _cmd_report(args) -> Path:
         result.audit_rules = audit_rule_counts(cfg)
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
+    # Blocklist expected but not loaded (#244): a HIGH finding, counted.
+    try:
+        from .engine import firewall_missing_findings
+        from .model import ServiceReport as _SR
+
+        fwf = firewall_missing_findings((result.attackers or {}).get("firewall_state") or {})
+        if fwf:
+            result.services.append(_SR(service="firewall", present=True, findings=fwf))
+    except Exception:
+        pass
     # Day-over-day (#225): the previous report.json, before it is replaced.
     try:
         from .engine import ssh_surge_findings

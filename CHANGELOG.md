@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: a reinstalled host lost kevward's firewall (#243).** `firewall
+  apply` records `/var/lib/kevward/firewall.json` (kept by `uninstall` unless
+  `--purge`; written by `setup --refresh` for hosts that applied it before).
+  The uninstall snapshot includes it, `setup --restore` re-applies the
+  blocklist with the console's addresses allowed, and plain `setup` reports
+  it as not loaded.
+- **Fix: no "firewall not loaded" warning once the boot unit was gone (#244).**
+  Table missing while the blocklist is in use is now a HIGH finding with the
+  red line, and the drops line is always shown.
+- **Fix: report units from the old example hid /home and /tmp (#246).** The
+  managed drop-in sets `ProtectHome=no` / `PrivateTmp=no`; the report warns
+  when it runs sandboxed; the ssh-gate key check no longer says "missing"
+  when it could not look; `systemd/kevward-report.service` matches `schedule
+  install`; `schedule status` warns.
+- The previous-report comparison sits next to the 24 h sshd figure (#245).
+
 ## 0.20.1
 
 The report is rebuilt after a console apply and on request (`report.refresh`),

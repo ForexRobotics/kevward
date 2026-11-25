@@ -160,8 +160,12 @@ def render_service_dropin() -> str:
     return f"""# Written by `kevward schedule install` (#227); rewritten on every install.
 # ProtectSystem=strict keeps the report read-only; these are the exceptions:
 # kevward's own logs/cache/state and apt's lists for `apt-get update`.
+# The audit must see the real /home and /tmp (authorized_keys, dropped files),
+# so units from older examples with ProtectHome/PrivateTmp are corrected (#246).
 [Service]
 ReadWritePaths={" ".join("-" + p for p in RW_PATHS)}
+ProtectHome=no
+PrivateTmp=no
 """
 
 
@@ -378,6 +382,12 @@ def status_warnings(props: dict[str, str], dropin_exists: bool,
         warn.append("FixedRandomDelay=no: the delay changes every day")
     if not dropin_exists:
         warn.append(f"no {DROPIN_NAME} drop-in: the timer is not managed by kevward")
+    for prop, bad in (("ProtectHome", ("yes", "read-only", "tmpfs", "true")),
+                      ("PrivateTmp", ("yes", "true"))):
+        if props.get(prop, "").lower() in bad:
+            warn.append(f"{SERVICE} has {prop}={props[prop]}: the audit cannot see the real "
+                        f"{'/home' if prop == 'ProtectHome' else '/tmp'} (run `sudo kevward "
+                        "schedule install` or update kevward)")
     if rw_paths is not None:
         missing = missing_rw_paths(rw_paths)
         if missing:
@@ -396,11 +406,15 @@ def status(paths: Paths | None = None) -> tuple[dict, list[str]]:
     r = run(args, timeout=15)
     props = parse_show(r.out) if r.ok else {}
     svc = parse_show(run(["systemctl", "show", SERVICE, "-p", "Result", "-p",
-                          "ExecMainStatus", "-p", "ReadWritePaths", "-p", "LoadState"],
+                          "ExecMainStatus", "-p", "ReadWritePaths", "-p", "LoadState",
+                          "-p", "ProtectHome", "-p", "PrivateTmp"],
                          timeout=15).out)
     props["ServiceResult"] = svc.get("Result", "")
     props["ExecMainStatus"] = svc.get("ExecMainStatus", "")
     props["ReadWritePaths"] = svc.get("ReadWritePaths", "")
+    if svc.get("LoadState") == "loaded":
+        props["ProtectHome"] = svc.get("ProtectHome", "")
+        props["PrivateTmp"] = svc.get("PrivateTmp", "")
     props["dropin"] = str(paths.dropin) if paths.dropin.exists() else ""
     rw = props["ReadWritePaths"] if svc.get("LoadState") == "loaded" else None
     return props, status_warnings(props, paths.dropin.exists(), rw)

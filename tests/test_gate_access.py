@@ -26,7 +26,7 @@ def test_gate_access_counts_roles(tmp_path):
     homes = [_home(tmp_path, "a", "ssh-ed25519 X me\n" + READ),
              _home(tmp_path, "b", OPER), str(tmp_path / "missing")]
     assert engine.gate_access(homes, str(sudoers)) == {"read": 1, "operate": 1,
-                                                       "sudoers": False}
+                                                       "sudoers": False, "checked": 2}
 
 
 def test_findings():
