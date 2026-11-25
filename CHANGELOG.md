@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **audit: dangerous file capabilities (#38).** `getcap -r` over the SUID scan
+  directories and homes (read-only); a binary carrying a capability that
+  amounts to root or to any-file access (`cap_setuid`, `cap_dac_override`,
+  `cap_sys_admin`, `cap_sys_ptrace`, …) is HIGH on a shell/interpreter, in a
+  temp or hidden path, or with every capability; MEDIUM when no package owns it
+  (`dpkg-query -S`); LOW on a packaged file. Network capabilities such as
+  `cap_net_raw` (ping) are not flagged.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
