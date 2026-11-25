@@ -277,12 +277,21 @@ def busy_reason(jobs_dir: Path, *, unit_active=None, lock_path: Path = UPDATE_LO
 
 
 def _record(changes_file: Path, rec: dict) -> None:
+    from .ssh_gate import stamp
+
+    stamp(rec)
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
     except OSError:
         pass
+
+
+def _gate_key() -> str | None:
+    from . import ssh_gate
+
+    return ssh_gate._KEY
 
 
 def _launcher_exe() -> str:
@@ -368,6 +377,7 @@ def op_apply_start(cfg: Config, args: dict, *, config_path: Path, changes_file: 
     job = {"job_id": job_id, "kind": "apply", "state": "starting", "unit": unit,
            "started": now.isoformat(timespec="seconds"), "finished": None,
            "exit_code": None, "client": client, "plan_hash": expect,
+           **({"key": _gate_key()} if _gate_key() else {}),
            "packages": [it["package"] for it in plan["items"]], "reboot": reboot,
            "result": None}
     write_job(jobs_dir, job)
@@ -418,6 +428,7 @@ def op_job_get(args: dict, *, jobs_dir: Path = JOBS_DIR, unit_active=None) -> di
                "error": "the job stopped without recording a result (see journalctl -u "
                         f"{job.get('unit') or unit_name(job_id)})"}
     job.pop("client", None)
+    job.pop("key", None)
     job["log_tail"] = tail(jobs_dir / f"{job_id}.log")
     return job
 
@@ -479,6 +490,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
         return 2
     job = read_job(jobs_dir, job_id) if job_id else None
     client = (job or {}).get("client", "")
+    key = {"key": job["key"]} if (job or {}).get("key") else {}
     if job_id and redirect:
         _redirect_output(jobs_dir / f"{job_id}.log")
 
@@ -487,7 +499,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
         if job_id:
             update_job(jobs_dir, job_id, state=state, exit_code=code, finished=t,
                        result=result, **({"error": error} if error else {}))
-            _record(changes_file, {"time": t, "client": client, "kind": "apply.finish",
+            _record(changes_file, {"time": t, "client": client, **key, "kind": "apply.finish",
                                    "job_id": job_id, "state": state, "exit_code": code,
                                    "result": result, "error": error or None})
         if error:

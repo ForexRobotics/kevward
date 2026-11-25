@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **ssh-gate: which key made a change (#223).** `kevward setup` puts
+  `--key-name console-read` / `console-operate` on the forced commands
+  (`--key-name-prefix NAME` for others) and an exact sudoers line for the
+  named operate command, next to the unnamed one so existing keys keep
+  working. The change log (`"key"`), syslog (`key=`) and the report's
+  findings name the key. The audit and `uninstall` recognise the named form.
+
 ## 0.20.2
 
 kevward's firewall survives an uninstall/reinstall and a missing firewall is

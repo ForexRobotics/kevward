@@ -482,17 +482,26 @@ enabled = true
 
 ```text
 # ~/.ssh/authorized_keys of the collecting user
-command="/opt/kevward/bin/kevward ssh-gate --role read",restrict ssh-ed25519 AAAA… read
-command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate",restrict ssh-ed25519 AAAA… operate
+command="/opt/kevward/bin/kevward ssh-gate --role read --key-name console-read",restrict ssh-ed25519 AAAA… read
+command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate --key-name console-operate",restrict ssh-ed25519 AAAA… operate
 
-# /etc/sudoers.d/kevward-ssh-gate (visudo -f): this exact command only
+# /etc/sudoers.d/kevward-ssh-gate (visudo -f): these exact commands only
 Defaults!/opt/kevward/bin/kevward env_keep += "SSH_CONNECTION"
+collector ALL=(root) NOPASSWD: /opt/kevward/bin/kevward ssh-gate --role operate --key-name console-operate
 collector ALL=(root) NOPASSWD: /opt/kevward/bin/kevward ssh-gate --role operate
 ```
 
 The `Defaults` line keeps the client's address for the change log and syslog
 (sudo drops `SSH_CONNECTION` otherwise; without it, the operate role looks the
-address up in its parent processes). `kevward setup` writes both lines.
+address up in its parent processes). `kevward setup` writes these lines.
+
+`--key-name` (`[a-z0-9._-]{1,40}`) says which key made a change: sshd does not
+tell a forced command which key was used. The name goes into the change log
+(`"key"`), syslog (`key=`) and the report's findings ("… via ssh-gate at … (key
+console-operate) from 203.0.113.5"). `kevward setup` names keys
+`console-read` / `console-operate`, or `NAME-read` / `NAME-operate` with
+`--key-name-prefix NAME`. Keys written before 0.21 have no name (`key=-`) and
+keep working; run `kevward setup` with the same keys again to name them.
 
 `config.set` (`{"set": {"report.lang": "ja"}, "expect_sha256": "<from
 config.get>"}`) only writes keys that `config.schema` marks writable. Those

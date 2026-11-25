@@ -27,6 +27,9 @@ _REASON = re.compile(r"^[\w .,:;()/@+#'-]{0,80}$", re.UNICODE)
 
 
 def _record(changes_file: Path, rec: dict) -> None:
+    from .ssh_gate import stamp
+
+    stamp(rec)
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:

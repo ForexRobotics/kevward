@@ -294,7 +294,8 @@ def cmd_setup(args) -> int:
                          operate_key=args.operate_key, ssh_gate=args.ssh_gate,
                          timer=args.timer, fail2ban_ignore=args.fail2ban_ignore,
                          refresh=args.refresh, self_update=args.self_update,
-                         allow_reboot=args.allow_reboot, dry_run=args.dry_run)
+                         allow_reboot=args.allow_reboot, key_prefix=args.key_name_prefix,
+                         dry_run=args.dry_run)
         resp = ok(data)
     except GateError as e:
         resp = fail(e.code, e.message)
@@ -352,7 +353,7 @@ def cmd_uninstall(args) -> int:
 def cmd_ssh_gate(args) -> int:
     from .ssh_gate import main as gate_main
 
-    return gate_main(args.role, args.config)
+    return gate_main(args.role, args.config, args.key_name)
 
 
 def _write_last_run(report_dir: Path, record: dict) -> None:
@@ -782,6 +783,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="forced command for console keys: one JSON request on stdin (#185)",
     )
     sg.add_argument("--role", required=True, choices=["read", "operate"])
+    sg.add_argument("--key-name", help="name of the key this forced command is on "
+                    "(written by `kevward setup`; recorded in the change log, #223)")
     sg.add_argument("-c", "--config", help="path to config.toml")
     sg.set_defaults(func=cmd_ssh_gate)
 
@@ -798,6 +801,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="set [ssh_gate] self_update = true (console may update kevward)")
     su.add_argument("--allow-reboot", action="store_true",
                     help="set [policy] allow_reboot = true (console may schedule reboots)")
+    su.add_argument("--key-name-prefix", default="console", metavar="NAME",
+                    help="keys are named NAME-read / NAME-operate in their forced "
+                         "command and the change log (default: console, #223)")
     su.add_argument("--timer", action="store_true", help="install the daily report timer")
     su.add_argument("--fail2ban-ignore", action="append", metavar="IP/CIDR",
                     help="never ban this address (repeatable; only if fail2ban exists)")
