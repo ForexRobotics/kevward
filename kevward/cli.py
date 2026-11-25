@@ -152,7 +152,7 @@ def _print_findings(result, use_json: bool) -> int:
             print(f"\n** reboot required{why} **")
         elif result.reboot_status == "after-updates":
             print("\n** reboot needed after applying pending updates **")
-    # exit code reflects worst severity for CI/cron use
+    # Read-only: exit 0 whatever was found (docs/stability.md, exit codes).
     return 0
 
 
@@ -392,8 +392,9 @@ def cmd_report(args) -> int:
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    record = {"started_at": _now(), "host": socket.gethostname(),
-              "kevward_version": __version__}
+    from .jsonout import SCHEMA_VERSION
+    record = {"schema_version": SCHEMA_VERSION, "started_at": _now(),
+              "host": socket.gethostname(), "kevward_version": __version__}
     if args.output:
         report_dir = Path(args.output).parent
     else:
@@ -502,7 +503,14 @@ def cmd_trends(args) -> int:
     data["kevward_version"] = __version__
     if args.json:
         import json
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        import socket
+        from datetime import datetime, timezone
+
+        from .jsonout import stamp
+        print(json.dumps(stamp({
+            "host": socket.gethostname(),
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            **data}), indent=2, ensure_ascii=False))
         return 0
     print(f"CISA KEV catalog: {data['catalog_size']} CVEs "
           f"({'fresh' if data['cache_fresh'] else 'cached'})")
@@ -549,7 +557,9 @@ def cmd_schedule_reboot(args) -> int:
         st = scheduler.scheduled_reboot()
         if args.json:
             import json
-            print(json.dumps(st))
+
+            from .jsonout import stamp
+            print(json.dumps(stamp(st)))
         else:
             print(f"reboot scheduled: {scheduler.describe(st)}")
         return 0
@@ -574,7 +584,9 @@ def cmd_schedule(args) -> int:
         props, warns = sch.status()
         if args.json:
             import json
-            print(json.dumps({"timer": props, "warnings": warns}, indent=2))
+
+            from .jsonout import stamp
+            print(json.dumps(stamp({"timer": props, "warnings": warns}), indent=2))
             return 0
         if props:
             print(f"timer:        {sch.TIMER} ({props.get('UnitFileState') or '?'}, "

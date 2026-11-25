@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
+  `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
+  `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
+  `last-run.json`; report.json already had it). `trends --json` adds `host`
+  and `generated_at`. New docs: `docs/json-schema.md` (every key) and
+  `docs/stability.md` (what may change in 1.x, deprecation, exit codes). A
+  contract test fails when a documented key disappears.
+- **Breaking (before 1.0): `audit --json` and `harden check --json` print a
+  document**, `{"schema_version", "kevward_version", "host", "generated_at",
+  "findings": [...]}`, instead of a bare list (`audit` also has
+  `allowed_outbound_hits` / `allowed_forced_hits`).
+
 ## 0.20.2
 
 kevward's firewall survives an uninstall/reinstall and a missing firewall is

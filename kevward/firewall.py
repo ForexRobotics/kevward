@@ -858,7 +858,8 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
                           "mode": "confirm" if require_reputation else "enrich",
                           "zone": dnsbl_zone, "verdicts": rep} if check_dnsbl else None,
             }
-            print(json.dumps(out, indent=2, ensure_ascii=False))
+            from .jsonout import stamp
+            print(json.dumps(stamp(out), indent=2, ensure_ascii=False))
         else:
             if not data["nft_available"]:
                 print("note: nftables (nft) not found -- showing candidates only.")
