@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **report: Samba (#133).** An apt `samba` plugin (security / minor
+  updates, KEV term `samba`) that also checks the `[global]` section of
+  `testparm -s`: SMB1 allowed (`server min protocol` NT1 or lower) is LOW;
+  no `interfaces` + `bind interfaces only = yes` restriction is LOW.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
