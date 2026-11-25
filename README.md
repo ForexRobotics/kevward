@@ -477,7 +477,7 @@ enabled = true
 
 | role | ops | how |
 |---|---|---|
-| `read` | `version`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
+| `read` | `version`, `gate.capabilities`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
 | `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install`, `apply.start` | `sudo -n`, with an exact-match sudoers line |
 
 ```text
@@ -502,6 +502,14 @@ console-operate) from 203.0.113.5"). `kevward setup` names keys
 `console-read` / `console-operate`, or `NAME-read` / `NAME-operate` with
 `--key-name-prefix NAME`. Keys written before 0.21 have no name (`key=-`) and
 keep working; run `kevward setup` with the same keys again to name them.
+
+`truthgate.*` ops are relayed unparsed to truthgate's own gate
+(`[ssh_gate] truthgate_path`, default `/usr/bin/truthgate`) with the caller's
+role; truthgate decides what each role may do. `gate.capabilities` lists the
+products on the host (kevward's ops for the role, and truthgate's
+capabilities when it is installed). The wire protocol, shared with truthgate,
+is in [docs/ssh-gate-protocol.md](docs/ssh-gate-protocol.md) (CC0) with test
+vectors.
 
 `config.set` (`{"set": {"report.lang": "ja"}, "expect_sha256": "<from
 config.get>"}`) only writes keys that `config.schema` marks writable. Those

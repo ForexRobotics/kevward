@@ -1,0 +1,10 @@
+{
+ "name": "envelope-args-not-object",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "{\"op\":\"version\",\"args\":[1]}",
+ "expect": {
+  "ok": false,
+  "code": "bad_request"
+ }
+}

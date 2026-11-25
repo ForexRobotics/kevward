@@ -1,0 +1,10 @@
+{
+ "name": "unknown-op",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "{\"op\":\"no.such.op\"}",
+ "expect": {
+  "ok": false,
+  "code": "unknown_op"
+ }
+}

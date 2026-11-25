@@ -53,7 +53,7 @@ CHANGE_NOTICE_DAYS = 7
 
 ROLES = ("read", "operate")
 READ_OPS = ("version", "report.get", "config.get", "config.schema",
-            "reboot.status", "schedule.status", "plan", "job.get")
+            "reboot.status", "schedule.status", "plan", "job.get", "gate.capabilities")
 OPERATE_OPS = READ_OPS + ("config.set", "self.update", "reboot.schedule", "reboot.cancel",
                           "schedule.install", "apply.start", "report.refresh")
 
@@ -83,7 +83,7 @@ _WEAKENING = {
     "policy.allow_reboot", "policy.reboot_window_start", "policy.services",
     "policy.overrides",
 }
-_PATHS = {"report_dir"}
+_PATHS = {"report_dir", "ssh_gate.truthgate_path"}
 
 
 class GateError(Exception):
@@ -102,7 +102,11 @@ def fail(code: str, message: str) -> dict:
 
 
 def dumps(resp: dict) -> str:
-    """One line of JSON, UTF-8 not escaped (the stille-pro envelope)."""
+    """One line of JSON, UTF-8 not escaped (the stille-pro envelope). A
+    relayed truthgate response goes out byte for byte (#219)."""
+    line = getattr(resp, "line", None)
+    if isinstance(line, bytes):
+        return line.decode("utf-8")
     return json.dumps(resp, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
 
 
@@ -598,6 +602,12 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
             args = {}
         if not isinstance(args, dict):
             raise GateError("bad_request", "args must be an object")
+        o = op_opts or {}
+        if op.startswith("truthgate."):
+            # Relayed unparsed; truthgate decides what each role may do (#219).
+            from .truthgate import relay
+            return relay(raw, role, cfg, client=client, key=_KEY,
+                         runner=o.get("tg_runner"), check=o.get("tg_check"))
         allowed = OPERATE_OPS if role == "operate" else READ_OPS
         if op not in OPERATE_OPS:
             raise GateError("unknown_op", f"unknown op: {op!r}")
@@ -605,6 +615,10 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
             raise GateError("forbidden", f"{op} needs the operate role")
         if op == "version":
             return ok(op_version(role, cfg))
+        if op == "gate.capabilities":
+            from .truthgate import capabilities
+            return ok(capabilities(role, cfg, list(allowed), client=client, key=_KEY,
+                                   runner=o.get("tg_runner"), check=o.get("tg_check")))
         if op == "report.get":
             return ok(op_report_get(cfg, args))
         if op == "config.get":
@@ -677,6 +691,8 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
         status = "ok" if resp.get("ok") else f"refused:{resp.get('code')}"
         extra = ""
         data = resp.get("data") if resp.get("ok") else None
+        if not isinstance(op, str) or op.startswith("truthgate."):
+            data = None  # op name and status only: truthgate keeps its own log
         if isinstance(data, dict) and "changes" in data:
             extra = " changes=" + json.dumps(data["changes"], ensure_ascii=False,
                                              default=str)

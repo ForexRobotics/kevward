@@ -1,0 +1,10 @@
+{
+ "name": "envelope-not-json",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "not json",
+ "expect": {
+  "ok": false,
+  "code": "bad_request"
+ }
+}
