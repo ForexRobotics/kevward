@@ -352,6 +352,11 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
         if chk.rc != 0 or got[0] != want:
             raise GateError("internal", f"installed, but `kevward --version` says "
                             f"{(chk.out or chk.err).strip()[:80]!r}, not {want}")
+        # Byte-compile now, inside the update (and truthgate's window), so
+        # runs never need to write .pyc into the package (#228).
+        runner([py, "-m", "compileall", "-q", "-x", r"/tests?/",
+                *[str(p) for p in sorted(prefix.glob("lib/python3*/site-packages/kevward"))]],
+               timeout=120, env=env, clean_env=True)
         duration = round(time.monotonic() - t0, 1)
         post = _post_update(runner, prefix, env)
     downgrade = _vtuple(want) < _vtuple(old)

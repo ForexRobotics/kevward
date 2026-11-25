@@ -19,6 +19,13 @@
   named operate command, next to the unnamed one so existing keys keep
   working. The change log (`"key"`), syslog (`key=`) and the report's
   findings name the key. The audit and `uninstall` recognise the named form.
+- **truthgate: no `.pyc` written into the package at run time (#228).**
+  kevward sets `sys.dont_write_bytecode`; `self.update` byte-compiles the
+  new package itself, inside the update, so nothing in the package directory
+  changes outside a maintenance window.
+- **truthgate: `plan` reports `apply_timeout_s` (#220)**, an upper bound for
+  the apply job (300 s overhead + `[apt] install_timeout_s` per install run;
+  `null` when `install_timeout_s = 0`), to size the maintenance window.
 
 ## 0.20.2
 

@@ -633,7 +633,9 @@ Updates follow the same two steps as by hand, `kevward apply` then
 
 1. `plan` returns what `kevward apply` would do: `items` (package, from, to,
    kind, origin), `skipped` with the reason, `reboot_expected`, `apt_refresh`,
-   and a `plan_hash`. Taken with the read role it runs without root
+   `apply_timeout_s` (upper bound for the job in seconds: 300 + `[apt]
+   install_timeout_s` per install run, `null` with no install limit) and a
+   `plan_hash`. Taken with the read role it runs without root
    (`"as_root": false`, apt lists not refreshed), so take it with operate
    before applying.
 2. `apply.start` (`{"expect_plan": "<plan_hash>", "reboot": {"mode":
