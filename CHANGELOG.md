@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **report: Mosquitto (#128).** An apt `mosquitto` plugin (security / minor
+  updates, KEV term `mosquitto`) that also reads `/etc/mosquitto/mosquitto.conf`
+  and its `include_dir` as text: a listener on a non-loopback address that
+  allows anonymous clients is MEDIUM, one without TLS is LOW. Mosquitto 2.x
+  defaults (no anonymous access, loopback only without a listener), 1.x
+  defaults and `per_listener_settings` are respected; the broker is never
+  contacted.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
