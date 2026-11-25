@@ -254,6 +254,11 @@ It flags, for a human to confirm:
 - **Reverse shells & bind backdoors** — an established *outbound* connection to
   an external host owned by a shell/interpreter, or a shell listening on a
   non-loopback address. (Inbound connections to your own services are ignored.)
+  Compiled implants and tunnels are caught too: an outbound connection, on any
+  port, from a process running from a temp/hidden or deleted executable, named
+  like a tunnel/relay tool (GSocket `gs-netcat`/`gs-dbus`, `revsocks`,
+  `pysoxy`), wearing a kernel-thread name, or with `HISTFILE=/dev/null` in its
+  environment. `[audit] allowed_outbound` never hides these.
 - **Persistence** — `/etc/ld.so.preload`, cron, admin-added systemd units, shell
   rc / `profile.d`, `authorized_keys` carrying reverse-shell or downloader
   patterns, forced commands or world-writable permissions, and a PHP
