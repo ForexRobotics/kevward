@@ -34,6 +34,8 @@ class RunResult:
     # [audit] allowed_outbound matches: rule -> connections silenced (#155).
     audit_allowed_outbound: dict[str, int] = field(default_factory=dict)
     audit_allowed_forced: dict[str, int] = field(default_factory=dict)
+    # multipass / LXD sockets the audit recognised as their own (#252).
+    audit_recognised: dict[str, int] = field(default_factory=dict)
     # How `apt-get update` went before the plan was computed (#171):
     # {"state": "ok" | "failed" | "skipped", "seconds", "error"}; {} if no apt.
     apt_refresh: dict = field(default_factory=dict)
@@ -90,6 +92,7 @@ class RunResult:
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
             "audit_allowed_outbound": self.audit_allowed_outbound,
             "audit_allowed_forced": self.audit_allowed_forced,
+            "audit_recognised": self.audit_recognised,
             "audit_rules": self.audit_rules,
             "apt_refresh": self.apt_refresh,
         }

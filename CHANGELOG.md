@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **audit: multipass / LXD plumbing on a Linux host is recognised (#252).**
+  dnsmasq / lxd listening on a private bridge address and multipassd's SSH
+  to its VMs are counted (`audit_recognised` in report.json, one line in
+  `kevward audit`) instead of needing `[audit] allowed_outbound` lines, but
+  only when the executable comes from `/snap/multipass/` or `/snap/lxd/`.
+  The same names elsewhere, on a wildcard or public address, still go through
+  every check.
 - **firewall: the multipass host is never blocked from inside its guest
   (#251).** In a multipass guest (cloud-init NoCloud datasource and a
   multipass key in an authorized_keys), the private / link-local default
