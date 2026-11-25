@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **report: Webmin (#137).** An apt `webmin` plugin (KEV term `webmin`).
+  Its updates come from Webmin's own repository, so they are minor upgrades
+  unless that origin is in `[apt] security_origins`. A
+  `/etc/webmin/miniserv.conf` without an `allow=` restriction (and not bound
+  to loopback) is LOW.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
