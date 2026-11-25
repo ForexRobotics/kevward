@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **report: Roundcube (#138).** A report-only `roundcube` plugin (KEV term
+  `roundcube`): every install under the scan roots (apt in
+  /usr/share/roundcube or a tarball under /var/www, /srv) is reported as INFO
+  with the `RCMAIL_VERSION` from `program/include/iniset.php`; pending apt
+  updates too when the package is installed.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,

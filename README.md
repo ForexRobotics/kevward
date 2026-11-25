@@ -96,7 +96,7 @@ detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 | Web servers | nginx, Apache (`apache2`) |
 | Databases   | MySQL, MariaDB, PostgreSQL, Redis |
 | Runtimes    | PHP, Node.js |
-| Apps        | Composer/Laravel, WordPress *(report-only)* |
+| Apps        | Composer/Laravel, WordPress, Roundcube *(report-only)* |
 | Access      | OpenSSH (sshd), ufw |
 
 Any service not installed is silently skipped. Adding another is one file —
