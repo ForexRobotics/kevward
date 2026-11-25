@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **ssh-gate: truthgate relay and `gate.capabilities` (#219).** `truthgate.*`
+  ops go unparsed to `truthgate ssh-gate --role <role>` (root-owned path
+  check, clean environment with `TRUTHGATE_GATE_CLIENT` / `_ROLE` /
+  `_KEY_ID`, own process group, SIGTERM then SIGKILL on timeout, stderr
+  discarded, one-line response up to 4 MiB returned byte for byte). New
+  codes `not_installed` and `timeout`. `gate.capabilities` returns the
+  role's ops, `gate_user` and truthgate's capabilities when it answers within
+  5 s. New `[ssh_gate] truthgate_path`, `truthgate_timeout_s`,
+  `truthgate_capabilities_timeout_s` (host-only).
+- **docs/ssh-gate-protocol.md (CC0) with test vectors**, shared with
+  truthgate's Rust gate; kevward runs every vector in its tests.
 - **ssh-gate: which key made a change (#223).** `kevward setup` puts
   `--key-name console-read` / `console-operate` on the forced commands
   (`--key-name-prefix NAME` for others) and an exact sudoers line for the
