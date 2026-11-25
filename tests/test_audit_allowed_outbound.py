@@ -78,7 +78,7 @@ def test_audit_reports_bad_entries_and_fills_notes(monkeypatch):
     monkeypatch.setattr(ad, "run", lambda *a, **k: Cmd(0, SS, ""))
     for name in ("check_reverse_ssh", "check_persistence", "_check_proc_origin",
                  "_check_pkg_integrity", "_check_accounts", "_check_suid",
-                 "_check_accepted_password"):
+                 "_check_accepted_password", "_check_caps"):
         monkeypatch.setattr(ad, name, lambda *a, **k: [])
     notes: dict = {}
     fs = ad.audit(None, ["tor:9001", "*:*"], notes)
@@ -110,7 +110,7 @@ def test_zero_hits_keep_the_summary_line(monkeypatch):
     monkeypatch.setattr(ad, "run", lambda *a, **k: Cmd(0, "", ""))
     for name in ("check_reverse_ssh", "check_persistence", "_check_proc_origin",
                  "_check_pkg_integrity", "_check_accounts", "_check_suid",
-                 "_check_accepted_password"):
+                 "_check_accepted_password", "_check_caps"):
         monkeypatch.setattr(ad, name, lambda *a, **k: [])
     notes: dict = {}
     ad.audit(None, ["tor:9001"], notes)

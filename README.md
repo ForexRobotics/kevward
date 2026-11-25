@@ -262,6 +262,11 @@ It flags, for a human to confirm:
 - **Rogue process origin** — a process backed by a deleted, temp-resident or
   hidden executable (an in-memory implant), or wearing a kernel-thread name
   (`[kcached]`-style) while backed by a real binary.
+- **Dangerous file capabilities** — a binary carrying `cap_setuid`,
+  `cap_dac_override`, `cap_sys_admin` and similar (`getcap -r`): privilege
+  without the setuid bit. HIGH on a shell/interpreter, in a temp or hidden path,
+  or with every capability; MEDIUM when no package owns the file; LOW on a
+  packaged file, to confirm it is intended.
 - **Package integrity** — installed files whose checksum no longer matches the
   package (`dpkg --verify`), i.e. a modified / backdoored system binary — with no
   stored baseline for an attacker to tamper with. (Non-Debian hosts are skipped.)

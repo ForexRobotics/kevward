@@ -23,6 +23,11 @@ host kevward runs on for the tell-tale signs of a post-intrusion foothold:
 - **SUID/SGID anomalies** — a setuid/setgid shell or interpreter, or a
   setuid/setgid file in a temp or hidden path (a classic root backdoor the
   patch/port view misses).
+- **Dangerous file capabilities** — a binary granted ``cap_setuid``,
+  ``cap_dac_override``, ``cap_sys_admin`` and the like (``getcap``): privilege
+  without the setuid bit, so the SUID scan misses it. HIGH on a shell or
+  interpreter, in a temp or hidden path, or with every capability; MEDIUM on a
+  file no package owns; LOW on a packaged system file (confirm it is intended).
 - **Shell-rc hijacks** — a function or redirecting alias wrapping
   ``sudo``/``ssh``/``su``/``passwd`` (a credential logger), or
   ``PROMPT_COMMAND``/``BASH_ENV`` wired to run a command.
@@ -1159,6 +1164,105 @@ def _check_suid(max_report: int = 40, max_files: int = 60000) -> list[Finding]:
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Dangerous file capabilities (#38): privilege without the setuid bit.
+# --------------------------------------------------------------------------- #
+
+#: Capabilities that amount to root (or to reading/writing any file) when an
+#: attacker can run the binary. Network ones like cap_net_raw (ping) or
+#: cap_net_bind_service are deliberately not here.
+DANGEROUS_CAPS = frozenset({
+    "cap_setuid", "cap_setgid", "cap_setfcap", "cap_setpcap",
+    "cap_dac_override", "cap_dac_read_search", "cap_chown", "cap_fowner",
+    "cap_sys_admin", "cap_sys_ptrace", "cap_sys_module", "cap_sys_rawio",
+    "cap_bpf", "cap_mknod",
+})
+
+# libcap >= 2.4x: "/usr/bin/ping cap_net_raw=ep"; older: "/usr/bin/ping = cap_net_raw+ep".
+_GETCAP_OLD = re.compile(r"^(?P<path>/.+?)\s+=\s+(?P<caps>\S.*)$")
+_GETCAP_NEW = re.compile(r"^(?P<path>/.+?)\s+(?P<caps>(?:[a-z_,]*[=+-][eip]*\s*)+)$", re.I)
+
+
+def parse_getcap_line(line: str) -> tuple[str, set[str], bool] | None:
+    """One ``getcap -r`` line -> (path, effective/permitted caps, all caps).
+
+    Handles ``/usr/bin/ping cap_net_raw=ep`` (current libcap),
+    ``/usr/bin/ping = cap_net_raw+ep`` (older) and multi-clause sets like
+    ``cap_setuid,cap_net_raw=ep cap_chown=i``. Inheritable-only (``i``) caps
+    grant nothing by themselves and are left out. ``=ep`` (every capability)
+    sets the flag. Pure."""
+    line = line.strip()
+    m = _GETCAP_OLD.match(line) or _GETCAP_NEW.match(line)
+    if not m:
+        return None
+    caps: set[str] = set()
+    every = False
+    for clause in m.group("caps").replace("+", "=").split():
+        names, _, flags = clause.rpartition("=")
+        if not ({"e", "p"} & set(flags.lower())):
+            continue
+        if not names or names.lower() == "all":
+            every = True
+            continue
+        caps.update(n.strip().lower() for n in names.split(",") if n.strip())
+    return m.group("path"), caps, every
+
+
+def classify_caps(path: str, caps: set[str], every: bool = False,
+                  packaged: bool | None = None) -> tuple[Severity, str] | None:
+    """Is this capability set dangerous *here*? ``(severity, reason)`` or None.
+
+    ``packaged`` says whether a package owns the file (None = unknown). Pure."""
+    bad = sorted(caps & DANGEROUS_CAPS)
+    if not bad and not every:
+        return None
+    what = "every capability" if every else ", ".join(bad)
+    base = os.path.basename(path)
+    stem = re.sub(r"[0-9.]+$", "", base)
+    if _SUSPECT_EXE_DIR.match(path) or "/." in path:
+        return Severity.HIGH, f"{what} on a file in a temp or hidden path"
+    if base in _SUID_INTERP or stem in _SUID_INTERP:
+        return Severity.HIGH, f"{what} on a shell or interpreter"
+    if every:
+        return Severity.HIGH, "every capability granted"
+    if packaged is False:
+        return Severity.MEDIUM, f"{what} on a file no package owns"
+    return Severity.LOW, f"{what} on a packaged file (confirm it is intended)"
+
+
+def _packaged(path: str) -> bool | None:
+    if not have("dpkg-query"):
+        return None
+    return run(["dpkg-query", "-S", path], timeout=15).ok
+
+
+def _check_caps(max_report: int = 40) -> list[Finding]:
+    """File capabilities under the SUID scan dirs and homes (``getcap -r``)."""
+    if not have("getcap"):
+        return []
+    dirs = [d for d in _SUID_SCAN_DIRS + _home_dirs() if os.path.isdir(d)]
+    if not dirs:
+        return []
+    # getcap exits non-zero when some path is unreadable; read the output anyway.
+    r = run(["getcap", "-r", *dirs], timeout=180)
+    out: list[Finding] = []
+    for line in (r.out or "").splitlines():
+        parsed = parse_getcap_line(line)
+        if not parsed:
+            continue
+        path, caps, every = parsed
+        if not (caps & DANGEROUS_CAPS or every):
+            continue
+        res = classify_caps(path, caps, every, _packaged(path))
+        if res:
+            sev, reason = res
+            out.append(_f(sev, f"file capability: {reason}: {path}",
+                          detail=line.strip()[:200]))
+            if len(out) >= max_report:
+                break
+    return out
+
+
 _RC_HIJACK_FILES = (".bashrc", ".bash_profile", ".bash_login", ".profile",
                     ".zshrc", ".zprofile")
 
@@ -1266,7 +1370,8 @@ def audit(allow_forced: list[str] | None = None,
                 + check_connections(allow=rules, hits=hits, recognised=recognised)
                 + check_persistence(allow_forced, forced_hits)
                 + _check_proc_origin() + _check_pkg_integrity()
-                + _check_accounts() + _check_accepted_password() + _check_suid())
+                + _check_accounts() + _check_accepted_password() + _check_suid()
+                + _check_caps())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
     if notes is not None:
         notes["allowed_outbound_hits"] = hits
