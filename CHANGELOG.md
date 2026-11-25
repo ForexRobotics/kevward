@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.20.2
+
+kevward's firewall survives an uninstall/reinstall and a missing firewall is
+reported (#243, #244); report units from the old example no longer hide
+/home and /tmp from the audit (#246); #245. Updating with `self.update` is
+enough: the managed drop-in and the firewall record are written on the way.
 
 - **Fix: a reinstalled host lost kevward's firewall (#243).** `firewall
   apply` records `/var/lib/kevward/firewall.json` (kept by `uninstall` unless
