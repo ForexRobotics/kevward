@@ -417,9 +417,11 @@ def _reboot_schedule() -> dict:
 
 
 def _configure_apt(cfg: Config) -> None:
-    from .plugins import _apt
+    from .plugins import _apk, _apt
 
     _apt.reset_simulation()
+    _apk.reset_simulation()
+    _apk._installed.cache_clear()
     _apt.configure(_apt.AptSettings(
         security_origins=list(cfg.apt.security_origins),
         php_release_check=cfg.apt.php_release_check,
