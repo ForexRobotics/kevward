@@ -1,3 +1,8 @@
+# Example only: prefer `sudo kevward schedule install`, which writes this unit,
+# the timer and kevward's managed drop-ins (and keeps them up to date on
+# `self.update`). Keep this file in sync with kevward/schedule.py
+# render_service() (#246: no ProtectHome / PrivateTmp, which would hide /home
+# and /tmp from the audit).
 [Unit]
 Description=kevward defensive posture report
 Documentation=https://github.com/ForexRobotics/kevward
@@ -6,11 +11,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Read-only: reports findings + attacker IPs + CISA KEV trends. Makes no changes.
-ExecStart=/usr/bin/kevward report --trends -o /var/log/kevward/report.html
-# Hardening for the unit itself.
+# Read-only: findings, attacker IPs, CISA KEV trends, audit. Makes no changes.
+ExecStart=/opt/kevward/bin/kevward report --trends --audit -o /var/log/kevward/report.html
 ProtectSystem=strict
-ReadWritePaths=/var/log/kevward /var/cache/kevward
-ProtectHome=true
-PrivateTmp=true
+ReadWritePaths=-/var/log/kevward -/var/cache/kevward -/var/lib/kevward -/var/lib/apt/lists -/var/cache/apt
 NoNewPrivileges=true

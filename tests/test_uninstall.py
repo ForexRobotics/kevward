@@ -244,7 +244,7 @@ def test_snapshot_and_restore_roundtrip(tmp_path):
     assert snap == {"version": 1,
                     "users": [{"user": "ktakahashi", "read_key": read, "operate_key": op}],
                     "timer": {"at": "05:30", "jitter": "10min"},
-                    "fail2ban_ignore": ["124.44.207.82/32"]}
+                    "fail2ban_ignore": ["124.44.207.82/32"], "firewall": False}
     path = tmp_path / "snap.json"
     path.write_text(json.dumps(snap))
     seen = []

@@ -192,23 +192,81 @@ SUDOERS_GATE = "/etc/sudoers.d/kevward-ssh-gate"
 _GATE_ROLE = re.compile(r'command="(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (read|operate)')
 
 
+def report_sandbox(mountinfo: str = "/proc/self/mountinfo") -> dict:
+    """Does this run see a hidden /home or a private /tmp (#246)? From this
+    process's mount table: systemd's ProtectHome=yes mounts an inaccessible
+    directory over /home (``tmpfs`` mounts an empty tmpfs); PrivateTmp binds a
+    ``systemd-private-*`` directory over /tmp. Read-only."""
+    home_hidden = tmp_private = False
+    try:
+        with open(mountinfo, errors="replace") as fh:
+            for ln in fh:
+                pre, _, post = ln.partition(" - ")
+                f, g = pre.split(), post.split()
+                if len(f) < 5:
+                    continue
+                root, point, fstype = f[3], f[4], (g[0] if g else "")
+                if point == "/home" and ("inaccessible" in root or fstype == "tmpfs"):
+                    home_hidden = True
+                if point == "/tmp" and "systemd-private-" in root:
+                    tmp_private = True
+    except OSError:
+        pass
+    return {"home_hidden": home_hidden, "tmp_private": tmp_private}
+
+
+def sandbox_findings(sb: dict) -> list[Finding]:
+    """MEDIUM when the report cannot see the real /home or /tmp (#246). Pure."""
+    hidden = [p for p, k in (("/home", "home_hidden"), ("/tmp", "tmp_private")) if sb.get(k)]
+    if not hidden:
+        return []
+    return [Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
+                    title=f"the report runs without the real {' and '.join(hidden)}: "
+                          "audit checks there are blind",
+                    detail="The report unit has ProtectHome and/or PrivateTmp (from an old "
+                           "example unit), so authorized_keys, forced-command and /tmp checks "
+                           "see nothing. `sudo kevward schedule install` (or a kevward update) "
+                           "writes the drop-in that turns them off.")]
+
+
+def firewall_missing_findings(state: dict) -> list[Finding]:
+    """HIGH when kevward's blocklist should be loaded but is not (#244): the
+    boot unit is enabled, or it was applied on this host before. Pure."""
+    from .firewall import expected_but_missing
+
+    if not expected_but_missing(state or {}):
+        return []
+    why = ("its boot unit is enabled" if (state or {}).get("unit") == "enabled"
+           else "it was applied on this host before")
+    return [Finding(service="firewall", kind=FindingKind.CONFIG, severity=Severity.HIGH,
+                    title="kevward firewall not loaded: no IPs are being blocked",
+                    detail=f"Table inet kevward is absent although {why}. Run `sudo kevward "
+                           "firewall apply --yes`; after a reinstall, `sudo kevward setup "
+                           "--restore` puts it back with the console's address allowed. "
+                           "To stop using the blocklist, remove /var/lib/kevward/firewall.json.")]
+
+
 def gate_access(homes: list[str], sudoers: str = SUDOERS_GATE) -> dict:
     """Which ssh-gate keys exist in the given home directories and whether the
-    operate role's sudoers drop-in is there (#237). Read-only."""
+    operate role's sudoers drop-in is there (#237). ``checked``: authorized_keys
+    files read (#246). Read-only."""
     roles = {"read": 0, "operate": 0}
+    checked = 0
     for home in homes:
         try:
             with open(os.path.join(home, ".ssh", "authorized_keys"), errors="replace") as fh:
+                checked += 1
                 for ln in fh:
                     m = _GATE_ROLE.search(ln)
                     if m:
                         roles[m.group(1)] += 1
         except OSError:
             continue
-    return {**roles, "sudoers": os.path.exists(sudoers)}
+    return {**roles, "sudoers": os.path.exists(sudoers), "checked": checked}
 
 
-def gate_access_findings(enabled: bool, access: dict, snapshot_exists: bool) -> list[Finding]:
+def gate_access_findings(enabled: bool, access: dict, snapshot_exists: bool,
+                         home_hidden: bool = False) -> list[Finding]:
     """MEDIUM when ssh-gate is on but a console could not get in (#237):
     no gate key at all, or operate keys without their sudoers drop-in. Pure."""
     if not enabled:
@@ -217,9 +275,19 @@ def gate_access_findings(enabled: bool, access: dict, snapshot_exists: bool) -> 
            "`kevward uninstall` saved)" if snapshot_exists else
            "Run `sudo kevward setup --console-user … --read-key … --operate-key …`")
     if not access.get("read") and not access.get("operate"):
+        if home_hidden:
+            # Could not look: never claim the keys are missing (#246).
+            return [Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
+                            title="ssh-gate keys could not be checked: /home is hidden "
+                                  "from the report",
+                            detail="This run cannot see /home (ProtectHome in the report "
+                                   f"unit); {access.get('checked', 0)} authorized_keys "
+                                   "file(s) were read elsewhere.")]
         return [Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
                         title="ssh-gate is enabled but no authorized_keys entry uses it",
-                        detail="The console cannot connect to this host. " + fix + ".")]
+                        detail="The console cannot connect to this host. Checked "
+                               f"{access.get('checked', 0)} authorized_keys file(s) under the "
+                               "users' home directories. " + fix + ".")]
     if access.get("operate") and not access.get("sudoers"):
         return [Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.MEDIUM,
                         title=f"ssh-gate operate key without {SUDOERS_GATE}",
@@ -386,7 +454,13 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
             homes = sorted({pw.pw_dir for pw in pwd.getpwall() if pw.pw_dir})
             gate += gate_access_findings(
                 True, gate_access(homes),
-                os.path.exists("/var/lib/kevward/setup-snapshot.json"))
+                os.path.exists("/var/lib/kevward/setup-snapshot.json"),
+                home_hidden=report_sandbox()["home_hidden"])
+    except Exception:
+        pass
+    try:
+        if is_root():
+            gate += sandbox_findings(report_sandbox())
     except Exception:
         pass
     if gate:

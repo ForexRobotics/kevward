@@ -172,14 +172,15 @@ JA: dict[str, str] = {
     "{label}, {span}": "{label}、{span}",
     "{n} h": "{n} 時間",
     "{n} days": "{n} 日",
-    "<b>⚠ kevward firewall not loaded</b> — the boot unit is enabled but table "
-    "<code>inet kevward</code> is absent, so no IPs are being blocked. Check "
-    "<code>systemctl status kevward-firewall</code>, then run "
-    "<code>kevward firewall apply --yes</code>.":
-        "<b>⚠ kevward のファイアウォールが読み込まれていません</b> — 起動用のユニットは"
-        "有効ですが、テーブル <code>inet kevward</code> がないため、どの IP も"
-        "ブロックされていません。<code>systemctl status kevward-firewall</code> を確認し、"
-        "<code>kevward firewall apply --yes</code> を実行してください。",
+    "<b>⚠ kevward firewall not loaded</b> — the blocklist is in use on this host but "
+    "table <code>inet kevward</code> is absent, so no IPs are being blocked. Run "
+    "<code>sudo kevward firewall apply --yes</code> (after a reinstall: "
+    "<code>sudo kevward setup --restore</code>).":
+        "<b>⚠ kevward のファイアウォールが読み込まれていません</b> — このホストでは遮断リストを"
+        "使っていますが、テーブル <code>inet kevward</code> がないため、どの IP も"
+        "遮断されていません。<code>sudo kevward firewall apply --yes</code> を実行してください"
+        "（再インストールのあとなら <code>sudo kevward setup --restore</code>）。",
+    "firewall drops: <b>not loaded</b>": "ファイアウォールで破棄: <b>読み込まれていません</b>",
     "fail2ban bans — currently banned: <span class=\"kpi\">{live}</span> · unique "
     "offenders seen: <b>{unique}</b>":
         "fail2ban の BAN — 現在 BAN 中: <span class=\"kpi\">{live}</span> · "
@@ -189,8 +190,8 @@ JA: dict[str, str] = {
         "sshd の認証失敗 — 送信元: <b>{sources}</b> · 試行: <b>{attempts}</b>",
     "No sshd auth failures found.": "sshd の認証失敗はありません。",
     "(all rotated auth logs, {span})": "（ローテート済みを含む全 auth ログ、{span}）",
-    "last 24h: <b>{n24}</b> attempts from <b>{s24}</b> sources · last 7d: <b>{n7}</b>":
-        "直近 24 時間: <b>{s24}</b> 件の送信元から <b>{n24}</b> 回 · "
+    "last 24h: <b>{n24}</b> attempts from <b>{s24}</b> sources{vs} · last 7d: <b>{n7}</b>":
+        "直近 24 時間: <b>{s24}</b> 件の送信元から <b>{n24}</b> 回{vs} · "
         "直近 7 日: <b>{n7}</b> 回",
     # --- audit ---
     "Host compromise indicators (audit)": "侵入の痕跡（audit）",

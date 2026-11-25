@@ -76,6 +76,7 @@ class Env:
     runner: object = None               # util.run-compatible
     now: datetime | None = None
     is_root: object = None
+    state_dir: Path = Path("/var/lib/kevward")
 
     def user(self, name: str) -> tuple[int, int, Path]:
         if self.lookup_user:
@@ -455,6 +456,16 @@ def step_refresh(env: Env, plan: Plan, dry_run: bool) -> None:
     changed = any(m.startswith(("created", "updated", "would")) for m in msgs)
     plan.add("refresh", paths.service_dropin, "update" if changed else "unchanged",
              messages=msgs)
+    # Hosts that applied the blocklist before #243 have no in-use record yet:
+    # write it while the table is loaded, so a later uninstall/reinstall or a
+    # lost table is noticed.
+    marker = env.state_dir / "firewall.json"
+    if not marker.exists() and _table_loaded(env):
+        plan.add("refresh", marker, "create" if not dry_run else "would create",
+                 messages=["blocklist in use: recorded"])
+        if not dry_run:
+            from .firewall import mark_in_use
+            mark_in_use(str(marker), persist=True)
 
 
 def _key_part(line: str) -> str | None:
@@ -466,7 +477,8 @@ def _key_part(line: str) -> str | None:
     return None
 
 
-def snapshot_host(etc: Path, homes: list[tuple[str, Path]], state_file: Path) -> dict:
+def snapshot_host(etc: Path, homes: list[tuple[str, Path]], state_file: Path,
+                  firewall_used: bool = False) -> dict:
     """What setup put on this host, in setup's own terms, so ``setup
     --restore`` can put it back after an uninstall (#236). Pure apart from
     reading files; holds public keys and addresses only."""
@@ -501,7 +513,46 @@ def snapshot_host(etc: Path, homes: list[tuple[str, Path]], state_file: Path) ->
                        if t and t not in F2B_BASE and "%(" not in t]
     except (OSError, IndexError):
         pass
-    return {"version": 1, "users": users, "timer": timer, "fail2ban_ignore": f2b}
+    return {"version": 1, "users": users, "timer": timer, "fail2ban_ignore": f2b,
+            "firewall": bool(firewall_used)}
+
+
+def _table_loaded(env: Env) -> bool | None:
+    r = (env.runner or run)(["nft", "list", "table", "inet", "kevward"], timeout=15)
+    if r.rc == 127:
+        return None
+    return r.rc == 0
+
+
+def step_firewall(env: Env, plan: Plan, allow: list[str], dry_run: bool, *,
+                  apply: bool) -> None:
+    """kevward's blocklist after a reinstall (#243). With ``apply`` (restore):
+    run ``kevward firewall apply --yes`` with the console's addresses allowed,
+    so the console cannot lock itself out. Without (plain setup): only report
+    that the blocklist is in use here but not loaded."""
+    target = "nft inet kevward"
+    loaded = _table_loaded(env)
+    if loaded:
+        plan.add("firewall", target, "unchanged")
+        return
+    if not apply:
+        plan.add("firewall", target, "skipped",
+                 hint="the blocklist was in use on this host but is not loaded: "
+                      "run `sudo kevward setup --restore` or "
+                      "`sudo kevward firewall apply --yes`")
+        return
+    allow = sorted(set(allow))
+    plan.add("firewall", target, "apply", allow=allow)
+    if dry_run:
+        return
+    argv = [str(env.prefix / "bin" / "kevward"), "firewall", "apply", "--yes"]
+    for ip in allow:
+        argv += ["--allow", ip]
+    r = (env.runner or run)(argv, timeout=600)
+    if r.rc != 0:
+        plan.actions.pop()
+        tail = (r.err or r.out or f"exit {r.rc}").strip().splitlines()[-3:]
+        raise GateError("internal", "kevward firewall apply failed: " + " / ".join(tail)[:300])
 
 
 def restore(*, dry_run: bool = False, env: Env | None = None,
@@ -517,7 +568,7 @@ def restore(*, dry_run: bool = False, env: Env | None = None,
     users = snap.get("users") or []
     timer = snap.get("timer")
     f2b = snap.get("fail2ban_ignore") or []
-    if not (users or timer or f2b):
+    if not (users or timer or f2b or snap.get("firewall")):
         raise GateError("not_found", f"{path} records nothing to restore")
     actions: list[dict] = []
     first = True
@@ -528,9 +579,14 @@ def restore(*, dry_run: bool = False, env: Env | None = None,
                   timer=bool(timer) and first,
                   timer_at=(timer or {}).get("at"), timer_jitter=(timer or {}).get("jitter"),
                   fail2ban_ignore=f2b if (first and f2b) else None,
-                  dry_run=dry_run, env=env)
+                  check_firewall=False, dry_run=dry_run, env=env)
         actions += d["actions"]
         first = False
+    if snap.get("firewall"):
+        env_ = env or Env()
+        fwp = Plan()
+        step_firewall(env_, fwp, f2b, dry_run, apply=True)
+        actions += fwp.actions
     return {"dry_run": dry_run, "restored_from": str(path),
             "changed": any(a["action"] in ("create", "update") for a in actions),
             "actions": actions}
@@ -541,6 +597,7 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
           fail2ban_ignore: list[str] | None = None, refresh: bool = False,
           self_update: bool = False, allow_reboot: bool = False,
           timer_at: str | None = None, timer_jitter: str | None = None,
+          check_firewall: bool = True,
           dry_run: bool = False, env: Env | None = None) -> dict:
     """Run the requested steps; returns the plan (what changed / would change).
     Raises GateError with an ssh-gate code."""
@@ -590,6 +647,8 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
         step_keys(env, plan, console_user or "", read_key, operate_key, dry_run)
         if refresh:
             step_refresh(env, plan, dry_run)
+        if check_firewall and (env.state_dir / "firewall.json").exists():
+            step_firewall(env, plan, [], dry_run, apply=False)
     except GateError as e:
         changed = [a for a in plan.actions if a["action"] in ("create", "update")]
         if changed and not dry_run:

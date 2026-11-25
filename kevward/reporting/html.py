@@ -56,11 +56,12 @@ def _ssh_window(lw: dict, t: Translator = _EN, prev: dict | None = None) -> tupl
         pct = change_pct(n24, before)
         vs = " " + t("(previous report: {before}, {change})", before=f"{before:,}",
                      change=(f"{pct:+d}%" if pct is not None else "—"))
+    # The comparison belongs to the 24 h figure, not the 7 d one (#245).
     recent = (
         "<p class='muted' style='margin-top:-6px'>"
-        + t("last 24h: <b>{n24}</b> attempts from <b>{s24}</b> sources · "
-            "last 7d: <b>{n7}</b>", n24=f"{n24:,}", s24=s24, n7=f"{n7:,}")
-        + vs + "</p>"
+        + t("last 24h: <b>{n24}</b> attempts from <b>{s24}</b> sources{vs} · "
+            "last 7d: <b>{n7}</b>", n24=f"{n24:,}", s24=s24, n7=f"{n7:,}", vs=vs)
+        + "</p>"
     )
     return suffix, recent
 
@@ -438,15 +439,20 @@ def render(result: RunResult, lang: str | None = None) -> str:
             + "</p>"
         )
 
-    # Blocklist meant to be on (boot unit enabled) but the table is gone.
+    # Blocklist meant to be on (boot unit enabled, or applied before: #243)
+    # but the table is gone.
     fw_state = att.get("firewall_state") or {}
-    if fw_state.get("table") is False and fw_state.get("unit") == "enabled":
+    if fw_state.get("table") is False and (fw_state.get("unit") == "enabled"
+                                           or fw_state.get("in_use")):
+        if not fw_line:  # always show the drops line (#244)
+            fw_line = ("<p class='muted' style='margin-top:0'>"
+                       + t("firewall drops: <b>not loaded</b>") + "</p>")
         fw_line += (
             "<p style='margin-top:0;color:#b4232a'>"
-            + t("<b>⚠ kevward firewall not loaded</b> — the boot unit is enabled but table "
-                "<code>inet kevward</code> is absent, so no IPs are being blocked. Check "
-                "<code>systemctl status kevward-firewall</code>, then run "
-                "<code>kevward firewall apply --yes</code>.")
+            + t("<b>⚠ kevward firewall not loaded</b> — the blocklist is in use on this host "
+                "but table <code>inet kevward</code> is absent, so no IPs are being blocked. "
+                "Run <code>sudo kevward firewall apply --yes</code> (after a reinstall: "
+                "<code>sudo kevward setup --restore</code>).")
             + "</p>"
         )
 

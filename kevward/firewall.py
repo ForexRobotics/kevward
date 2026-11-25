@@ -46,6 +46,10 @@ CHAIN = "input"
 # Reboot-persistence (issue #12): a kevward-owned systemd unit re-applies the
 # saved ruleset on boot, exactly like kevward-harden does for harden.
 PERSIST_FILE = "/etc/kevward/firewall.nft"
+#: Written when `firewall apply` succeeds; says "this host uses kevward's
+#: blocklist" (#243). It lives in /var/lib/kevward, which `kevward uninstall`
+#: keeps unless --purge, so a reinstalled host knows its firewall is missing.
+IN_USE_FILE = "/var/lib/kevward/firewall.json"
 PERSIST_UNIT = "kevward-firewall.service"
 PERSIST_UNIT_FILE = "/etc/systemd/system/kevward-firewall.service"
 # Written (apply path only) whenever kevward's drop rules are (re)created, which
@@ -449,17 +453,45 @@ def counters_since() -> int | None:
     return max(times) if times else None
 
 
+def mark_in_use(path: str = IN_USE_FILE, *, persist: bool) -> None:
+    """Record that the blocklist is in use on this host (#243). Fail-soft."""
+    from datetime import datetime, timezone
+
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"applied_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                       "persist": persist}, fh)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def in_use(path: str = IN_USE_FILE) -> bool:
+    return os.path.exists(path)
+
+
 def table_state() -> dict:
-    """Is kevward's table loaded, and is the boot unit enabled? (read-only).
+    """Is kevward's table loaded, is the boot unit enabled, and has the
+    blocklist been applied on this host before (``in_use``, #243)? Read-only.
 
     ``table`` is None when it can't be judged (no nft, or not root). The
-    report flags ``table is False`` with the unit enabled: the blocklist was
-    meant to be on but isn't (e.g. the boot-time reload failed).
+    report flags ``table is False`` when the blocklist was meant to be on —
+    the boot unit is enabled, or it was applied before (an uninstall removes
+    the unit but not that record) — but isn't.
     """
     unit = run(["systemctl", "is-enabled", PERSIST_UNIT], timeout=10).out.strip()
+    used = in_use()
     if not (nft_available() and is_root()):
-        return {"table": None, "unit": unit}
-    return {"table": _nft(["list", "table", "inet", TABLE]).ok, "unit": unit}
+        return {"table": None, "unit": unit, "in_use": used}
+    return {"table": _nft(["list", "table", "inet", TABLE]).ok, "unit": unit, "in_use": used}
+
+
+def expected_but_missing(state: dict) -> bool:
+    """The blocklist should be loaded but is not (#243). Pure."""
+    return state.get("table") is False and (state.get("unit") == "enabled"
+                                            or bool(state.get("in_use")))
 
 
 def _split_v4_v6(cidrs: list[str]) -> tuple[list[str], list[str]]:
@@ -876,6 +908,7 @@ def run_cli(action: str, *, ttl_days: float, min_sshd: int,
         pruned, prune_err = prune_covered(sorted(set(block) | set(current_block_cidrs())))
         errors += prune_err
         print(f"added {added} IP(s) to the kevward blocklist (nft inet {TABLE}).")
+        mark_in_use(persist=persist)
         if pruned:
             print(f"pruned {pruned} IP(s) already covered by a permanent CIDR block.")
         if block:
