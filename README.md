@@ -477,7 +477,7 @@ enabled = true
 
 | role | ops | how |
 |---|---|---|
-| `read` | `version`, `gate.capabilities`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
+| `read` | `version`, `gate.capabilities`, `gate.selfpaths`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
 | `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install`, `apply.start` | `sudo -n`, with an exact-match sudoers line |
 
 ```text
@@ -509,7 +509,11 @@ role; truthgate decides what each role may do. `gate.capabilities` lists the
 products on the host (kevward's ops for the role, and truthgate's
 capabilities when it is installed). The wire protocol, shared with truthgate,
 is in [docs/ssh-gate-protocol.md](docs/ssh-gate-protocol.md) (CC0) with test
-vectors.
+vectors. `gate.selfpaths` lists every path on the console's way in (launcher
+and its sha256, interpreter, login shell, sudo, package directory, every
+program kevward runs, the apply unit names), so an execution allow-list such
+as truthgate's enforce mode can keep the host manageable; take it again after
+`self.update`.
 
 `config.set` (`{"set": {"report.lang": "ja"}, "expect_sha256": "<from
 config.get>"}`) only writes keys that `config.schema` marks writable. Those
