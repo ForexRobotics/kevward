@@ -29,6 +29,12 @@ host kevward runs on for the tell-tale signs of a post-intrusion foothold:
 - **Rogue process origin** — a process backed by a deleted, temp-resident or
   hidden executable (an in-memory implant), or one wearing a kernel-thread name
   while backed by a real binary (a ``[kcached]``-style disguise).
+- **Rootkit indicators** — in-guest discrepancies only, never touching the
+  kernel (#40): a live process absent from the ``/proc`` listing (hidden PID),
+  a TCP listener netlink (``ss``) sees but ``/proc/net/tcp*`` does not (hidden
+  port), a userspace listener no visible process owns, a loaded module in
+  ``/sys/module`` missing from ``/proc/modules`` (hidden module), and
+  out-of-tree / unsigned / force-loaded modules (LOW, to confirm).
 - **Package integrity** — installed files whose checksum no longer matches the
   package (``dpkg --verify``), i.e. a modified/backdoored system binary — with
   no stored baseline for an attacker to tamper with.
@@ -47,6 +53,7 @@ import glob
 import ipaddress
 import os
 import re
+import time
 from dataclasses import dataclass
 
 from .model import Finding, FindingKind, Severity
@@ -1159,6 +1166,213 @@ def _check_suid(max_report: int = 40, max_files: int = 60000) -> list[Finding]:
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Rootkit indicators (#40): in-guest discrepancies, read-only, needs root.
+# Each signal is conservative: a discrepancy between two views of the same
+# kernel state, not a heuristic about names.
+# --------------------------------------------------------------------------- #
+
+#: Well-known out-of-tree drivers (DKMS / vendor) that carry O/E taint flags on
+#: ordinary hosts. Prefix match on the module name.
+_KNOWN_OOT_MODULES = (
+    "nvidia", "vboxdrv", "vboxnet", "vboxguest", "vboxsf", "vboxvideo", "vmmon",
+    "vmnet", "zfs", "spl", "v4l2loopback", "evdi", "wl", "kvdo",
+)
+
+
+def hidden_pids(listed_before: set[int], alive_tgids: set[int],
+                listed_after: set[int]) -> list[int]:
+    """Process ids that exist (``/proc/<pid>`` stat-able, thread-group leader)
+    but were in neither ``/proc`` listing: hidden from readdir, the classic
+    userland/LKM process-hiding trick. Checking two listings around the probe
+    removes processes that simply started in between. Pure."""
+    return sorted(alive_tgids - listed_before - listed_after)
+
+
+def parse_proc_net_listen_ports(text: str) -> set[int]:
+    """Listening ports (state ``0A``) from ``/proc/net/tcp`` or ``tcp6``. Pure."""
+    ports: set[int] = set()
+    for line in (text or "").splitlines()[1:]:
+        parts = line.split()
+        if len(parts) > 3 and parts[3] == "0A" and ":" in parts[1]:
+            try:
+                ports.add(int(parts[1].rsplit(":", 1)[1], 16))
+            except ValueError:
+                continue
+    return ports
+
+
+def parse_ss_listeners(text: str) -> list[tuple[int, bool, int | None, str]]:
+    """``ss -tlnpeH`` -> [(port, has an owning process, inode, line)]. Pure."""
+    out = []
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) < 4 or parts[0] != "LISTEN":
+            continue
+        _, port = _split_hostport(parts[3])
+        if port is None:
+            continue
+        m = re.search(r"\bino:(\d+)", line)
+        out.append((port, "users:((" in line, int(m.group(1)) if m else None, line.strip()))
+    return out
+
+
+def classify_listeners(ss_rows: list[tuple[int, bool, int | None, str]],
+                       proc_ports: set[int]) -> list[tuple[Severity, str, str]]:
+    """Hidden ports from the two views. Pure.
+
+    * HIGH: a listener netlink reports but ``/proc/net/tcp*`` does not (the
+      proc seq file is what socket-hiding rootkits hook).
+    * MEDIUM: a *userspace* listener (inode != 0) with no owning process while
+      running as root. Kernel listeners (nfsd, lockd) have inode 0 and are
+      skipped."""
+    out: list[tuple[Severity, str, str]] = []
+    for port, owned, ino, line in ss_rows:
+        if proc_ports and port not in proc_ports:
+            out.append((Severity.HIGH,
+                        f"possible hidden port: listener on {port} missing from "
+                        "/proc/net/tcp", line[:200]))
+        elif not owned and ino:
+            out.append((Severity.MEDIUM,
+                        f"listener on {port} has no visible owning process", line[:200]))
+    return out
+
+
+def parse_proc_modules(text: str) -> dict[str, str]:
+    """``/proc/modules`` -> {name: taint flags} (e.g. ``"OE"``, ``""``). Pure."""
+    out: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        m = re.search(r"\(([A-Z]+)\)\s*$", line)
+        out[parts[0]] = m.group(1) if m else ""
+    return out
+
+
+def classify_modules(proc_modules: dict[str, str],
+                     sys_loadable: set[str]) -> list[tuple[Severity, str, str]]:
+    """Hidden and suspect kernel modules. Pure.
+
+    ``sys_loadable`` holds the ``/sys/module/<name>`` entries that have an
+    ``initstate`` file (loadable modules; built-ins have none).
+
+    * HIGH: loaded per ``/sys/module`` but missing from ``/proc/modules`` (a
+      module unlinked from the module list to hide itself).
+    * LOW: out-of-tree (``O``), unsigned (``E``) or force-loaded (``F``), unless
+      it is a well-known vendor/DKMS driver; the operator confirms it."""
+    out: list[tuple[Severity, str, str]] = []
+    if proc_modules:
+        for name in sorted(sys_loadable - set(proc_modules)):
+            out.append((Severity.HIGH, f"possible hidden kernel module: {name}",
+                        "present in /sys/module but missing from /proc/modules"))
+    for name, flags in sorted(proc_modules.items()):
+        odd = "".join(f for f in flags if f in "OEF")
+        if not odd or name.startswith(_KNOWN_OOT_MODULES):
+            continue
+        what = {"O": "out-of-tree", "E": "unsigned", "F": "force-loaded"}
+        out.append((Severity.LOW,
+                    f"kernel module {name} is " + ", ".join(what[f] for f in odd),
+                    "confirm you installed it (DKMS/vendor driver); an unexpected "
+                    "one can be a rootkit"))
+    return out
+
+
+def _listed_pids() -> set[int]:
+    try:
+        return {int(p) for p in os.listdir("/proc") if p.isdigit()}
+    except OSError:
+        return set()
+
+
+def _tgid(pid: int) -> int | None:
+    try:
+        with open(f"/proc/{pid}/status") as fh:
+            for ln in fh:
+                if ln.startswith("Tgid:"):
+                    return int(ln.split()[1])
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _probe_limit(listed: set[int]) -> int:
+    top = max(listed, default=0)
+    try:
+        with open("/proc/loadavg") as fh:
+            top = max(top, int(fh.read().split()[4]))
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        with open("/proc/sys/kernel/pid_max") as fh:
+            top = min(top + 1024, int(fh.read()))
+    except (OSError, ValueError):
+        top += 1024
+    return top
+
+
+def _check_hidden_pids(budget_s: float = 20.0) -> list[Finding]:
+    before = _listed_pids()
+    if not before:
+        return []
+    alive: set[int] = set()
+    deadline = time.monotonic() + budget_s
+    for pid in range(1, _probe_limit(before) + 1):
+        if pid in before:
+            continue
+        if not pid % 4096 and time.monotonic() > deadline:
+            return [_f(Severity.INFO, "hidden-PID probe stopped early (time budget)",
+                       detail=f"probed up to pid {pid}")]
+        if os.path.exists(f"/proc/{pid}") and _tgid(pid) == pid:
+            alive.add(pid)
+    if not alive:
+        return []
+    after = _listed_pids()
+    out = []
+    for pid in hidden_pids(before, {p for p in alive if os.path.exists(f"/proc/{p}")}, after):
+        out.append(_f(Severity.HIGH, f"possible hidden process: pid {pid}",
+                      detail=f"/proc/{pid} exists but is not in the /proc listing; "
+                             f"exe {_exe_of(pid) or '?'}"))
+    return out
+
+
+def _check_hidden_ports() -> list[Finding]:
+    r = run(["ss", "-tlnpeH"], timeout=20)
+    if not r.ok:
+        return []
+    proc_ports: set[int] = set()
+    for f in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(f) as fh:
+                proc_ports |= parse_proc_net_listen_ports(fh.read())
+        except OSError:
+            continue
+    return [_f(sev, title, detail)
+            for sev, title, detail in classify_listeners(parse_ss_listeners(r.out), proc_ports)]
+
+
+def _check_modules() -> list[Finding]:
+    try:
+        with open("/proc/modules") as fh:
+            mods = parse_proc_modules(fh.read())
+    except OSError:
+        return []
+    try:
+        loadable = {m for m in os.listdir("/sys/module")
+                    if os.path.exists(f"/sys/module/{m}/initstate")}
+    except OSError:
+        loadable = set()
+    return [_f(sev, title, detail) for sev, title, detail in classify_modules(mods, loadable)]
+
+
+def _check_rootkit() -> list[Finding]:
+    """Rootkit indicators (#40). Root only: without it other users' processes
+    and socket owners are invisible, which would read as 'hidden'."""
+    if not is_root():
+        return []
+    return _check_hidden_pids() + _check_hidden_ports() + _check_modules()
+
+
 _RC_HIJACK_FILES = (".bashrc", ".bash_profile", ".bash_login", ".profile",
                     ".zshrc", ".zprofile")
 
@@ -1266,7 +1480,8 @@ def audit(allow_forced: list[str] | None = None,
                 + check_connections(allow=rules, hits=hits, recognised=recognised)
                 + check_persistence(allow_forced, forced_hits)
                 + _check_proc_origin() + _check_pkg_integrity()
-                + _check_accounts() + _check_accepted_password() + _check_suid())
+                + _check_accounts() + _check_accepted_password() + _check_suid()
+                + _check_rootkit())
     findings.sort(key=lambda f: f.severity.rank, reverse=True)
     if notes is not None:
         notes["allowed_outbound_hits"] = hits

@@ -262,6 +262,12 @@ It flags, for a human to confirm:
 - **Rogue process origin** — a process backed by a deleted, temp-resident or
   hidden executable (an in-memory implant), or wearing a kernel-thread name
   (`[kcached]`-style) while backed by a real binary.
+- **Rootkit indicators** — discrepancies between two views of the same kernel
+  state (root only): a live process missing from the `/proc` listing (hidden
+  PID), a listener `ss` sees but `/proc/net/tcp*` does not (hidden port), a
+  userspace listener no visible process owns, a module in `/sys/module` missing
+  from `/proc/modules` (hidden module), and out-of-tree / unsigned /
+  force-loaded modules other than well-known vendor drivers (LOW, to confirm).
 - **Package integrity** — installed files whose checksum no longer matches the
   package (`dpkg --verify`), i.e. a modified / backdoored system binary — with no
   stored baseline for an attacker to tamper with. (Non-Debian hosts are skipped.)
