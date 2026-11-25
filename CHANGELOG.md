@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **report: snap packages (#253).** A read-only `snap` plugin (when snapd
+  runs): pending refreshes are LOW, MEDIUM after 7 days and HIGH after 30
+  (first seen kept in `/var/lib/kevward/snap-seen.json`); refreshes held
+  system-wide or per snap for more than 7 days are MEDIUM; a snap tracking an
+  `edge` channel is LOW; one INFO line lists the installed snaps. Covers
+  multipass (with its own qemu / dnsmasq), LXD, certbot and the core snaps,
+  which the apt checks never see.
 - **audit: multipass / LXD plumbing on a Linux host is recognised (#252).**
   dnsmasq / lxd listening on a private bridge address and multipassd's SSH
   to its VMs are counted (`audit_recognised` in report.json, one line in
