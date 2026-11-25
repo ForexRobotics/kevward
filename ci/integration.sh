@@ -84,7 +84,7 @@ jget "$TMP/setup.json" "d['ok']" | grep -qx True || { cat "$TMP/setup.json"; fai
 visudo -cf /etc/sudoers.d/kevward-ssh-gate
 
 step "ssh-gate read and operate, client address recorded (#214)"
-gate read '{"op":"version"}' > "$TMP/v.json"; jget "$TMP/v.json" "d['data']['version']"
+gate read '{"op":"version"}' > "$TMP/v.json"; jget "$TMP/v.json" "d['data']['kevward']"
 gate operate '{"op":"reboot.status"}' > "$TMP/rb.json"
 jget "$TMP/rb.json" "d['ok']" | grep -qx True || { cat "$TMP/rb.json"; fail "reboot.status (#203)"; }
 gate operate '{"op":"schedule.status"}' > "$TMP/ss.json"
