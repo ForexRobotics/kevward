@@ -18,6 +18,7 @@ processes, so callers should say so rather than report "nothing found".
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 # Only code from the system's own trees counts. /tmp, /dev/shm, memfd: and
@@ -148,3 +149,78 @@ def scan(proc: str = "/proc") -> list[StaleUnit]:
     for u in out:
         u.pids.sort()
     return out
+
+
+# --- hypervisor processes on an old binary (#254) ---------------------------------
+
+#: Long-running VM processes: a qemu update is not in effect for a VM until
+#: the VM itself is restarted.
+VM_BINARIES = ("qemu-system-", "virtiofsd", "swtpm")
+_SNAP_EXE = re.compile(r"^(/snap/([\w.+-]+)/(x?\d+))/")
+
+
+@dataclass
+class StaleVM:
+    pid: int
+    exe: str
+    name: str
+    reason: str          # "deleted" or "snap revision N, current M"
+    snap: str = ""
+
+
+def vm_name(argv: list[str]) -> str:
+    """The VM's name from a qemu argv: ``-name guest=foo,…`` / ``-name foo``,
+    or a multipass instance directory. "" if none. Pure."""
+    for i, a in enumerate(argv):
+        if a == "-name" and i + 1 < len(argv):
+            v = argv[i + 1]
+            for part in v.split(","):
+                if part.startswith("guest="):
+                    return part[6:]
+            return v.split(",", 1)[0]
+    for a in argv:
+        m = re.search(r"/multipassd/vault/instances/([^/]+)/", a)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def _is_vm_binary(path: str) -> bool:
+    return os.path.basename(path.removesuffix(DELETED)).startswith(VM_BINARIES)
+
+
+def scan_vms(proc: str = "/proc", snap_root: str = "/snap") -> list[StaleVM]:
+    """Running VM processes whose executable was replaced since they started:
+    the binary is deleted, or it comes from a snap revision that is no longer
+    the current one (snap refresh, e.g. multipass). Read-only."""
+    out: list[StaleVM] = []
+    try:
+        entries = os.listdir(proc)
+    except OSError:
+        return []
+    for name in entries:
+        if not name.isdigit():
+            continue
+        base = f"{proc}/{name}"
+        try:
+            exe = os.readlink(f"{base}/exe")
+        except OSError:
+            continue
+        if not _is_vm_binary(exe):
+            continue
+        argv = [a for a in ((_read(f"{base}/cmdline") or "").split("\0")) if a]
+        vm = vm_name(argv) or f"pid {name}"
+        if exe.endswith(DELETED):
+            out.append(StaleVM(int(name), exe.removesuffix(DELETED), vm, "deleted"))
+            continue
+        m = _SNAP_EXE.match(exe)
+        if m:
+            try:
+                cur = os.readlink(f"{snap_root}/{m.group(2)}/current")
+            except OSError:
+                continue
+            if cur != m.group(3):
+                out.append(StaleVM(int(name), exe, vm,
+                                   f"snap revision {m.group(3)}, current {cur}",
+                                   snap=m.group(2)))
+    return sorted(out, key=lambda v: v.pid)

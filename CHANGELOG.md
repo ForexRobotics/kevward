@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **report: VMs still on an old qemu (#254).** MEDIUM when a running
+  `qemu-system-*` (or `virtiofsd` / `swtpm`) executes a binary that was
+  replaced since it started: deleted on disk, or from a snap revision that is
+  no longer current (multipass). Names the VMs (`-name`, multipass instance)
+  and how to restart them.
 - **apply refuses under truthgate's enforce mode without a window (#247).**
   Every apply path (shell, `kevward-apply.timer`, console job) asks
   `truthgate.status` and exits 5 without installing or scheduling a reboot
