@@ -4,7 +4,7 @@
 
 - **apply refuses under truthgate's enforce mode without a window (#247).**
   Every apply path (shell, `kevward-apply.timer`, console job) asks
-  `truthgate.status` and exits 4 without installing or scheduling a reboot
+  `truthgate.status` and exits 5 without installing or scheduling a reboot
   when truthgate enforces and no `apply` window is open, or its status cannot
   be read. The refusal is reported (MEDIUM, `apply_refused` in report.json).
 - **report: automatic updaters (#229).** MEDIUM when unattended-upgrades or

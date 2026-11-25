@@ -27,7 +27,7 @@ from .model import Finding, FindingKind, Severity
 REFUSED_FILE = Path("/var/lib/kevward/apply-refused.json")
 UU_LOG = Path("/var/log/unattended-upgrades/unattended-upgrades.log")
 STATUS_TIMEOUT_S = 10
-EXIT_REFUSED = 4
+EXIT_REFUSED = 5   # 4 is apply --job's busy lock (gate_apply.EXIT_BUSY)
 REFUSED_NOTICE_DAYS = 8
 
 

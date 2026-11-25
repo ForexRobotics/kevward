@@ -401,7 +401,7 @@ sudo systemctl enable --now kevward-apply.timer      # weekly security patching
 On a host where truthgate enforces its execution allow-list, packages can
 only change inside a maintenance window. `kevward apply --yes` (from a shell,
 this timer, or a console job) asks `truthgate.status` first and refuses, with
-exit code 4, when truthgate enforces and no `apply` window is open, or when
+exit code 5, when truthgate enforces and no `apply` window is open, or when
 truthgate is installed but its status cannot be read. Nothing is installed
 and no reboot is scheduled. The report then shows the refusal
 (`apply_refused` in report.json), warns when `kevward-apply.timer` or
