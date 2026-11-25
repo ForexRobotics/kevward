@@ -1,0 +1,13 @@
+{
+ "name": "too-large",
+ "role": "read",
+ "gate_enabled": true,
+ "request_repeat": {
+  "text": "x",
+  "count": 262145
+ },
+ "expect": {
+  "ok": false,
+  "code": "too_large"
+ }
+}

@@ -20,7 +20,7 @@ RUN_RESULT_KEYS = {
     "reboot_required", "reboot_pending", "reboot_packages", "reboot_kind",
     "reboot_scheduled", "reboot_schedule_state", "config_source", "config_error",
     "config_warnings", "services", "attackers", "audit", "audit_allowed_outbound",
-    "audit_allowed_forced", "audit_rules", "apt_refresh",
+    "audit_allowed_forced", "audit_recognised", "audit_rules", "apt_refresh",
 }
 FINDING_KEYS = {"service", "kind", "severity", "title", "detail", "current_version",
                 "fixed_version", "cve", "reboot_required", "ref", "packages", "url",
@@ -43,7 +43,7 @@ def test_run_result_keys():
 
 def test_report_json_keys(tmp_path):
     d = report_data(_rr(), jobs_dir=tmp_path)
-    assert RUN_RESULT_KEYS | {"summary", "last_apply"} <= set(d)
+    assert RUN_RESULT_KEYS | {"summary", "last_apply", "apply_refused"} <= set(d)
 
 
 def test_finding_keys():

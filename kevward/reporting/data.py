@@ -103,6 +103,12 @@ def summarize(result: RunResult) -> dict:
     }
 
 
+def _last_refusal() -> dict | None:
+    from ..updaters import last_refusal
+
+    return last_refusal()
+
+
 def report_data(result: RunResult, jobs_dir: Path | None = None) -> dict:
     from ..gate_apply import JOBS_DIR, last_apply
 
@@ -110,6 +116,8 @@ def report_data(result: RunResult, jobs_dir: Path | None = None) -> dict:
             # The latest console apply (#240): the report reflects it when
             # generated_at is later than last_apply.finished.
             "last_apply": last_apply(jobs_dir or JOBS_DIR),
+            # An apply refused under truthgate's enforce mode (#247).
+            "apply_refused": _last_refusal(),
             "summary": summarize(result)}
 
 

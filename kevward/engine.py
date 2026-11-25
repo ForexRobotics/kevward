@@ -35,6 +35,8 @@ class RunResult:
     # [audit] allowed_outbound matches: rule -> connections silenced (#155).
     audit_allowed_outbound: dict[str, int] = field(default_factory=dict)
     audit_allowed_forced: dict[str, int] = field(default_factory=dict)
+    # multipass / LXD sockets the audit recognised as their own (#252).
+    audit_recognised: dict[str, int] = field(default_factory=dict)
     # How `apt-get update` went before the plan was computed (#171):
     # {"state": "ok" | "failed" | "skipped", "seconds", "error"}; {} if no apt.
     apt_refresh: dict = field(default_factory=dict)
@@ -92,6 +94,7 @@ class RunResult:
             "audit": None if self.audit is None else [f.to_dict() for f in self.audit],
             "audit_allowed_outbound": self.audit_allowed_outbound,
             "audit_allowed_forced": self.audit_allowed_forced,
+            "audit_recognised": self.audit_recognised,
             "audit_rules": self.audit_rules,
             "apt_refresh": self.apt_refresh,
         }
@@ -299,6 +302,12 @@ def gate_access_findings(enabled: bool, access: dict, snapshot_exists: bool,
     return []
 
 
+def _from(rec: dict) -> str:
+    """'from 203.0.113.5', with the key's name when recorded (#223)."""
+    key = f"(key {rec['key']}) " if rec.get("key") else ""
+    return f"{key}from {rec.get('client') or 'unknown'}"
+
+
 def gate_change_findings(records: list[dict]) -> list[Finding]:
     """Config changes made through `kevward ssh-gate` in the last days (#185),
     so a change made with a stolen console key stays visible on the host."""
@@ -318,8 +327,7 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
             out.append(Finding(
                 service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
                 title=f"kevward updated {rec.get('old', '?')} → {rec.get('new', '?')} via "
-                      f"ssh-gate at {rec.get('time', '?')} from "
-                      f"{rec.get('client') or 'unknown'}",
+                      f"ssh-gate at {rec.get('time', '?')} {_from(rec)}",
                 detail=("Downgrade (rollback). " if rec.get("downgrade") else "")
                 + "Shown for 7 days (/var/lib/kevward/ssh-gate-changes.jsonl); if you "
                   "did not request this, revoke the console's operate key."))
@@ -328,7 +336,7 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
         if kind == "apply.start" and rec.get("job_id") in finished:
             continue
         if kind in ("apply.start", "apply.finish"):
-            who = f"at {rec.get('time', '?')} from {rec.get('client') or 'unknown'}"
+            who = f"at {rec.get('time', '?')} {_from(rec)}"
             res = rec.get("result") or {}
             if kind == "apply.start":
                 title = f"apply job {rec.get('job_id')} started via ssh-gate {who}"
@@ -352,7 +360,7 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
         if kind == "report.refresh":
             continue  # rebuilding the report changes nothing on the host
         if kind in ("reboot.schedule", "reboot.cancel", "schedule.install"):
-            who = f"via ssh-gate at {rec.get('time', '?')} from {rec.get('client') or 'unknown'}"
+            who = f"via ssh-gate at {rec.get('time', '?')} {_from(rec)}"
             if kind == "reboot.schedule":
                 title = f"reboot scheduled for {rec.get('at', '?')} {who}"
                 extra = (f"Reason: {rec['reason']}. " if rec.get("reason") else "")
@@ -373,8 +381,7 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
                          for k, v in changes.items() if isinstance(v, dict))
         out.append(Finding(
             service="kevward", kind=FindingKind.CONFIG, severity=Severity.INFO,
-            title=f"config changed via ssh-gate at {rec.get('time', '?')} "
-                  f"from {rec.get('client') or 'unknown'}",
+            title=f"config changed via ssh-gate at {rec.get('time', '?')} {_from(rec)}",
             detail=f"{diff}. Backup: {rec.get('backup') or 'none'}. Shown for 7 days "
                    "(/var/lib/kevward/ssh-gate-changes.jsonl); if you did not make "
                    "this change, revoke the console key."))
@@ -465,6 +472,15 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
             gate += sandbox_findings(report_sandbox())
     except Exception:
         pass
+    updaters: list[Finding] = []
+    try:
+        if is_root() and not do_apply:
+            from .updaters import host_findings
+
+            updaters = host_findings(cfg)   # #229 #247
+            gate += [f for f in updaters if f.service == "kevward"]
+    except Exception:
+        pass
     if gate:
         result.services.append(ServiceReport(service="kevward", present=True,
                                              findings=gate))
@@ -485,7 +501,8 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
     from .plugins import _apt
 
     result.apt_refresh = dict(_apt.REFRESH or {})
-    stale = apt_refresh_findings(result.apt_refresh)
+    stale = apt_refresh_findings(result.apt_refresh) + [
+        f for f in updaters if f.service == "apt"]
     if stale:
         apt_svc = next((s for s in result.services if s.service == "apt"), None)
         if apt_svc is not None:

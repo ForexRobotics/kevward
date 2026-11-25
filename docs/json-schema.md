@@ -39,6 +39,7 @@ Other keys of a finding (apt details) may be present.
 | `attackers` | object (fail2ban, sshd, firewall state, `trends` with `--trends`) | yes |
 | `audit` | list of Finding | yes (no `--audit`) |
 | `audit_allowed_outbound`, `audit_allowed_forced` | object rule → count | no |
+| `audit_recognised` | object product → sockets recognised as multipass / LXD plumbing | no |
 | `audit_rules` | object | no |
 | `apt_refresh` | object (`state`, `seconds`, `error`, `lists_updated_at`) | no |
 
@@ -50,6 +51,7 @@ RunResult above, plus:
 |---|---|---|
 | `summary` | object: `counts`, `act_now`, `apt_rows_deduplicated`, `audit_indicators`, `kev`, `attack` | no |
 | `last_apply` | {`job_id`, `finished`, `state`, `installed_count`} | yes |
+| `apply_refused` | {`time`, `source` (`cli` / `systemd` / `job`), `reason`}: an apply refused under truthgate's enforce mode | yes |
 
 ## `last-run.json`
 

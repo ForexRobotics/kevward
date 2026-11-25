@@ -48,7 +48,7 @@ UNITS = ("kevward-report.timer", "kevward-report.service", "kevward-firewall.ser
          "kevward-harden.service")
 NFT_TABLES = ("kevward", "kevward_harden")
 _OWN_GATE = re.compile(r'command="(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role '
-                       r'(?:read|operate)"')
+                       r'(?:read|operate)(?: --key-name [a-z0-9._-]{1,40})?"')
 _COLLECTOR = re.compile(r'command="cat /var/log/kevward/report\.html"')
 
 # Lines a kevward table may contain (nft list output), anything else -> conflict.

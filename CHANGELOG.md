@@ -13,6 +13,70 @@
   document**, `{"schema_version", "kevward_version", "host", "generated_at",
   "findings": [...]}`, instead of a bare list (`audit` also has
   `allowed_outbound_hits` / `allowed_forced_hits`).
+- **report: snap packages (#253).** A read-only `snap` plugin (when snapd
+  runs): pending refreshes are LOW, MEDIUM after 7 days and HIGH after 30
+  (first seen kept in `/var/lib/kevward/snap-seen.json`); refreshes held
+  system-wide or per snap for more than 7 days are MEDIUM; a snap tracking an
+  `edge` channel is LOW; one INFO line lists the installed snaps. Covers
+  multipass (with its own qemu / dnsmasq), LXD, certbot and the core snaps,
+  which the apt checks never see.
+- **audit: multipass / LXD plumbing on a Linux host is recognised (#252).**
+  dnsmasq / lxd listening on a private bridge address and multipassd's SSH
+  to its VMs are counted (`audit_recognised` in report.json, one line in
+  `kevward audit`) instead of needing `[audit] allowed_outbound` lines, but
+  only when the executable comes from `/snap/multipass/` or `/snap/lxd/`.
+  The same names elsewhere, on a wildcard or public address, still go through
+  every check.
+- **firewall: the multipass host is never blocked from inside its guest
+  (#251).** In a multipass guest (cloud-init NoCloud datasource and a
+  multipass key in an authorized_keys), the private / link-local default
+  gateways are added to the allowlist, also in the persisted accept set and
+  on `setup --restore`. `firewall plan` shows `allowlisted: … (multipass
+  host)`; JSON has `multipass_host`. `[firewall] allow_gateway = false` turns
+  it off. (RFC1918 gateways were already in the built-in floor; this makes it
+  explicit and covers other private ranges.)
+- **report: VMs still on an old qemu (#254).** MEDIUM when a running
+  `qemu-system-*` (or `virtiofsd` / `swtpm`) executes a binary that was
+  replaced since it started: deleted on disk, or from a snap revision that is
+  no longer current (multipass). Names the VMs (`-name`, multipass instance)
+  and how to restart them.
+- **apply refuses under truthgate's enforce mode without a window (#247).**
+  Every apply path (shell, `kevward-apply.timer`, console job) asks
+  `truthgate.status` and exits 5 without installing or scheduling a reboot
+  when truthgate enforces and no `apply` window is open, or its status cannot
+  be read. The refusal is reported (MEDIUM, `apply_refused` in report.json).
+- **report: automatic updaters (#229).** MEDIUM when unattended-upgrades or
+  `kevward-apply.timer` would run on a host truthgate enforces; an INFO line
+  with what unattended-upgrades installed in the last 24 h / 7 days.
+- **ssh-gate: `gate.selfpaths` (#222)** for truthgate's enforce mode:
+  launcher (+ sha256), interpreter (path, realpath, sha256), the gate user's
+  login shell, sudo, package directory, every external program kevward may
+  run (a test fails when the code runs one that is not listed), and the apply
+  unit names and ExecStart shape (#247).
+- **ssh-gate: truthgate relay and `gate.capabilities` (#219).** `truthgate.*`
+  ops go unparsed to `truthgate ssh-gate --role <role>` (root-owned path
+  check, clean environment with `TRUTHGATE_GATE_CLIENT` / `_ROLE` /
+  `_KEY_ID`, own process group, SIGTERM then SIGKILL on timeout, stderr
+  discarded, one-line response up to 4 MiB returned byte for byte). New
+  codes `not_installed` and `timeout`. `gate.capabilities` returns the
+  role's ops, `gate_user` and truthgate's capabilities when it answers within
+  5 s. New `[ssh_gate] truthgate_path`, `truthgate_timeout_s`,
+  `truthgate_capabilities_timeout_s` (host-only).
+- **docs/ssh-gate-protocol.md (CC0) with test vectors**, shared with
+  truthgate's Rust gate; kevward runs every vector in its tests.
+- **ssh-gate: which key made a change (#223).** `kevward setup` puts
+  `--key-name console-read` / `console-operate` on the forced commands
+  (`--key-name-prefix NAME` for others) and an exact sudoers line for the
+  named operate command, next to the unnamed one so existing keys keep
+  working. The change log (`"key"`), syslog (`key=`) and the report's
+  findings name the key. The audit and `uninstall` recognise the named form.
+- **truthgate: no `.pyc` written into the package at run time (#228).**
+  kevward sets `sys.dont_write_bytecode`; `self.update` byte-compiles the
+  new package itself, inside the update, so nothing in the package directory
+  changes outside a maintenance window.
+- **truthgate: `plan` reports `apply_timeout_s` (#220)**, an upper bound for
+  the apply job (300 s overhead + `[apt] install_timeout_s` per install run;
+  `null` when `install_timeout_s = 0`), to size the maintenance window.
 
 ## 0.20.2
 
