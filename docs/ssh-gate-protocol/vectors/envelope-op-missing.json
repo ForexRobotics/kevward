@@ -1,0 +1,10 @@
+{
+ "name": "envelope-op-missing",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "{\"args\":{}}",
+ "expect": {
+  "ok": false,
+  "code": "bad_request"
+ }
+}

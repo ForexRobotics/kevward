@@ -189,3 +189,28 @@ def test_cli_entrypoint(env, monkeypatch, capsys):
     rc = cli.main(["ssh-gate", "--role", "read", "-c", str(path)])
     out = capsys.readouterr().out
     assert rc == 0 and json.loads(out)["data"]["role"] == "read"
+
+
+# --- #223: key name --------------------------------------------------------------------
+
+def test_stamp_adds_key_name(monkeypatch):
+    from kevward import ssh_gate as sg
+    monkeypatch.setattr(sg, "_KEY", "console-operate")
+    assert sg.stamp({"client": "203.0.113.5"})["key"] == "console-operate"
+    monkeypatch.setattr(sg, "_KEY", None)
+    assert "key" not in sg.stamp({"client": "203.0.113.5"})
+
+
+def test_key_name_pattern():
+    from kevward import ssh_gate as sg
+    assert sg.KEY_NAME.match("console-operate")
+    assert not sg.KEY_NAME.match("Console Operate") and not sg.KEY_NAME.match("x" * 41)
+
+
+def test_change_finding_names_the_key():
+    from kevward.engine import gate_change_findings
+    f = gate_change_findings([{"time": "t", "client": "203.0.113.5", "key": "console-operate",
+                               "kind": "reboot.cancel", "was": {}}])
+    assert "(key console-operate) from 203.0.113.5" in f[0].title
+    f = gate_change_findings([{"time": "t", "client": "203.0.113.5", "changes": {}}])
+    assert "key" not in f[0].title and "from 203.0.113.5" in f[0].title

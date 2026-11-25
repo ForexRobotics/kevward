@@ -1,0 +1,10 @@
+{
+ "name": "envelope-not-utf8",
+ "role": "read",
+ "gate_enabled": true,
+ "request_hex": "fffe7b7d",
+ "expect": {
+  "ok": false,
+  "code": "bad_request"
+ }
+}

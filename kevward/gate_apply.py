@@ -117,9 +117,26 @@ def build_plan(result, cfg: Config) -> dict:
     skipped.sort(key=lambda x: x["package"])
     policy = plan_policy(cfg)
     _tail, reboot = plan_tail(result, cfg.policy.apply_minor)
+    runs = sum(1 for svc in result.services for a in svc.actions
+               if a.description.startswith("install: "))
     return {"plan_hash": plan_hash(items, policy), "items": items, "skipped": skipped,
             "policy": policy, "reboot_expected": bool(reboot),
+            "apply_timeout_s": apply_timeout_s(runs, cfg.apt.install_timeout_s),
             "generated_at": result.generated_at, "apt_refresh": result.apt_refresh}
+
+
+#: What an apply job does besides installing: apt-get update (its own 180 s
+#: limit), the second plan, the report restart, a reboot schedule.
+APPLY_OVERHEAD_S = 300
+
+
+def apply_timeout_s(install_runs: int, install_timeout_s: int) -> int | None:
+    """Upper bound for one apply job (#220), to size truthgate's maintenance
+    window. ``install_timeout_s`` limits each install run (one per service
+    with packages); 0 means no limit, so there is no bound (None). Pure."""
+    if not install_timeout_s:
+        return None
+    return APPLY_OVERHEAD_S + max(0, install_runs) * install_timeout_s
 
 
 def compute_plan(cfg: Config, *, engine_run=None, fresh: bool = True) -> tuple[dict, object]:
@@ -277,12 +294,21 @@ def busy_reason(jobs_dir: Path, *, unit_active=None, lock_path: Path = UPDATE_LO
 
 
 def _record(changes_file: Path, rec: dict) -> None:
+    from .ssh_gate import stamp
+
+    stamp(rec)
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
     except OSError:
         pass
+
+
+def _gate_key() -> str | None:
+    from . import ssh_gate
+
+    return ssh_gate._KEY
 
 
 def _launcher_exe() -> str:
@@ -292,6 +318,12 @@ def _launcher_exe() -> str:
     from .schedule import kevward_exe
 
     return kevward_exe()
+
+
+def _guard(cfg: Config) -> str | None:
+    from .updaters import apply_refusal, truthgate_status
+
+    return apply_refusal(truthgate_status(cfg))
 
 
 def last_apply(jobs_dir: Path = JOBS_DIR) -> dict | None:
@@ -368,6 +400,7 @@ def op_apply_start(cfg: Config, args: dict, *, config_path: Path, changes_file: 
     job = {"job_id": job_id, "kind": "apply", "state": "starting", "unit": unit,
            "started": now.isoformat(timespec="seconds"), "finished": None,
            "exit_code": None, "client": client, "plan_hash": expect,
+           **({"key": _gate_key()} if _gate_key() else {}),
            "packages": [it["package"] for it in plan["items"]], "reboot": reboot,
            "result": None}
     write_job(jobs_dir, job)
@@ -418,6 +451,7 @@ def op_job_get(args: dict, *, jobs_dir: Path = JOBS_DIR, unit_active=None) -> di
                "error": "the job stopped without recording a result (see journalctl -u "
                         f"{job.get('unit') or unit_name(job_id)})"}
     job.pop("client", None)
+    job.pop("key", None)
     job["log_tail"] = tail(jobs_dir / f"{job_id}.log")
     return job
 
@@ -460,7 +494,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
             reboot_at: str | None = None, jobs_dir: Path = JOBS_DIR,
             changes_file: Path = CHANGES_FILE, engine_run=None, runner=None,
             reboot_pending=None, now_fn=None, lock_path: Path = UPDATE_LOCK,
-            redirect: bool = True, report_paths=None) -> int:
+            redirect: bool = True, report_paths=None, guard=None) -> int:
     """Body of a gate apply job. Returns the exit code."""
     import fcntl
 
@@ -479,6 +513,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
         return 2
     job = read_job(jobs_dir, job_id) if job_id else None
     client = (job or {}).get("client", "")
+    key = {"key": job["key"]} if (job or {}).get("key") else {}
     if job_id and redirect:
         _redirect_output(jobs_dir / f"{job_id}.log")
 
@@ -487,7 +522,7 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
         if job_id:
             update_job(jobs_dir, job_id, state=state, exit_code=code, finished=t,
                        result=result, **({"error": error} if error else {}))
-            _record(changes_file, {"time": t, "client": client, "kind": "apply.finish",
+            _record(changes_file, {"time": t, "client": client, **key, "kind": "apply.finish",
                                    "job_id": job_id, "state": state, "exit_code": code,
                                    "result": result, "error": error or None})
         if error:
@@ -502,6 +537,12 @@ def run_job(cfg: Config, *, expect: str | None, job_id: str | None,
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             return finish("failed", EXIT_BUSY, error="a self.update or apply is running")
+        why = (guard or _guard)(cfg)   # #247: second check, the console opened a window
+        if why:
+            from .updaters import EXIT_REFUSED, record_refusal
+
+            record_refusal(why, "job")
+            return finish("failed", EXIT_REFUSED, error=f"{why}; nothing was installed")
         plan, _ = compute_plan(cfg, engine_run=engine_run)
         print(f"plan {plan['plan_hash']}: {len(plan['items'])} package(s)", flush=True)
         if expect and plan["plan_hash"] != expect:

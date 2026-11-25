@@ -119,3 +119,9 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # Lowest version self.update may install (rollback floor). Empty = the first
 # release with self.update.
 # min_version = ""
+# truthgate relay (#219): `truthgate.*` ops are passed unparsed to
+# `<truthgate_path> ssh-gate --role <role>`. The binary and its directories
+# must be root-owned and not group/world-writable. Not writable through the gate.
+# truthgate_path = "/usr/bin/truthgate"
+# truthgate_timeout_s = 120              # 1-3600; SIGTERM, then SIGKILL after 5 s
+# truthgate_capabilities_timeout_s = 5   # 1-60; for gate.capabilities

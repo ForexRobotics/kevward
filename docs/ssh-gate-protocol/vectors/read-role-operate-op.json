@@ -1,0 +1,10 @@
+{
+ "name": "read-role-operate-op",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "{\"op\":\"config.set\",\"args\":{\"set\":{}}}",
+ "expect": {
+  "ok": false,
+  "code": "forbidden"
+ }
+}
