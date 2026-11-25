@@ -21,7 +21,7 @@ from pathlib import Path
 COMMANDS = (
     "apache2ctl", "apt-cache", "apt-config", "apt-get", "busctl", "composer", "dpkg", "dpkg-query",
     "fail2ban-client", "ip", "logwatch", "nft", "nginx", "node", "npm", "php", "pro",
-    "shutdown", "ss", "sshd", "sysctl", "systemctl", "systemd-run", "ufw", "uname",
+    "shutdown", "snap", "ss", "sshd", "sysctl", "systemctl", "systemd-run", "ufw", "uname",
     "visudo", "wp",
 )
 _PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
