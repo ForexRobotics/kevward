@@ -304,6 +304,54 @@ def _proc_of(ss_line: str) -> str:
     return m.group(1) if m else ""
 
 
+def _pid_of(ss_line: str) -> int | None:
+    m = re.search(r'\(\("[^"]+",pid=(\d+)', ss_line)
+    return int(m.group(1)) if m else None
+
+
+def _exe_of(pid: int | None) -> str:
+    if pid is None:
+        return ""
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return ""
+
+
+# multipass's own plumbing on a Linux host (#252): only when the executable
+# really is multipass's / LXD's (from the snap) and the address is private.
+_VM_PLUMBING = {
+    # process name -> snap(s) it must come from
+    "multipassd": ("multipass",),
+    "dnsmasq": ("multipass", "lxd"),
+    "lxd": ("lxd",),
+}
+
+
+def vm_plumbing(proc: str, exe: str, state: str, local: str, peer: str) -> str | None:
+    """"multipass" / "lxd" when this ss row is that product's own plumbing:
+    a dnsmasq / lxd listener on a private address, or multipassd's SSH to a
+    VM (private peer, port 22); None otherwise. Pure."""
+    snaps = _VM_PLUMBING.get(proc)
+    if not snaps:
+        return None
+    m = re.match(r"^/snap/([\w.+-]+)/", exe or "")
+    if not m or m.group(1) not in snaps:
+        return None
+    if state == "LISTEN":
+        host, _ = _split_hostport(local)
+        host = (host or "").split("%", 1)[0]
+        if proc in ("dnsmasq", "lxd") and host and not is_external_ip(host) \
+                and host not in ("0.0.0.0", "::", "*"):
+            return m.group(1)
+        return None
+    if state == "ESTAB" and proc == "multipassd":
+        host, port = _split_hostport(peer)
+        if host and port == 22 and not is_external_ip(host):
+            return m.group(1)
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Collectors (read the host; resilient and read-only)
 # --------------------------------------------------------------------------- #
@@ -344,7 +392,9 @@ def check_reverse_ssh() -> list[Finding]:
 
 def check_connections(max_info: int = 15,
                       allow: list[OutboundRule] | None = None,
-                      hits: dict[str, int] | None = None) -> list[Finding]:
+                      hits: dict[str, int] | None = None,
+                      recognised: dict[str, int] | None = None,
+                      exe_of=None) -> list[Finding]:
     """Established outbound + listeners via ``ss``. Inbound to our own listening
     ports is skipped (it is not a foothold signal).
 
@@ -369,8 +419,14 @@ def check_connections(max_info: int = 15,
             if lport is not None:
                 listen_ports.add(lport)
     info_count = 0
+    exe_of = exe_of or _exe_of
     for state, local, peer, line in rows:
         proc = _proc_of(line)
+        if recognised is not None and proc in _VM_PLUMBING:
+            what = vm_plumbing(proc, exe_of(_pid_of(line)), state, local, peer)
+            if what:
+                recognised[what] = recognised.get(what, 0) + 1
+                continue
         if state == "LISTEN":
             lhost, _ = _split_hostport(local)
             if proc in _SHELLS and lhost not in (None, "127.0.0.1", "::1"):
@@ -505,8 +561,10 @@ def forced_commands(line: str) -> list[str]:
 
 
 # kevward's own forced command (#185): `[sudo -n ]/abs/path/kevward ssh-gate
-# --role read|operate`, exactly. Not a finding; anything else still is.
-_OWN_GATE = re.compile(r"^(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (?:read|operate)$")
+# --role read|operate [--key-name NAME]`, exactly (#223). Not a finding;
+# anything else still is.
+_OWN_GATE = re.compile(r"^(?:sudo -n )?/[\w./-]*/kevward ssh-gate --role (?:read|operate)"
+                       r"(?: --key-name [a-z0-9._-]{1,40})?$")
 
 
 def _is_allowed(cmd: str, allow: list[str], hits: dict[str, int] | None = None) -> bool:
@@ -1203,7 +1261,9 @@ def audit(allow_forced: list[str] | None = None,
     bad = [_f(Severity.LOW, f"[audit] allowed_outbound: ignored entry {e}")
            for e in errors]
     forced_hits: dict[str, int] = {p: 0 for p in (allow_forced or [])}
-    findings = (bad + check_reverse_ssh() + check_connections(allow=rules, hits=hits)
+    recognised: dict[str, int] = {}
+    findings = (bad + check_reverse_ssh()
+                + check_connections(allow=rules, hits=hits, recognised=recognised)
                 + check_persistence(allow_forced, forced_hits)
                 + _check_proc_origin() + _check_pkg_integrity()
                 + _check_accounts() + _check_accepted_password() + _check_suid())
@@ -1211,6 +1271,8 @@ def audit(allow_forced: list[str] | None = None,
     if notes is not None:
         notes["allowed_outbound_hits"] = hits
         notes["allowed_forced_hits"] = forced_hits
+        # multipass / LXD sockets recognised as their own plumbing (#252)
+        notes["recognised_sockets"] = recognised
     return findings
 
 
@@ -1275,6 +1337,8 @@ def run_cli(use_json: bool, allow_forced: list[str] | None = None,
         line = allowed_summary(notes.get("allowed_outbound_hits"))
         if line:
             print(f"  ({line} — [audit] allowed_outbound)")
+        for what, n in sorted((notes.get("recognised_sockets") or {}).items()):
+            print(f"  ({what}: {n} socket(s) recognised as its own VM plumbing)")
         if not is_root():
             print("note: run with sudo for full visibility into other users' "
                   "processes, sockets and files.")

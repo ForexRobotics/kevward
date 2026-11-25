@@ -245,6 +245,20 @@ def cmd_apply(args) -> int:
     dry = not args.yes
     if dry:
         print("DRY RUN (pass --yes to actually apply)")
+    else:
+        from .updaters import (
+            EXIT_REFUSED,
+            apply_refusal,
+            record_refusal,
+            refusal_source,
+            truthgate_status,
+        )
+
+        why = apply_refusal(truthgate_status(cfg))   # #247
+        if why:
+            record_refusal(why, refusal_source())
+            print(f"kevward: {why}. Nothing was installed and no reboot was scheduled.")
+            return EXIT_REFUSED
     result = run_engine(cfg, do_apply=True, dry_run=dry)
     failed = False
     line, warn = refresh_line(result.apt_refresh)
@@ -294,7 +308,8 @@ def cmd_setup(args) -> int:
                          operate_key=args.operate_key, ssh_gate=args.ssh_gate,
                          timer=args.timer, fail2ban_ignore=args.fail2ban_ignore,
                          refresh=args.refresh, self_update=args.self_update,
-                         allow_reboot=args.allow_reboot, dry_run=args.dry_run)
+                         allow_reboot=args.allow_reboot, key_prefix=args.key_name_prefix,
+                         dry_run=args.dry_run)
         resp = ok(data)
     except GateError as e:
         resp = fail(e.code, e.message)
@@ -352,7 +367,7 @@ def cmd_uninstall(args) -> int:
 def cmd_ssh_gate(args) -> int:
     from .ssh_gate import main as gate_main
 
-    return gate_main(args.role, args.config)
+    return gate_main(args.role, args.config, args.key_name)
 
 
 def _write_last_run(report_dir: Path, record: dict) -> None:
@@ -440,6 +455,7 @@ def _cmd_report(args) -> Path:
                                 cfg.audit.allowed_outbound, notes)
         result.audit_allowed_outbound = notes.get("allowed_outbound_hits") or {}
         result.audit_allowed_forced = notes.get("allowed_forced_hits") or {}
+        result.audit_recognised = notes.get("recognised_sockets") or {}
         result.audit_rules = audit_rule_counts(cfg)
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"
@@ -629,6 +645,7 @@ def cmd_firewall(args) -> int:
         dnsbl_zone=args.dnsbl_zone or cfg.firewall.dnsbl_zone,
         dnsbl_resolver=args.dnsbl_resolver or cfg.firewall.dnsbl_resolver,
         dnsbl_top_n=top_n, dnsbl_cache_days=cfg.firewall.dnsbl_cache_days,
+        allow_gateway=cfg.firewall.allow_gateway,
     )
 
 
@@ -782,6 +799,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="forced command for console keys: one JSON request on stdin (#185)",
     )
     sg.add_argument("--role", required=True, choices=["read", "operate"])
+    sg.add_argument("--key-name", help="name of the key this forced command is on "
+                    "(written by `kevward setup`; recorded in the change log, #223)")
     sg.add_argument("-c", "--config", help="path to config.toml")
     sg.set_defaults(func=cmd_ssh_gate)
 
@@ -798,6 +817,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="set [ssh_gate] self_update = true (console may update kevward)")
     su.add_argument("--allow-reboot", action="store_true",
                     help="set [policy] allow_reboot = true (console may schedule reboots)")
+    su.add_argument("--key-name-prefix", default="console", metavar="NAME",
+                    help="keys are named NAME-read / NAME-operate in their forced "
+                         "command and the change log (default: console, #223)")
     su.add_argument("--timer", action="store_true", help="install the daily report timer")
     su.add_argument("--fail2ban-ignore", action="append", metavar="IP/CIDR",
                     help="never ban this address (repeatable; only if fail2ban exists)")

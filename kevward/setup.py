@@ -121,14 +121,28 @@ def parse_pubkey(line: str) -> tuple[str, str, str]:
     return ktype, b64, comment
 
 
-def gate_command(role: str, prefix: Path = VENV_PREFIX) -> str:
+#: Default ``--key-name-prefix``: keys are named console-read / console-operate (#223).
+KEY_PREFIX = "console"
+_KEY_PREFIX = re.compile(r"^[a-z0-9._-]{1,30}$")
+
+
+def key_name(role: str, prefix: str = KEY_PREFIX) -> str:
+    if not _KEY_PREFIX.match(prefix or ""):
+        raise GateError("bad_request", "--key-name-prefix must be 1-30 of [a-z0-9._-]")
+    return f"{prefix}-{role}"
+
+
+def gate_command(role: str, prefix: Path = VENV_PREFIX, name: str | None = None) -> str:
     exe = f"{prefix}/bin/kevward ssh-gate --role {role}"
+    if name:
+        exe += f" --key-name {name}"
     return exe if role == "read" else f"sudo -n {exe}"
 
 
-def gate_line(role: str, key: str, prefix: Path = VENV_PREFIX) -> str:
+def gate_line(role: str, key: str, prefix: Path = VENV_PREFIX,
+              name: str | None = None) -> str:
     ktype, b64, comment = parse_pubkey(key)
-    return f'command="{gate_command(role, prefix)}",restrict {ktype} {b64} {comment}'
+    return f'command="{gate_command(role, prefix, name)}",restrict {ktype} {b64} {comment}'
 
 
 def _blob_and_comment(line: str) -> tuple[str | None, str | None, str]:
@@ -214,12 +228,14 @@ def _atomic(path: Path, text: str, mode: int, uid: int | None = None,
 # --- steps ------------------------------------------------------------------------
 
 def step_keys(env: Env, plan: Plan, user: str, read_key: str | None,
-              operate_key: str | None, dry_run: bool) -> None:
+              operate_key: str | None, dry_run: bool,
+              key_prefix: str = KEY_PREFIX) -> None:
     wanted = []
     if read_key:
-        wanted.append(gate_line("read", read_key, env.prefix))
+        wanted.append(gate_line("read", read_key, env.prefix, key_name("read", key_prefix)))
     if operate_key:
-        wanted.append(gate_line("operate", operate_key, env.prefix))
+        wanted.append(gate_line("operate", operate_key, env.prefix,
+                                key_name("operate", key_prefix)))
     if not wanted:
         return
     uid, gid, home = env.user(user)
@@ -241,18 +257,24 @@ def step_keys(env: Env, plan: Plan, user: str, read_key: str | None,
     _atomic(ak, new, 0o600, uid, gid)
 
 
-def sudoers_text(user: str, prefix: Path = VENV_PREFIX) -> str:
+def sudoers_text(user: str, prefix: Path = VENV_PREFIX,
+                 key_prefix: str = KEY_PREFIX) -> str:
     exe = f"{prefix}/bin/kevward"
+    name = key_name("operate", key_prefix)
     return ("# Managed by `kevward setup` (#191): the ssh-gate operate role only.\n"
             "# SSH_CONNECTION is kept so the change log records the console's\n"
             "# address (#214); sshd sets it and the forced command cannot change it.\n"
+            "# Exact commands, no wildcards: the named key (#223), and the unnamed\n"
+            "# form so keys written before 0.21 keep working.\n"
             f'Defaults!{exe} env_keep += "SSH_CONNECTION"\n'
+            f"{user} ALL=(root) NOPASSWD: {exe} ssh-gate --role operate --key-name {name}\n"
             f"{user} ALL=(root) NOPASSWD: {exe} ssh-gate --role operate\n")
 
 
-def step_sudoers(env: Env, plan: Plan, user: str, dry_run: bool) -> None:
+def step_sudoers(env: Env, plan: Plan, user: str, dry_run: bool,
+                 key_prefix: str = KEY_PREFIX) -> None:
     path = env.etc / "sudoers.d" / SUDOERS_NAME
-    text = sudoers_text(user, env.prefix)
+    text = sudoers_text(user, env.prefix, key_prefix)
     try:
         old = _read_nofollow(path)
     except FileNotFoundError:
@@ -597,7 +619,7 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
           fail2ban_ignore: list[str] | None = None, refresh: bool = False,
           self_update: bool = False, allow_reboot: bool = False,
           timer_at: str | None = None, timer_jitter: str | None = None,
-          check_firewall: bool = True,
+          check_firewall: bool = True, key_prefix: str = KEY_PREFIX,
           dry_run: bool = False, env: Env | None = None) -> dict:
     """Run the requested steps; returns the plan (what changed / would change).
     Raises GateError with an ssh-gate code."""
@@ -625,6 +647,7 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
         except KeyError:
             raise GateError("not_found", f"no such user: {console_user}") from None
     # Validate every key before writing anything.
+    key_name("read", key_prefix)
     for k in (read_key, operate_key):
         if k:
             parse_pubkey(k)
@@ -643,8 +666,8 @@ def setup(*, console_user: str | None = None, read_key: str | None = None,
         if timer:
             step_timer(env, plan, dry_run, timer_at, timer_jitter)
         if operate_key:
-            step_sudoers(env, plan, console_user, dry_run)
-        step_keys(env, plan, console_user or "", read_key, operate_key, dry_run)
+            step_sudoers(env, plan, console_user, dry_run, key_prefix)
+        step_keys(env, plan, console_user or "", read_key, operate_key, dry_run, key_prefix)
         if refresh:
             step_refresh(env, plan, dry_run)
         if check_firewall and (env.state_dir / "firewall.json").exists():

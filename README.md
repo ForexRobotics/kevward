@@ -398,6 +398,16 @@ sudo cp systemd/kevward-apply.* /etc/systemd/system/
 sudo systemctl enable --now kevward-apply.timer      # weekly security patching
 ```
 
+On a host where truthgate enforces its execution allow-list, packages can
+only change inside a maintenance window. `kevward apply --yes` (from a shell,
+this timer, or a console job) asks `truthgate.status` first and refuses, with
+exit code 5, when truthgate enforces and no `apply` window is open, or when
+truthgate is installed but its status cannot be read. Nothing is installed
+and no reboot is scheduled. The report then shows the refusal
+(`apply_refused` in report.json), warns when `kevward-apply.timer` or
+unattended-upgrades would run on an enforcing host, and lists what
+unattended-upgrades installed in the last 7 days.
+
 ### Collecting reports from several hosts
 
 If you fetch `report.html` from each host (e.g. over SSH with a forced
@@ -477,22 +487,43 @@ enabled = true
 
 | role | ops | how |
 |---|---|---|
-| `read` | `version`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
+| `read` | `version`, `gate.capabilities`, `gate.selfpaths`, `report.get` (`html` / `json` = last-run.json / `data` = report.json), `config.get`, `config.schema`, `reboot.status`, `schedule.status`, `plan`, `job.get` | no sudo |
 | `operate` | the above + `config.set`, `self.update`, `reboot.schedule`, `reboot.cancel`, `schedule.install`, `apply.start` | `sudo -n`, with an exact-match sudoers line |
 
 ```text
 # ~/.ssh/authorized_keys of the collecting user
-command="/opt/kevward/bin/kevward ssh-gate --role read",restrict ssh-ed25519 AAAA… read
-command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate",restrict ssh-ed25519 AAAA… operate
+command="/opt/kevward/bin/kevward ssh-gate --role read --key-name console-read",restrict ssh-ed25519 AAAA… read
+command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate --key-name console-operate",restrict ssh-ed25519 AAAA… operate
 
-# /etc/sudoers.d/kevward-ssh-gate (visudo -f): this exact command only
+# /etc/sudoers.d/kevward-ssh-gate (visudo -f): these exact commands only
 Defaults!/opt/kevward/bin/kevward env_keep += "SSH_CONNECTION"
+collector ALL=(root) NOPASSWD: /opt/kevward/bin/kevward ssh-gate --role operate --key-name console-operate
 collector ALL=(root) NOPASSWD: /opt/kevward/bin/kevward ssh-gate --role operate
 ```
 
 The `Defaults` line keeps the client's address for the change log and syslog
 (sudo drops `SSH_CONNECTION` otherwise; without it, the operate role looks the
-address up in its parent processes). `kevward setup` writes both lines.
+address up in its parent processes). `kevward setup` writes these lines.
+
+`--key-name` (`[a-z0-9._-]{1,40}`) says which key made a change: sshd does not
+tell a forced command which key was used. The name goes into the change log
+(`"key"`), syslog (`key=`) and the report's findings ("… via ssh-gate at … (key
+console-operate) from 203.0.113.5"). `kevward setup` names keys
+`console-read` / `console-operate`, or `NAME-read` / `NAME-operate` with
+`--key-name-prefix NAME`. Keys written before 0.21 have no name (`key=-`) and
+keep working; run `kevward setup` with the same keys again to name them.
+
+`truthgate.*` ops are relayed unparsed to truthgate's own gate
+(`[ssh_gate] truthgate_path`, default `/usr/bin/truthgate`) with the caller's
+role; truthgate decides what each role may do. `gate.capabilities` lists the
+products on the host (kevward's ops for the role, and truthgate's
+capabilities when it is installed). The wire protocol, shared with truthgate,
+is in [docs/ssh-gate-protocol.md](docs/ssh-gate-protocol.md) (CC0) with test
+vectors. `gate.selfpaths` lists every path on the console's way in (launcher
+and its sha256, interpreter, login shell, sudo, package directory, every
+program kevward runs, the apply unit names), so an execution allow-list such
+as truthgate's enforce mode can keep the host manageable; take it again after
+`self.update`.
 
 `config.set` (`{"set": {"report.lang": "ja"}, "expect_sha256": "<from
 config.get>"}`) only writes keys that `config.schema` marks writable. Those
@@ -616,7 +647,9 @@ Updates follow the same two steps as by hand, `kevward apply` then
 
 1. `plan` returns what `kevward apply` would do: `items` (package, from, to,
    kind, origin), `skipped` with the reason, `reboot_expected`, `apt_refresh`,
-   and a `plan_hash`. Taken with the read role it runs without root
+   `apply_timeout_s` (upper bound for the job in seconds: 300 + `[apt]
+   install_timeout_s` per install run, `null` with no install limit) and a
+   `plan_hash`. Taken with the read role it runs without root
    (`"as_root": false`, apt lists not refreshed), so take it with operate
    before applying.
 2. `apply.start` (`{"expect_plan": "<plan_hash>", "reboot": {"mode":

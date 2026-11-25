@@ -1,0 +1,19 @@
+{
+ "name": "capabilities-operate",
+ "role": "operate",
+ "gate_enabled": true,
+ "request": "{\"op\":\"gate.capabilities\",\"args\":null}",
+ "expect": {
+  "ok": true,
+  "data_keys": [
+   "protocol",
+   "role",
+   "gate_user",
+   "products"
+  ],
+  "data": {
+   "protocol": 1,
+   "role": "operate"
+  }
+ }
+}

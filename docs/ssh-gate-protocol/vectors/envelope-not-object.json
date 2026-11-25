@@ -1,0 +1,10 @@
+{
+ "name": "envelope-not-object",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "[1,2]",
+ "expect": {
+  "ok": false,
+  "code": "bad_request"
+ }
+}
