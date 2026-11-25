@@ -9,6 +9,11 @@ protocol is written down (CC0, with test vectors). Also: multipass / snap /
 qemu awareness, and versioned JSON with a 1.x stability policy. Updating with
 `self.update` is enough; existing console keys keep working.
 
+- **report: Dovecot (#130).** An apt `dovecot` plugin (security / minor
+  updates, KEV term `dovecot`) that also checks `doveconf -n`: plain-text
+  auth allowed (`disable_plaintext_auth = no` / `auth_allow_cleartext = yes`)
+  with `ssl = no` is MEDIUM.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,

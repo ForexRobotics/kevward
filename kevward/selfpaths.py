@@ -19,8 +19,8 @@ from pathlib import Path
 #: setup, uninstall, self.update, ssh-gate jobs). tests/test_selfpaths.py
 #: fails when the code runs a program that is not listed here.
 COMMANDS = (
-    "apache2ctl", "apt-cache", "apt-config", "apt-get", "busctl", "composer", "dpkg", "dpkg-query",
-    "fail2ban-client", "ip", "logwatch", "nft", "nginx", "node", "npm", "php", "pro",
+    "apache2ctl", "apt-cache", "apt-config", "apt-get", "busctl", "composer", "doveconf", "dpkg",
+    "dpkg-query", "fail2ban-client", "ip", "logwatch", "nft", "nginx", "node", "npm", "php", "pro",
     "shutdown", "snap", "ss", "sshd", "sysctl", "systemctl", "systemd-run", "ufw", "uname",
     "visudo", "wp",
 )
