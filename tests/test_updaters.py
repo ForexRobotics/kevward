@@ -77,6 +77,7 @@ def test_cli_apply_refused(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(up, "truthgate_status",
                         lambda cfg: {"installed": True, "readable": True, "mode": "enforce",
                                      "maintenance": None, "error": ""})
+    monkeypatch.delenv("INVOCATION_ID", raising=False)   # CI runners run under systemd
     rec = []
     monkeypatch.setattr(up, "record_refusal", lambda why, src: rec.append((why, src)))
     ran = []
