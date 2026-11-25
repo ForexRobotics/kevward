@@ -93,7 +93,7 @@ detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 | Area        | Services |
 |-------------|----------|
 | Base system | apt (host-wide updates, reboot detection) |
-| Web servers | nginx, Apache (`apache2`) |
+| Web servers | nginx, Apache (`apache2`), HAProxy |
 | Databases   | MySQL, MariaDB, PostgreSQL, Redis |
 | Runtimes    | PHP, Node.js |
 | Apps        | Composer/Laravel, WordPress *(report-only)* |
