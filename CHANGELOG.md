@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **ssh-gate: which key made a change (#223).** `kevward setup` puts
+  `--key-name console-read` / `console-operate` on the forced commands
+  (`--key-name-prefix NAME` for others) and an exact sudoers line for the
+  named operate command, next to the unnamed one so existing keys keep
+  working. The change log (`"key"`), syslog (`key=`) and the report's
+  findings name the key. The audit and `uninstall` recognise the named form.
 - **truthgate: no `.pyc` written into the package at run time (#228).**
   kevward sets `sys.dont_write_bytecode`; `self.update` byte-compiles the
   new package itself, inside the update, so nothing in the package directory

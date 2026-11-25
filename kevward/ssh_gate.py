@@ -361,7 +361,7 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            fh.write(json.dumps(stamp(record), ensure_ascii=False) + "\n")
     except OSError:
         pass  # syslog still has it
     return {"old": old, "new": want, "downgrade": downgrade, "duration_s": duration,
@@ -563,7 +563,7 @@ def op_config_set(path: Path, args: dict, *, changes_file: Path, client: str,
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            fh.write(json.dumps(stamp(record), ensure_ascii=False, default=str) + "\n")
     except OSError:
         pass  # syslog still has it
     return {"path": str(path), "sha256": _sha(text.encode()), "changes": changed,
@@ -697,7 +697,8 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
         orig = os.environ.get("SSH_ORIGINAL_COMMAND", "")
         syslog.openlog("kevward-ssh-gate", 0, syslog.LOG_AUTH)
         syslog.syslog(syslog.LOG_NOTICE if resp.get("ok") else syslog.LOG_WARNING,
-                      f"role={role} op={op} {status} client={client or '-'}"
+                      f"role={role} op={op} {status} client={client or '-'} "
+                      f"key={_KEY or '-'}"
                       + (f" original_command={orig[:120]!r}" if orig else "") + extra)
     except Exception:
         pass
@@ -768,7 +769,22 @@ def client_address(environ=None, ppid: int | None = None, proc: Path = Path("/pr
     return "local"
 
 
-def main(role: str, config: str | None = None) -> int:
+#: ``--key-name`` on a gate key's forced command (#223): sshd does not tell a
+#: forced command which key was used, so ``kevward setup`` names each key.
+KEY_NAME = re.compile(r"^[a-z0-9._-]{1,40}$")
+_KEY: str | None = None
+
+
+def stamp(rec: dict) -> dict:
+    """Add the calling key's name to a change-log record (#223), if known."""
+    if _KEY and "key" not in rec:
+        rec["key"] = _KEY
+    return rec
+
+
+def main(role: str, config: str | None = None, key_name: str | None = None) -> int:
+    global _KEY
+    _KEY = key_name if key_name and KEY_NAME.match(key_name) else None
     client = client_address()
     try:
         raw = _read_stdin()
