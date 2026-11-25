@@ -1,0 +1,10 @@
+{
+ "name": "gate-disabled",
+ "role": "read",
+ "gate_enabled": false,
+ "request": "{\"op\":\"version\"}",
+ "expect": {
+  "ok": false,
+  "code": "forbidden"
+ }
+}

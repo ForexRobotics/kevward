@@ -1,0 +1,18 @@
+{
+ "name": "version-read",
+ "role": "read",
+ "gate_enabled": true,
+ "request": "{\"op\":\"version\"}",
+ "expect": {
+  "ok": true,
+  "data_keys": [
+   "protocol",
+   "role",
+   "ops"
+  ],
+  "data": {
+   "protocol": 1,
+   "role": "read"
+  }
+ }
+}

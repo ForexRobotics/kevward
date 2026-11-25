@@ -292,3 +292,12 @@ def test_uninstall_writes_snapshot_first(host):
     # --purge keeps nothing, so it promises no snapshot
     assert all(a["kind"] != "snapshot"
                for a in un.uninstall(purge=True, env=env)["actions"])
+
+
+def test_strip_named_gate_lines():
+    from kevward.uninstall import strip_gate_lines
+    text = ('command="sudo -n /opt/kevward/bin/kevward ssh-gate --role operate '
+            '--key-name console-operate",restrict ssh-ed25519 AAAA x\n'
+            "ssh-ed25519 AAAApersonal me@pc\n")
+    new, n = strip_gate_lines(text, False)
+    assert n == 1 and new.strip() == "ssh-ed25519 AAAApersonal me@pc"

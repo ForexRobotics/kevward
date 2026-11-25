@@ -185,3 +185,21 @@ def test_config_validation(tmp_path):
     p.write_text('[ssh_gate]\nself_update = true\nmin_version = "0.17.0"\n')
     c = Config.load(p)
     assert c.load_error is None and c.ssh_gate.self_update is True
+
+
+# --- #228: no .pyc written at run time ---------------------------------------------
+
+def test_package_never_writes_bytecode():
+    import sys
+
+    import kevward  # noqa: F401
+    assert sys.dont_write_bytecode is True
+
+
+@needs_venv
+def test_update_byte_compiles_inside_the_update(tmp_path):
+    _data, r = run(tmp_path, {"version": "99.0.0"})
+    cmds = [c[0] for c in r.calls]
+    comp = [c for c in cmds if c[1:3] == ["-m", "compileall"]]
+    assert comp and cmds.index(comp[0]) < cmds.index(
+        [str(VENV / "bin" / "kevward"), "setup", "--refresh", "--json"])

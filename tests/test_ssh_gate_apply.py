@@ -471,3 +471,18 @@ def test_job_get_unreadable_is_not_not_found(env, monkeypatch):
     monkeypatch.setattr(Path, "read_text", denied)
     r = job(env, jid)
     assert r["code"] == "forbidden" and "not readable" in r["error"]
+
+
+# --- #220: apply_timeout_s ---------------------------------------------------------
+
+def test_apply_timeout_s():
+    assert ga.apply_timeout_s(0, 3600) == ga.APPLY_OVERHEAD_S
+    assert ga.apply_timeout_s(2, 900) == ga.APPLY_OVERHEAD_S + 1800
+    assert ga.apply_timeout_s(3, 0) is None            # no install limit: no bound
+
+
+def test_plan_reports_apply_timeout(env):
+    d = call(env, {"op": "plan"}, compute=compute_with(FakeEngine(FINDINGS)))["data"]
+    assert d["apply_timeout_s"] == ga.APPLY_OVERHEAD_S + 3600   # one install run
+    d = call(env, {"op": "plan"}, compute=compute_with(FakeEngine([])))["data"]
+    assert d["apply_timeout_s"] == ga.APPLY_OVERHEAD_S

@@ -9,9 +9,11 @@ libraries, base system) so nothing security-relevant is missed.
 
 from __future__ import annotations
 
+import os
+
 from ..model import Finding, FindingKind, Severity
 from ..plugin import register
-from ..stale_libs import StaleUnit, scan
+from ..stale_libs import StaleUnit, StaleVM, scan, scan_vms
 from ..util import (
     format_pkgs,
     have,
@@ -42,6 +44,9 @@ class AptPlugin(AptServicePlugin):
         stale = stale_code_finding(self.name, scan(), complete=is_root())
         if stale:
             findings.append(stale)
+        vms = stale_vm_finding(self.name, scan_vms())
+        if vms:
+            findings.append(vms)
         return findings
 
 
@@ -115,4 +120,30 @@ def stale_code_finding(
         severity=Severity.MEDIUM if tls else Severity.LOW,
         title=title,
         detail=detail,
+    )
+
+
+def stale_vm_finding(service: str, vms: list[StaleVM]) -> Finding | None:
+    """MEDIUM: qemu (or virtiofsd / swtpm) was updated but VMs still run the
+    old binary until each VM is restarted (#254)."""
+    if not vms:
+        return None
+    names = sorted({v.name for v in vms})
+    hints = []
+    if any(v.snap == "multipass" for v in vms):
+        hints.append("multipass restart <name>")
+    if any(not v.snap for v in vms):
+        hints.append("virsh reboot <name> (or restart the VM)")
+    if any(v.snap and v.snap != "multipass" for v in vms):
+        hints.append("restart the VM")
+    lines = [f"{v.name} (pid {v.pid}, {os.path.basename(v.exe)}: {v.reason})" for v in vms]
+    return Finding(
+        service=service,
+        kind=FindingKind.CONFIG,
+        severity=Severity.MEDIUM,
+        title=f"qemu was updated but {len(names)} VM(s) still run the old binary "
+              f"({format_pkgs(names)})",
+        detail="A running VM keeps executing the qemu it started with; the update is "
+               "not in effect for it until the VM is restarted. " + "; ".join(lines)
+               + ". Restart them: " + ", ".join(hints) + ".",
     )

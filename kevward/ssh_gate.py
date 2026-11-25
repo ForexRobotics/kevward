@@ -53,7 +53,8 @@ CHANGE_NOTICE_DAYS = 7
 
 ROLES = ("read", "operate")
 READ_OPS = ("version", "report.get", "config.get", "config.schema",
-            "reboot.status", "schedule.status", "plan", "job.get")
+            "reboot.status", "schedule.status", "plan", "job.get", "gate.capabilities",
+            "gate.selfpaths")
 OPERATE_OPS = READ_OPS + ("config.set", "self.update", "reboot.schedule", "reboot.cancel",
                           "schedule.install", "apply.start", "report.refresh")
 
@@ -83,7 +84,7 @@ _WEAKENING = {
     "policy.allow_reboot", "policy.reboot_window_start", "policy.services",
     "policy.overrides",
 }
-_PATHS = {"report_dir"}
+_PATHS = {"report_dir", "ssh_gate.truthgate_path"}
 
 
 class GateError(Exception):
@@ -102,7 +103,11 @@ def fail(code: str, message: str) -> dict:
 
 
 def dumps(resp: dict) -> str:
-    """One line of JSON, UTF-8 not escaped (the stille-pro envelope)."""
+    """One line of JSON, UTF-8 not escaped (the stille-pro envelope). A
+    relayed truthgate response goes out byte for byte (#219)."""
+    line = getattr(resp, "line", None)
+    if isinstance(line, bytes):
+        return line.decode("utf-8")
     return json.dumps(resp, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
 
 
@@ -348,6 +353,11 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
         if chk.rc != 0 or got[0] != want:
             raise GateError("internal", f"installed, but `kevward --version` says "
                             f"{(chk.out or chk.err).strip()[:80]!r}, not {want}")
+        # Byte-compile now, inside the update (and truthgate's window), so
+        # runs never need to write .pyc into the package (#228).
+        runner([py, "-m", "compileall", "-q", "-x", r"/tests?/",
+                *[str(p) for p in sorted(prefix.glob("lib/python3*/site-packages/kevward"))]],
+               timeout=120, env=env, clean_env=True)
         duration = round(time.monotonic() - t0, 1)
         post = _post_update(runner, prefix, env)
     downgrade = _vtuple(want) < _vtuple(old)
@@ -356,7 +366,7 @@ def op_self_update(cfg: Config, args: dict, *, changes_file: Path, client: str,
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            fh.write(json.dumps(stamp(record), ensure_ascii=False) + "\n")
     except OSError:
         pass  # syslog still has it
     return {"old": old, "new": want, "downgrade": downgrade, "duration_s": duration,
@@ -558,7 +568,7 @@ def op_config_set(path: Path, args: dict, *, changes_file: Path, client: str,
     try:
         changes_file.parent.mkdir(parents=True, exist_ok=True)
         with open(changes_file, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            fh.write(json.dumps(stamp(record), ensure_ascii=False, default=str) + "\n")
     except OSError:
         pass  # syslog still has it
     return {"path": str(path), "sha256": _sha(text.encode()), "changes": changed,
@@ -598,6 +608,12 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
             args = {}
         if not isinstance(args, dict):
             raise GateError("bad_request", "args must be an object")
+        o = op_opts or {}
+        if op.startswith("truthgate."):
+            # Relayed unparsed; truthgate decides what each role may do (#219).
+            from .truthgate import relay
+            return relay(raw, role, cfg, client=client, key=_KEY,
+                         runner=o.get("tg_runner"), check=o.get("tg_check"))
         allowed = OPERATE_OPS if role == "operate" else READ_OPS
         if op not in OPERATE_OPS:
             raise GateError("unknown_op", f"unknown op: {op!r}")
@@ -605,6 +621,13 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
             raise GateError("forbidden", f"{op} needs the operate role")
         if op == "version":
             return ok(op_version(role, cfg))
+        if op == "gate.selfpaths":
+            from .selfpaths import selfpaths
+            return ok(selfpaths())
+        if op == "gate.capabilities":
+            from .truthgate import capabilities
+            return ok(capabilities(role, cfg, list(allowed), client=client, key=_KEY,
+                                   runner=o.get("tg_runner"), check=o.get("tg_check")))
         if op == "report.get":
             return ok(op_report_get(cfg, args))
         if op == "config.get":
@@ -677,6 +700,8 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
         status = "ok" if resp.get("ok") else f"refused:{resp.get('code')}"
         extra = ""
         data = resp.get("data") if resp.get("ok") else None
+        if not isinstance(op, str) or op.startswith("truthgate."):
+            data = None  # op name and status only: truthgate keeps its own log
         if isinstance(data, dict) and "changes" in data:
             extra = " changes=" + json.dumps(data["changes"], ensure_ascii=False,
                                              default=str)
@@ -692,7 +717,8 @@ def _log(role: str, raw: bytes, resp: dict, client: str) -> None:
         orig = os.environ.get("SSH_ORIGINAL_COMMAND", "")
         syslog.openlog("kevward-ssh-gate", 0, syslog.LOG_AUTH)
         syslog.syslog(syslog.LOG_NOTICE if resp.get("ok") else syslog.LOG_WARNING,
-                      f"role={role} op={op} {status} client={client or '-'}"
+                      f"role={role} op={op} {status} client={client or '-'} "
+                      f"key={_KEY or '-'}"
                       + (f" original_command={orig[:120]!r}" if orig else "") + extra)
     except Exception:
         pass
@@ -763,7 +789,22 @@ def client_address(environ=None, ppid: int | None = None, proc: Path = Path("/pr
     return "local"
 
 
-def main(role: str, config: str | None = None) -> int:
+#: ``--key-name`` on a gate key's forced command (#223): sshd does not tell a
+#: forced command which key was used, so ``kevward setup`` names each key.
+KEY_NAME = re.compile(r"^[a-z0-9._-]{1,40}$")
+_KEY: str | None = None
+
+
+def stamp(rec: dict) -> dict:
+    """Add the calling key's name to a change-log record (#223), if known."""
+    if _KEY and "key" not in rec:
+        rec["key"] = _KEY
+    return rec
+
+
+def main(role: str, config: str | None = None, key_name: str | None = None) -> int:
+    global _KEY
+    _KEY = key_name if key_name and KEY_NAME.match(key_name) else None
     client = client_address()
     try:
         raw = _read_stdin()

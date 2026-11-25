@@ -83,14 +83,16 @@ def test_keys_sudoers_idempotent_and_replaces(env):
     d = su.setup(console_user="ktakahashi", read_key=READ, operate_key=OPERATE, env=e)
     lines = ak.read_text().splitlines()
     assert lines[0] == "ssh-ed25519 AAAApersonal me@pc"
-    assert lines[1] == (f'command="{e.prefix}/bin/kevward ssh-gate --role read",restrict '
-                        + READ)
-    assert lines[2] == (f'command="sudo -n {e.prefix}/bin/kevward ssh-gate --role operate",'
-                        "restrict " + OPERATE)
+    assert lines[1] == (f'command="{e.prefix}/bin/kevward ssh-gate --role read '
+                        '--key-name console-read",restrict ' + READ)
+    assert lines[2] == (f'command="sudo -n {e.prefix}/bin/kevward ssh-gate --role operate '
+                        '--key-name console-operate",restrict ' + OPERATE)
     assert len(lines) == 3 and oct(ak.stat().st_mode & 0o777) == "0o600"
     sud = e.etc / "sudoers.d" / su.SUDOERS_NAME
-    assert sud.read_text().splitlines()[-1] == (
-        f"ktakahashi ALL=(root) NOPASSWD: {e.prefix}/bin/kevward ssh-gate --role operate")
+    assert sud.read_text().splitlines()[-2:] == [
+        f"ktakahashi ALL=(root) NOPASSWD: {e.prefix}/bin/kevward ssh-gate --role operate "
+        "--key-name console-operate",
+        f"ktakahashi ALL=(root) NOPASSWD: {e.prefix}/bin/kevward ssh-gate --role operate"]
     assert oct(sud.stat().st_mode & 0o777) == "0o440"
     assert e.runner.calls[0][:2] == ["visudo", "-cf"]
     assert {a["kind"]: a["action"] for a in d["actions"]} == {
@@ -302,3 +304,22 @@ def test_cli_setup_flags(monkeypatch, capsys):
     monkeypatch.setattr(su, "setup", fake)
     assert cli.main(["setup", "--self-update", "--allow-reboot", "--dry-run", "--json"]) == 0
     assert seen["self_update"] is True and seen["allow_reboot"] is True
+
+
+# --- #223: named keys -----------------------------------------------------------------
+
+def test_key_name_prefix(env):
+    e, home = env
+    su.setup(console_user="ktakahashi", read_key=READ, operate_key=OPERATE,
+             key_prefix="fr-sc", env=e)
+    text = (home / ".ssh" / "authorized_keys").read_text()
+    assert "--key-name fr-sc-read\"" in text and "--key-name fr-sc-operate\"" in text
+    sud = (e.etc / "sudoers.d" / su.SUDOERS_NAME).read_text()
+    assert "--key-name fr-sc-operate\n" in sud and "*" not in sud
+
+
+def test_key_name_prefix_rejected(env):
+    e, _ = env
+    with pytest.raises(su.GateError) as ei:
+        su.setup(console_user="ktakahashi", read_key=READ, key_prefix="Bad Name", env=e)
+    assert ei.value.code == "bad_request"
