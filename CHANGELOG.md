@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **report: HAProxy (#1).** An apt `haproxy` plugin: pending security /
+  minor updates, KEV term `haproxy`.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
