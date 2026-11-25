@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **report: VMs still on an old qemu (#254).** MEDIUM when a running
+  `qemu-system-*` (or `virtiofsd` / `swtpm`) executes a binary that was
+  replaced since it started: deleted on disk, or from a snap revision that is
+  no longer current (multipass). Names the VMs (`-name`, multipass instance)
+  and how to restart them.
+
 ## 0.20.2
 
 kevward's firewall survives an uninstall/reinstall and a missing firewall is
