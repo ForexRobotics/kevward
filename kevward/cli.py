@@ -440,6 +440,7 @@ def _cmd_report(args) -> Path:
                                 cfg.audit.allowed_outbound, notes)
         result.audit_allowed_outbound = notes.get("allowed_outbound_hits") or {}
         result.audit_allowed_forced = notes.get("allowed_forced_hits") or {}
+        result.audit_recognised = notes.get("recognised_sockets") or {}
         result.audit_rules = audit_rule_counts(cfg)
     from .reporting.html import render
     out = Path(args.output) if args.output else cfg.report_dir / "report.html"

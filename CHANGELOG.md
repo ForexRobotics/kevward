@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **audit: multipass / LXD plumbing on a Linux host is recognised (#252).**
+  dnsmasq / lxd listening on a private bridge address and multipassd's SSH
+  to its VMs are counted (`audit_recognised` in report.json, one line in
+  `kevward audit`) instead of needing `[audit] allowed_outbound` lines, but
+  only when the executable comes from `/snap/multipass/` or `/snap/lxd/`.
+  The same names elsewhere, on a wildcard or public address, still go through
+  every check.
+
 ## 0.20.2
 
 kevward's firewall survives an uninstall/reinstall and a missing firewall is
