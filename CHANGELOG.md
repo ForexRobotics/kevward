@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **report: Memcached (#136).** An apt `memcached` plugin (security /
+  minor updates, KEV term `memcached`) that also reads `/etc/memcached.conf`
+  as text: no `-l` or a non-loopback `-l` is MEDIUM (memcached has no
+  authentication); UDP on while exposed is LOW (`-U` other than 0, or a
+  version before 1.5.6 without `-U 0`). A unix socket (`-s`) gives no finding.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
