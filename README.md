@@ -95,6 +95,7 @@ detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 | Base system | apt (host-wide updates, reboot detection) |
 | Web servers | nginx, Apache (`apache2`) |
 | Databases   | MySQL, MariaDB, PostgreSQL, Redis |
+| Messaging   | Mosquitto (MQTT) |
 | Runtimes    | PHP, Node.js |
 | Apps        | Composer/Laravel, WordPress *(report-only)* |
 | Access      | OpenSSH (sshd), ufw |
