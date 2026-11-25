@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.21.0
+
+The truthgate integration for 1.0: the console manages truthgate through the
+existing ssh-gate (`truthgate.*` relay, `gate.capabilities`, `gate.selfpaths`,
+named keys), `apply` refuses to break a host truthgate enforces, and the
+protocol is written down (CC0, with test vectors). Also: multipass / snap /
+qemu awareness, and versioned JSON with a 1.x stability policy. Updating with
+`self.update` is enough; existing console keys keep working.
 
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
