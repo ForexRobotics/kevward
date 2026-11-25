@@ -111,8 +111,7 @@ def test_report_data_is_run_result_plus_summary():
     d = D.report_data(r)
     assert d["schema_version"] == 1
     assert {k: v for k, v in d.items()
-            if k not in ("schema_version", "summary", "last_apply",
-                         "apply_refused")} == \
+            if k not in ("summary", "last_apply", "apply_refused")} == \
         json.loads(r.to_json())
     assert d["attackers"]["fail2ban"]["top_offenders"][1] == ["198.51.100.2", 22]
 

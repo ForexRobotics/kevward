@@ -243,6 +243,10 @@ sudo kevward audit            # (sudo for full process/socket/file visibility)
 kevward audit --json          # machine-readable, pairs with an LLM triage
 ```
 
+JSON output is versioned (`schema_version`); every key and the 1.x
+compatibility rules are in [docs/json-schema.md](docs/json-schema.md) and
+[docs/stability.md](docs/stability.md) (also the exit codes).
+
 It flags, for a human to confirm:
 
 - **Reverse SSH / tunnels** — local `ssh` / `autossh` doing remote (`-R`) or

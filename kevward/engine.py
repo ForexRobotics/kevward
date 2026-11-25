@@ -16,6 +16,7 @@ from typing import Any
 
 from . import __version__
 from .config import Config
+from .jsonout import SCHEMA_VERSION
 from .model import Finding, FindingKind, ServiceReport, Severity
 from .plugin import load
 from .util import is_root, reboot_kind, reboot_pending, reboot_pending_pkgs
@@ -74,6 +75,7 @@ class RunResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "kevward_version": __version__,
+            "schema_version": SCHEMA_VERSION,
             "host": self.host,
             "generated_at": self.generated_at,
             "os": self.os,

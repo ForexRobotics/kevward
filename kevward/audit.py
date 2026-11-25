@@ -1330,8 +1330,12 @@ def run_cli(use_json: bool, allow_forced: list[str] | None = None,
     findings = audit(allow_forced, allowed_outbound, notes)
     if use_json:
         import json
-        print(json.dumps([f.to_dict() for f in findings], indent=2,
-                         ensure_ascii=False))
+
+        from .jsonout import findings_doc
+        print(json.dumps(findings_doc(
+            findings, allowed_outbound_hits=notes.get("allowed_outbound_hits") or {},
+            allowed_forced_hits=notes.get("allowed_forced_hits") or {}),
+            indent=2, ensure_ascii=False))
     else:
         _print_findings(findings)
         line = allowed_summary(notes.get("allowed_outbound_hits"))

@@ -370,8 +370,9 @@ def run_cli(action: str, *, mptcp_off: bool, drop_ip_options: bool,
         findings = check()
         if use_json:
             import json
-            print(json.dumps([f.to_dict() for f in findings], indent=2,
-                             ensure_ascii=False))
+
+            from .jsonout import findings_doc
+            print(json.dumps(findings_doc(findings), indent=2, ensure_ascii=False))
         else:
             _print_findings(findings)
         return 0
@@ -380,7 +381,9 @@ def run_cli(action: str, *, mptcp_off: bool, drop_ip_options: bool,
         st = state()
         if use_json:
             import json
-            print(json.dumps(st, indent=2))
+
+            from .jsonout import stamp
+            print(json.dumps(stamp(st), indent=2))
         else:
             for k, v in st.items():
                 print(f"  {k}: {describe_state_value(k, v, st, root=is_root())}")

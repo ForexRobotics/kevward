@@ -19,10 +19,10 @@ import os
 from pathlib import Path
 
 from ..engine import RunResult
-from .html import SEVERITIES, fw_drop_totals, severity_counts
 
 #: Bumped only on removals/renames/type changes (#116): new keys keep it.
-SCHEMA_VERSION = 1
+from ..jsonout import SCHEMA_VERSION  # one version for all JSON (#116)
+from .html import SEVERITIES, fw_drop_totals, severity_counts
 
 
 def _kev(trends: dict) -> dict | None:
