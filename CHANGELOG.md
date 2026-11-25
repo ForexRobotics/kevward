@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **report: BIND9 (#132).** An apt `bind9` plugin (security / minor
+  updates, KEV term `isc:bind`) that also parses `named-checkconf -p`: an
+  open resolver (recursion on and the effective recursion ACL — 
+  `allow-recursion`, else `allow-query-cache`, else `allow-query`, else
+  `localnets; localhost;` — includes `any`) is MEDIUM, per `view`.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
