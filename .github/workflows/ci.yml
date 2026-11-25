@@ -83,3 +83,22 @@ jobs:
           $K check
           $K report -o /tmp/kevward-report.html
           test -s /tmp/kevward-report.html
+
+  # Root integration (#117): install into /opt/kevward like a real host and run
+  # setup, the report unit in its systemd sandbox, the firewall, ssh-gate,
+  # uninstall and setup --restore. Runners are disposable, so this changes
+  # the system on purpose (ci/integration.sh refuses to run outside CI).
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Root integration test
+        run: sudo --preserve-env=CI ci/integration.sh "$GITHUB_WORKSPACE"
