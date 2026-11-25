@@ -41,6 +41,9 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # block = ["109.160.32.0/24", "77.239.124.0/24"]
 # Re-apply the blocklist on boot via a kevward-owned systemd unit (default on).
 # persist = true
+# In a multipass guest, never block the host side of the NAT (the default
+# gateway that `multipass shell` comes from, #251). Shown in `firewall plan`.
+# allow_gateway = true
 # Optional DNSBL cross-check (off by default -> no network call). When on, only
 # the top-N candidates are looked up; see `firewall --require-reputation`.
 # check_dnsbl = false

@@ -66,6 +66,9 @@ class FirewallConfig:
     block: list[str] = field(default_factory=list)
     # Install a systemd unit so the blocklist is re-applied on boot.
     persist: bool = True
+    # In a multipass guest, never block the host's side of the NAT (the
+    # default gateway), which `multipass shell/exec` come from (#251).
+    allow_gateway: bool = True
     # Optional DNSBL cross-check (off by default -> no network call).
     check_dnsbl: bool = False
     # DNSBL zone to query (e.g. a Spamhaus DQS zone "<key>.zen.dq.spamhaus.net").

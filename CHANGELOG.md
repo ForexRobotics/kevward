@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **firewall: the multipass host is never blocked from inside its guest
+  (#251).** In a multipass guest (cloud-init NoCloud datasource and a
+  multipass key in an authorized_keys), the private / link-local default
+  gateways are added to the allowlist, also in the persisted accept set and
+  on `setup --restore`. `firewall plan` shows `allowlisted: … (multipass
+  host)`; JSON has `multipass_host`. `[firewall] allow_gateway = false` turns
+  it off. (RFC1918 gateways were already in the built-in floor; this makes it
+  explicit and covers other private ranges.)
+
 ## 0.20.2
 
 kevward's firewall survives an uninstall/reinstall and a missing firewall is
