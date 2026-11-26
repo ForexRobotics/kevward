@@ -430,8 +430,8 @@ def render(result: RunResult, lang: str | None = None) -> str:
         fw_line = (
             "<p class='muted' style='margin-top:0'>"
             + t("firewall drops <span style='font-size:12px'>({window})</span>: evidence "
-                "blocklist <b>{evidence}</b>{evidence_size} · operator CIDR blocks "
-                "<b>{cidr}</b>{cidr_size} · total <b>{total}</b> packets",
+                "blocklist <b>{evidence}</b> packets{evidence_size} · operator CIDR blocks "
+                "<b>{cidr}</b> packets{cidr_size} · total <b>{total}</b> packets",
                 window=_fw_window(att.get("firewall_since"), result.generated_at, t),
                 evidence=f"{evidence:,}", evidence_size=_fw_size("blocklist4", "blocklist6"),
                 cidr=f"{cidr:,}", cidr_size=_fw_size("blockcidr4", "blockcidr6"),

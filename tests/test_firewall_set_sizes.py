@@ -54,11 +54,26 @@ def test_report_shows_entry_counts():
         "firewall_sizes": {"blocklist4": 51, "blocklist6": 0,
                            "blockcidr4": 1, "blockcidr6": 0},
     }))
-    assert "evidence blocklist <b>4</b> <span style='font-size:12px'>(51 entries)</span>" in html
-    assert "operator CIDR blocks <b>5</b> <span style='font-size:12px'>(1 entry)</span>" in html
+    assert ("evidence blocklist <b>4</b> packets <span style='font-size:12px'>(51 entries)"
+            "</span>") in html
+    assert ("operator CIDR blocks <b>5</b> packets <span style='font-size:12px'>(1 entry)"
+            "</span>") in html
 
 
 def test_report_without_sizes_unchanged():
     html = render(_res({"firewall": {"blocklist4": [4, 172]}}))
-    assert "evidence blocklist <b>4</b> · " in html
+    assert "evidence blocklist <b>4</b> packets · " in html
     assert "entries)" not in html
+
+
+def test_japanese_units_on_both_numbers():
+    from kevward.reporting.i18n import translator
+    t = translator("ja")
+    assert t("({n} entries)", n="85") == "（登録 85 件）"
+    line = t("firewall drops <span style='font-size:12px'>({window})</span>: evidence "
+             "blocklist <b>{evidence}</b> packets{evidence_size} · operator CIDR blocks "
+             "<b>{cidr}</b> packets{cidr_size} · total <b>{total}</b> packets",
+             window="w", evidence="60", evidence_size="（登録 85 件）", cidr="0",
+             cidr_size="（登録 0 件）", total="60")
+    assert "証拠ブロックリスト <b>60</b> パケット（登録 85 件）" in line
+    assert "運用者の CIDR ブロック <b>0</b> パケット（登録 0 件）" in line

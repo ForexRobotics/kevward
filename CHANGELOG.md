@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **report: units on both numbers of the firewall drops line (#284).**
+  「証拠ブロックリスト 60 パケット（登録 85 件）」; English "evidence blocklist
+  287 packets (56 entries)".
+
 ## 0.21.0
 
 The truthgate integration for 1.0: the console manages truthgate through the
