@@ -627,7 +627,9 @@ def handle(raw: bytes, role: str, *, path: Path, changes_file: Path = CHANGES_FI
         if op == "gate.capabilities":
             from .truthgate import capabilities
             return ok(capabilities(role, cfg, list(allowed), client=client, key=_KEY,
-                                   runner=o.get("tg_runner"), check=o.get("tg_check")))
+                                   runner=o.get("tg_runner"), check=o.get("tg_check"),
+                                   changes_file=changes_file,
+                                   client_status=o.get("client_status")))
         if op == "report.get":
             return ok(op_report_get(cfg, args))
         if op == "config.get":

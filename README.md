@@ -523,7 +523,13 @@ role; truthgate decides what each role may do. `gate.capabilities` lists the
 products on the host (kevward's ops for the role, and truthgate's
 capabilities when it is installed). The wire protocol, shared with truthgate,
 is in [docs/ssh-gate-protocol.md](docs/ssh-gate-protocol.md) (CC0) with test
-vectors. `gate.selfpaths` lists every path on the console's way in (launcher
+vectors. `gate.capabilities` also returns `client`: the caller's address and whether
+this host exempts it (fail2ban `ignoreip`, kevward's firewall allowlist,
+`[ssh_gate] known_sources`), so the console can warn before failed logins
+from a new network ban it. An operation from an address never seen before
+and not exempt is reported at medium for 2 days ("NEW source: … via ssh-gate
+from …"); add the address to `[ssh_gate] known_sources` if it is yours.
+`gate.selfpaths` lists every path on the console's way in (launcher
 and its sha256, interpreter, login shell, sudo, package directory, every
 program kevward runs, the apply unit names), so an execution allow-list such
 as truthgate's enforce mode can keep the host manageable; take it again after

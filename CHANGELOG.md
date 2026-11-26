@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **report: NEW source for ssh-gate operations (#283).** An operation from an
+  address whose first use is less than 2 days old and which is not in
+  fail2ban's `ignoreip`, kevward's firewall allowlist or the new
+  `[ssh_gate] known_sources` is a medium finding ("NEW source: self.update via
+  ssh-gate from 221.188.80.53 (key console-operate)"). Seen-before comes from
+  the existing change log, so nothing old turns NEW after the upgrade.
+- **ssh-gate: `gate.capabilities` returns `client` (#285)**: the caller's
+  address and whether it is exempt here (`fail2ban_ignored`,
+  `firewall_allowed`, `configured`, `seen_before`, `known_source`).
 - **report: units on both numbers of the firewall drops line (#284).**
   「証拠ブロックリスト 60 パケット（登録 85 件）」; English "evidence blocklist
   287 packets (56 entries)".
