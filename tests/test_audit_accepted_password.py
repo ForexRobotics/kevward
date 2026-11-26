@@ -63,6 +63,9 @@ def test_check_reads_logs_and_settings(monkeypatch, tmp_path):
     log.write_text("\n".join(LOG) + "\n")
     import kevward.integrations.conditions as cond
     monkeypatch.setattr(cond, "_read_sshd_t", lambda: {"passwordauthentication": "no"})
+    # Not the runner's own /etc/ssh: a recently changed sshd_config.d file
+    # there made these 2026-11-17 logins "before password logins were off".
+    monkeypatch.setattr(ad, "password_off_since", lambda files: None)
     real_open = open
 
     def fake_open(path, *a, **k):

@@ -160,13 +160,14 @@ JA: dict[str, str] = {
     # --- attack sources ---
     "Attack sources": "攻撃元",
     "firewall drops <span style='font-size:12px'>({window})</span>: evidence "
-    "blocklist <b>{evidence}</b>{evidence_size} · operator CIDR blocks "
-    "<b>{cidr}</b>{cidr_size} · total <b>{total}</b> packets":
+    "blocklist <b>{evidence}</b> packets{evidence_size} · operator CIDR blocks "
+    "<b>{cidr}</b> packets{cidr_size} · total <b>{total}</b> packets":
         "ファイアウォールで破棄 <span style='font-size:12px'>（{window}）</span>: "
-        "証拠ブロックリスト <b>{evidence}</b>{evidence_size} · 運用者の CIDR ブロック "
-        "<b>{cidr}</b>{cidr_size} · 合計 <b>{total}</b> パケット",
-    "({n} entry)": "（{n} 件）",
-    "({n} entries)": "（{n} 件）",
+        "証拠ブロックリスト <b>{evidence}</b> パケット{evidence_size} · "
+        "運用者の CIDR ブロック <b>{cidr}</b> パケット{cidr_size} · 合計 <b>{total}</b> パケット",
+    # set sizes: packets and entries both carry a unit in Japanese (#284)
+    "({n} entry)": "（登録 {n} 件）",
+    "({n} entries)": "（登録 {n} 件）",
     "since last ruleset load": "ルールセットの読み込み以降",
     "since {start} UTC": "{start} UTC 以降",
     "{label}, {span}": "{label}、{span}",
