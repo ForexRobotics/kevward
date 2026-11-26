@@ -98,6 +98,7 @@ detected at runtime: `apt`, `composer`, `npm`, `wp` (wp-cli), `fail2ban`,
 | Runtimes    | PHP, Node.js |
 | Apps        | Composer/Laravel, WordPress *(report-only)* |
 | Access      | OpenSSH (sshd), ufw |
+| Alpine (apk) | `apk` (every pending upgrade, secdb security), OpenSSH (`openssh-apk`) *(experimental)* |
 
 Any service not installed is silently skipped. Adding another is one file —
 see [CONTRIBUTING.md](CONTRIBUTING.md).

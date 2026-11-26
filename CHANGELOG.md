@@ -29,6 +29,15 @@ protocol is written down (CC0, with test vectors). Also: multipass / snap /
 qemu awareness, and versioned JSON with a 1.x stability policy. Updating with
 `self.update` is enough; existing console keys keep working.
 
+- **backend: Alpine Linux / apk (#2).** `plugins/_apk.py` mirrors `_apt.py`:
+  pending upgrades from `apk list --upgradable` (or `apk version -l '<'` on
+  older apk-tools), computed once per run; an upgrade is a security update when
+  the Alpine secdb (secdb.alpinelinux.org, cached 12h, fail-soft: offline
+  nothing is called "security") lists a fix between the installed and the new
+  version, with the CVEs in the finding. `apply` runs `apk add --upgrade`:
+  dry-run by default, root required. Two plugins use it: `apk` (every pending
+  upgrade host-wide) and `openssh-apk`. A no-op on hosts without apk.
+
 - **JSON is versioned; 1.x stability policy (#116).** Every JSON document has
   `schema_version: 1` and `kevward_version` (`check`/`report`, `trends`,
   `firewall`, `harden list`, `schedule status`, `schedule-reboot --status`,
