@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.22.0
+
+ssh-gate operations from a never-seen address stand out (NEW source), and the
+console can tell whether its current address is exempt from fail2ban /
+the firewall before a few failed logins ban it (#283, #285). Japanese
+report: units on both numbers of the firewall drops line (#284).
 
 - **report: NEW source for ssh-gate operations (#283).** An operation from an
   address whose first use is less than 2 days old and which is not in
