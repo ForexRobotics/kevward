@@ -99,6 +99,10 @@ The console's first call on every connection:
 ```
 
 - `gate_user`: the user this role's gate runs as (`root` for operate).
+- `client` (kevward, optional): the caller's address and whether this host
+  already trusts it, so a console can warn before a few failed logins ban it:
+  `{"address", "fail2ban_ignored", "firewall_allowed", "configured",
+  "seen_before", "known_source"}`; `null` = not in use / cannot tell.
 - `products.kevward.ops`: the ops the calling role may run.
 - `products.truthgate`: the `data` of `truthgate.capabilities`, only when
   truthgate is installed and answers within 5 s. Otherwise the key is absent;

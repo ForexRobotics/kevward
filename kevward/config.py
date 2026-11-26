@@ -185,6 +185,9 @@ class SshGateConfig:
     # `gate.capabilities` asks truthgate too; the console calls it first on
     # every connection, so it has its own short limit.
     truthgate_capabilities_timeout_s: int = 5
+    # Addresses / CIDRs the console may operate from without a "NEW source"
+    # finding (#283), besides fail2ban's ignoreip and the firewall allowlist.
+    known_sources: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         import re
@@ -196,6 +199,15 @@ class SshGateConfig:
                 raise ValueError(f"ssh_gate.{name} must be 1-{hi}")
         if not isinstance(self.truthgate_path, str) or not self.truthgate_path.startswith("/"):
             raise ValueError("ssh_gate.truthgate_path must be an absolute path")
+        import ipaddress
+        if not isinstance(self.known_sources, list):
+            raise ValueError("ssh_gate.known_sources must be a list of addresses / CIDRs")
+        for s in self.known_sources:
+            try:
+                ipaddress.ip_network(str(s), strict=False)
+            except ValueError:
+                raise ValueError(f"ssh_gate.known_sources: not an address or CIDR: {s!r}") \
+                    from None
 
         if not isinstance(self.enabled, bool) or not isinstance(self.self_update, bool):
             raise ValueError("ssh_gate.enabled / self_update must be true or false")

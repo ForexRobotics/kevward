@@ -454,6 +454,13 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
         from .ssh_gate import recent_changes
 
         gate = gate_change_findings(recent_changes())
+        try:
+            from .gate_sources import host_new_source_findings
+            from .ssh_gate import CHANGES_FILE
+
+            gate = host_new_source_findings(cfg, CHANGES_FILE) + gate   # #283
+        except Exception:
+            pass
     except Exception:
         gate = []
     try:

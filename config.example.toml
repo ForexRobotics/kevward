@@ -128,3 +128,6 @@ min_sshd_failures = 20     # sshd failures for an IP to qualify (bans always do)
 # truthgate_path = "/usr/bin/truthgate"
 # truthgate_timeout_s = 120              # 1-3600; SIGTERM, then SIGKILL after 5 s
 # truthgate_capabilities_timeout_s = 5   # 1-60; for gate.capabilities
+# Addresses / CIDRs the console may operate from without a "NEW source"
+# finding (#283). fail2ban's ignoreip and the firewall allowlist count too.
+# known_sources = ["203.0.113.0/24"]

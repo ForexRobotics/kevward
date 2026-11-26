@@ -110,7 +110,7 @@ def relay(raw: bytes, role: str, cfg, *, client: str, key: str | None,
 
 
 def capabilities(role: str, cfg, ops: list[str], *, client: str, key: str | None,
-                 runner=None, check=None) -> dict:
+                 runner=None, check=None, changes_file=None, client_status=None) -> dict:
     """``gate.capabilities``: kevward's ops for this role, and truthgate's
     capabilities when it is installed and answers in time (else omitted)."""
     from . import __version__
@@ -125,5 +125,16 @@ def capabilities(role: str, cfg, ops: list[str], *, client: str, key: str | None
             products["truthgate"] = r["data"]
     except GateError:
         pass
-    return {"protocol": PROTOCOL, "role": role, "gate_user": gate_user(),
-            "products": products}
+    out = {"protocol": PROTOCOL, "role": role, "gate_user": gate_user(),
+           "products": products}
+    try:   # #285: is the console's current address exempt here?
+        from . import gate_sources as gs
+
+        if client_status is not None:
+            out["client"] = client_status(client)
+        else:
+            seen = gs.seen_sources(gs.all_changes(changes_file)) if changes_file else set()
+            out["client"] = gs.address_status(client, cfg, seen=seen)
+    except Exception:  # noqa: BLE001 - never break the first call of a connection
+        out["client"] = {"address": client or None}
+    return out
