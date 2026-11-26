@@ -11,6 +11,9 @@
 - **ssh-gate: `gate.capabilities` returns `client` (#285)**: the caller's
   address and whether it is exempt here (`fail2ban_ignored`,
   `firewall_allowed`, `configured`, `seen_before`, `known_source`).
+- **report: units on both numbers of the firewall drops line (#284).**
+  「証拠ブロックリスト 60 パケット（登録 85 件）」; English "evidence blocklist
+  287 packets (56 entries)".
 
 ## 0.21.0
 
