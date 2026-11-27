@@ -20,7 +20,7 @@ from pathlib import Path
 #: fails when the code runs a program that is not listed here.
 COMMANDS = (
     "apache2ctl", "apt-cache", "apt-config", "apt-get", "busctl", "composer", "dpkg", "dpkg-query",
-    "fail2ban-client", "ip", "logwatch", "nft", "nginx", "node", "npm", "php", "pro",
+    "fail2ban-client", "ip", "logwatch", "nft", "nginx", "node", "npm", "php", "postconf", "pro",
     "shutdown", "snap", "ss", "sshd", "sysctl", "systemctl", "systemd-run", "ufw", "uname",
     "visudo", "wp",
 )
