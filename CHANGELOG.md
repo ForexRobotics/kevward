@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **ssh-gate: `client.exempt` / `client.exempt_clear` (#291).** One fail2ban
+  exemption slot per named console key: the caller's own address replaces the
+  previous one (`[sshd] ignoreip = %(known/ignoreip)s …` in
+  `jail.d/zz-kevward-console-slot.local`; hand-made exemptions untouched;
+  `fail2ban-client -t`, reload and a check that nothing in effect was dropped,
+  else rolled back). `gate.capabilities` `client.exempt_slot`. Changes are low
+  findings for 7 days; `uninstall` removes the slot file.
+
 ## 0.22.0
 
 ssh-gate operations from a never-seen address stand out (NEW source), and the

@@ -102,7 +102,13 @@ The console's first call on every connection:
 - `client` (kevward, optional): the caller's address and whether this host
   already trusts it, so a console can warn before a few failed logins ban it:
   `{"address", "fail2ban_ignored", "firewall_allowed", "configured",
-  "seen_before", "known_source"}`; `null` = not in use / cannot tell.
+  "seen_before", "known_source", "exempt_slot"}`; `null` = not in use / cannot
+  tell. `exempt_slot` is the address in the calling key's fail2ban slot.
+- kevward's `client.exempt` (operate, no arguments) puts the caller's own
+  address into that slot, replacing the previous one, and returns
+  `{"address", "replaced", "key", "fail2ban_ignored"}`; `client.exempt_clear`
+  empties it (`{"cleared", "key"}`). Unnamed keys, no fail2ban, or an unknown
+  caller address: `precondition_failed`.
 - `products.kevward.ops`: the ops the calling role may run.
 - `products.truthgate`: the `data` of `truthgate.capabilities`, only when
   truthgate is installed and answers within 5 s. Otherwise the key is absent;
