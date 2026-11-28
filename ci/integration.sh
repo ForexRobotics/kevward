@@ -101,15 +101,15 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fail2ban >/dev/null 2>&1 |
 systemctl restart fail2ban 2>/dev/null || true
 sleep 2
 if fail2ban-client get sshd ignoreip >/dev/null 2>&1; then
-    gate_named 198.51.100.21 '{"op":"client.exempt"}' > "$TMP/ex1.json"; cat "$TMP/ex1.json"
+    gate_named 198.51.100.21 '{"op":"client.exempt"}' > "$TMP/ex1.json" || true; cat "$TMP/ex1.json"
     jget "$TMP/ex1.json" "d['data']['fail2ban_ignored']" | grep -qx True || fail "client.exempt"
-    gate_named 198.51.100.22 '{"op":"client.exempt"}' > "$TMP/ex2.json"; cat "$TMP/ex2.json"
+    gate_named 198.51.100.22 '{"op":"client.exempt"}' > "$TMP/ex2.json" || true; cat "$TMP/ex2.json"
     jget "$TMP/ex2.json" "d['data']['replaced']" | grep -qx 198.51.100.21 || fail "replace"
     fail2ban-client get sshd ignoreip | tee "$TMP/ign.txt"
     grep -q 198.51.100.22 "$TMP/ign.txt" || fail "new address not ignored"
     grep -q 198.51.100.21 "$TMP/ign.txt" && fail "old address still ignored"
     grep -q '127.0.0.1' "$TMP/ign.txt" || fail "existing exemptions dropped"
-    gate_named 198.51.100.22 '{"op":"client.exempt_clear"}' > "$TMP/ex3.json"
+    gate_named 198.51.100.22 '{"op":"client.exempt_clear"}' > "$TMP/ex3.json" || true; cat "$TMP/ex3.json"
     jget "$TMP/ex3.json" "d['data']['cleared']" | grep -qx 198.51.100.22 || fail "clear"
     [ ! -e /etc/fail2ban/jail.d/zz-kevward-console-slot.local ] || fail "slot file left"
 else

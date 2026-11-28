@@ -70,8 +70,34 @@ def slot_of(key: str | None, path: Path = SLOTS_FILE) -> str | None:
     return (read_slots(path).get(key) or {}).get("address")
 
 
-def render(slots: dict) -> str | None:
-    """The jail.d file for these slots, or None when there are none. Pure."""
+def ignoreip_defined(f2b_dir: Path) -> bool:
+    """Does any file fail2ban reads before ours set ``ignoreip`` for sshd
+    ([DEFAULT] or [sshd])? If not, ``%(known/ignoreip)s`` cannot be resolved
+    and ``fail2ban-client -t`` rejects it."""
+    import configparser
+
+    jd = f2b_dir / "jail.d"
+    files = [f2b_dir / "jail.conf", *sorted(jd.glob("*.conf")), f2b_dir / "jail.local",
+             *[p for p in sorted(jd.glob("*.local")) if p.name < SLOT_CONF_NAME]]
+    for path in files:
+        if not path.is_file():
+            continue
+        cp = configparser.RawConfigParser(strict=False, interpolation=None,
+                                          inline_comment_prefixes=("#", ";"))
+        try:
+            cp.read_string(path.read_text(encoding="utf-8", errors="replace"))
+        except (configparser.Error, OSError):
+            continue
+        if "ignoreip" in cp.defaults():
+            return True
+        if cp.has_section("sshd") and "ignoreip" in cp._sections["sshd"]:  # noqa: SLF001
+            return True
+    return False
+
+
+def render(slots: dict, known: bool = True) -> str | None:
+    """The jail.d file for these slots, or None when there are none. Pure.
+    ``known``: keep what earlier files set (``%(known/ignoreip)s``)."""
     addrs = []
     for k in sorted(slots):
         a = slots[k]["address"]
@@ -86,7 +112,7 @@ def render(slots: dict) -> str | None:
             "# Do not edit; exemptions of your own go elsewhere and are kept.\n"
             + "\n".join(lines) + "\n"
             "[sshd]\n"
-            f"ignoreip = %(known/ignoreip)s {' '.join(addrs)}\n")
+            f"ignoreip = {'%(known/ignoreip)s ' if known else ''}{' '.join(addrs)}\n")
 
 
 def sshd_ignoreip(runner) -> list[str] | None:
@@ -156,7 +182,7 @@ def _change(new_slots: dict, *, f2b_dir: Path, slots_file: Path, runner,
         runner(["fail2ban-client", "reload"], timeout=60)
         raise GateError("internal", f"{why}; the previous exemptions were put back")
 
-    _write(conf, render(new_slots))
+    _write(conf, render(new_slots, known=ignoreip_defined(f2b_dir)))
     t = runner(["fail2ban-client", "-t"], timeout=60)
     if t.rc != 0:
         restore("fail2ban-client -t rejected the exemption file: "

@@ -75,7 +75,7 @@ def test_first_exempt(env):
     assert r == {"address": OFFICE_OLD, "replaced": None, "key": "console-operate",
                  "fail2ban_ignored": True}
     text = (env["f2b_dir"] / "jail.d" / ex.SLOT_CONF_NAME).read_text()
-    assert "[sshd]\nignoreip = %(known/ignoreip)s 106.73.233.64\n" in text
+    assert "[sshd]\nignoreip = 106.73.233.64\n" in text   # nothing earlier to keep
     assert ex.slot_of("console-operate", env["slots_file"]) == OFFICE_OLD
     assert ["-t"] in f.calls and ["reload"] in f.calls
     assert changes(env)[-1]["kind"] == "client.exempt"
@@ -204,3 +204,14 @@ def test_report_finding_low():
     assert fs[0].severity == Severity.LOW
     assert f"set to {OFFICE_NEW} (replacing {OFFICE_OLD})" in fs[0].title
     assert "(key console-operate)" in fs[0].title
+
+
+def test_known_only_when_ignoreip_defined(env):
+    jd = env["f2b_dir"] / "jail.d"
+    assert not ex.ignoreip_defined(env["f2b_dir"])
+    call(env, ex.op_exempt, OFFICE_OLD)
+    assert "ignoreip = 106.73.233.64\n" in (jd / ex.SLOT_CONF_NAME).read_text()
+    (jd / "kevward-console.local").write_text("[DEFAULT]\nignoreip = 127.0.0.1/8 ::1\n")
+    assert ex.ignoreip_defined(env["f2b_dir"])
+    call(env, ex.op_exempt, OFFICE_NEW)
+    assert "%(known/ignoreip)s 106.73.240.12" in (jd / ex.SLOT_CONF_NAME).read_text()
