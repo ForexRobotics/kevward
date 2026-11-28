@@ -18,4 +18,4 @@ import sys as _sys
 # pip byte-compiles on install, and self.update runs compileall afterwards.
 _sys.dont_write_bytecode = True
 
-__version__ = "0.22.0"
+__version__ = "0.23.0"
