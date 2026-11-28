@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **tests: `engine.run()` no longer reads the machine's own kevward state
+  (#294).** Run as root where kevward had run, a host change log (#283's NEW
+  source) changed two tests' results. The host-state findings are now one
+  function, `engine.kevward_findings()`, replaced in tests unless they use
+  the `host_state` marker. No change in behaviour.
+
 ## 0.23.0
 
 The console can keep its own fail2ban exemption up to date: `client.exempt`

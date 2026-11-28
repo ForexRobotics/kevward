@@ -443,29 +443,12 @@ def _configure_apt(cfg: Config) -> None:
     ))
 
 
-def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
-        fresh: bool = True) -> RunResult:
-    """``fresh=False`` reuses the apt plan computed by the previous run in this
-    process, so an apply installs exactly the plan a dry run just showed (#197)."""
-    only = cfg.policy.services or None
-    if fresh:
-        _configure_apt(cfg)
-    plugins = load(only)
-    result = RunResult(
-        host=socket.gethostname(),
-        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        os=f"{platform.system()} {platform.release()}",
-        reboot_pending=reboot_pending(),
-        reboot_packages=reboot_pending_pkgs(),
-        reboot_schedule=_reboot_schedule(),
-        config_source=str(cfg.source) if cfg.source else None,
-        config_error=cfg.load_error,
-        config_warnings=list(cfg.warnings),
-    )
-    if cfg.load_error:
-        result.services.append(config_error_report(cfg))
-    elif cfg.warnings:
-        result.services.append(config_warning_report(cfg))
+def kevward_findings(cfg: Config, do_apply: bool) -> tuple[list[Finding], list[Finding]]:
+    """Findings about kevward itself on this host, from host state: the
+    ssh-gate change log, fail2ban / firewall allowlists, gate access, the
+    report sandbox, automatic updaters. Returns (kevward findings, all
+    updater findings). One function so tests can keep engine.run() off the
+    host (#294)."""
     try:
         from .ssh_gate import recent_changes
 
@@ -504,6 +487,33 @@ def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
             gate += [f for f in updaters if f.service == "kevward"]
     except Exception:
         pass
+    return gate, updaters
+
+
+def run(cfg: Config, do_apply: bool = False, dry_run: bool = True,
+        fresh: bool = True) -> RunResult:
+    """``fresh=False`` reuses the apt plan computed by the previous run in this
+    process, so an apply installs exactly the plan a dry run just showed (#197)."""
+    only = cfg.policy.services or None
+    if fresh:
+        _configure_apt(cfg)
+    plugins = load(only)
+    result = RunResult(
+        host=socket.gethostname(),
+        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        os=f"{platform.system()} {platform.release()}",
+        reboot_pending=reboot_pending(),
+        reboot_packages=reboot_pending_pkgs(),
+        reboot_schedule=_reboot_schedule(),
+        config_source=str(cfg.source) if cfg.source else None,
+        config_error=cfg.load_error,
+        config_warnings=list(cfg.warnings),
+    )
+    if cfg.load_error:
+        result.services.append(config_error_report(cfg))
+    elif cfg.warnings:
+        result.services.append(config_warning_report(cfg))
+    gate, updaters = kevward_findings(cfg, do_apply)
     if gate:
         result.services.append(ServiceReport(service="kevward", present=True,
                                              findings=gate))
