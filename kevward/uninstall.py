@@ -195,7 +195,8 @@ def plan_uninstall(env: Env, *, purge: bool, remove_collector_keys: bool) -> Pla
     for f in (env.etc / "kevward" / "firewall.nft", env.etc / "kevward" / "harden.nft",
               env.etc / "sysctl.d" / "99-kevward-mptcp.conf",
               env.etc / "sudoers.d" / "kevward-ssh-gate",
-              env.etc / "fail2ban" / "jail.d" / "kevward-console.local"):
+              env.etc / "fail2ban" / "jail.d" / "kevward-console.local",
+              env.etc / "fail2ban" / "jail.d" / "zz-kevward-console-slot.local"):
         if f.exists():
             plan.add("file", f)
     # --- authorized_keys -------------------------------------------------------
@@ -248,7 +249,8 @@ def execute(env: Env, plan: Plan, *, remove_collector_keys: bool) -> list[str]:
         r(["systemctl", "daemon-reload"], timeout=30)
     if any(a["target"].endswith("99-kevward-mptcp.conf") for a in plan.actions):
         r(["sysctl", "--system"], timeout=30)
-    if any(a["target"].endswith("kevward-console.local") for a in plan.actions):
+    if any(a["target"].endswith(("kevward-console.local", "kevward-console-slot.local"))
+           for a in plan.actions):
         r(["fail2ban-client", "reload"], timeout=60)
     # Tables only after nothing can bring them back.
     for a in plan.actions:

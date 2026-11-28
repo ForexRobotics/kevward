@@ -137,7 +137,8 @@ def test_capabilities_returns_client(tmp_path):
     resp = g.handle(b'{"op":"gate.capabilities"}', "read", path=cfg,
                     changes_file=tmp_path / "c.jsonl", client=HOTEL,
                     op_opts={"client_status": lambda a: {"address": a, "known_source": False}})
-    assert resp["data"]["client"] == {"address": HOTEL, "known_source": False}
+    assert resp["data"]["client"] == {"address": HOTEL, "known_source": False,
+                                      "exempt_slot": None}
     resp = g.handle(b'{"op":"gate.capabilities"}', "read", path=cfg,
                     changes_file=tmp_path / "c.jsonl", client=HOTEL)
     c = resp["data"]["client"]

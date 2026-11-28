@@ -529,6 +529,15 @@ this host exempts it (fail2ban `ignoreip`, kevward's firewall allowlist,
 from a new network ban it. An operation from an address never seen before
 and not exempt is reported at medium for 2 days ("NEW source: … via ssh-gate
 from …"); add the address to `[ssh_gate] known_sources` if it is yours.
+`client.exempt` (operate, no arguments) keeps one fail2ban exemption per
+named console key: it puts the caller's own address (from the SSH connection,
+never an argument) into the key's slot and drops the address that was there,
+so an office line whose address changes does not leave old addresses in
+`ignoreip`. Slots go to `jail.d/zz-kevward-console-slot.local` as
+`[sshd] ignoreip = %(known/ignoreip)s …`; exemptions you added yourself are
+never touched, and fail2ban is checked, reloaded and verified (or put back).
+`client.exempt_clear` empties the slot. Every change is a low finding for 7
+days. Do not use it from a shared network (hotel, train, café).
 `gate.selfpaths` lists every path on the console's way in (launcher
 and its sha256, interpreter, login shell, sudo, package directory, every
 program kevward runs, the apply unit names), so an execution allow-list such

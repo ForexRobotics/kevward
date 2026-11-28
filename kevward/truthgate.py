@@ -135,6 +135,9 @@ def capabilities(role: str, cfg, ops: list[str], *, client: str, key: str | None
         else:
             seen = gs.seen_sources(gs.all_changes(changes_file)) if changes_file else set()
             out["client"] = gs.address_status(client, cfg, seen=seen)
+        from .exempt import slot_of
+        from .ssh_gate import _KEY
+        out["client"]["exempt_slot"] = slot_of(_KEY)   # #291
     except Exception:  # noqa: BLE001 - never break the first call of a connection
         out["client"] = {"address": client or None}
     return out

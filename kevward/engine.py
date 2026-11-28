@@ -359,6 +359,22 @@ def gate_change_findings(records: list[dict]) -> list[Finding]:
             continue
         if kind == "report.refresh":
             continue  # rebuilding the report changes nothing on the host
+        if kind in ("client.exempt", "client.exempt_clear"):   # #291
+            who = f"via ssh-gate at {rec.get('time', '?')} {_from(rec)}"
+            if kind == "client.exempt":
+                was = rec.get("replaced")
+                title = (f"fail2ban exemption set to {rec.get('address', '?')} "
+                         + (f"(replacing {was}) " if was else "") + who)
+            else:
+                title = f"fail2ban exemption {rec.get('replaced', '?')} removed {who}"
+            out.append(Finding(
+                service="kevward", kind=FindingKind.CONFIG, severity=Severity.LOW,
+                title=title,
+                detail="The console key's exemption slot "
+                "(/etc/fail2ban/jail.d/zz-kevward-console-slot.local) changed. Shown for "
+                "7 days; if you did not request this, revoke the console's operate key "
+                "and run `ssh-gate client.exempt_clear` / delete that file."))
+            continue
         if kind in ("reboot.schedule", "reboot.cancel", "schedule.install"):
             who = f"via ssh-gate at {rec.get('time', '?')} {_from(rec)}"
             if kind == "reboot.schedule":
