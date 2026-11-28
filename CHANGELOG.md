@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.23.1
+
+Test isolation only (#294); no change in behaviour.
 
 - **tests: `engine.run()` no longer reads the machine's own kevward state
   (#294).** Run as root where kevward had run, a host change log (#283's NEW
