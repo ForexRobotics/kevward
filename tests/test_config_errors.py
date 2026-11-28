@@ -105,3 +105,17 @@ def test_dry_runs_still_work(tmp_path, monkeypatch, capsys):
     p = _write(tmp_path, BROKEN)
     cli.main(["apply", "-c", str(p)])  # dry run: read-only, so it continues
     assert "DRY RUN" in capsys.readouterr().out
+
+
+def test_engine_uses_kevward_findings(monkeypatch, tmp_path):
+    """#294: host-state findings come from one function, kept off the host in tests."""
+    from kevward.model import Finding, FindingKind, Severity
+    f = Finding(service="kevward", kind=FindingKind.CONFIG, severity=Severity.LOW, title="x")
+    monkeypatch.setattr(engine, "kevward_findings", lambda cfg, do_apply: ([f], []))
+    res = engine.run(Config())
+    assert any(s.service == "kevward" and s.findings == [f] for s in res.services)
+
+
+@pytest.mark.host_state
+def test_host_state_marker_keeps_the_real_function():
+    assert engine.kevward_findings.__name__ == "kevward_findings"
