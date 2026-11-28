@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.23.0
+
+The console can keep its own fail2ban exemption up to date: `client.exempt`
+puts the caller's address into one slot per console key and drops the old
+one, so a changing office address does not leave stale exemptions (#291).
 
 - **ssh-gate: `client.exempt` / `client.exempt_clear` (#291).** One fail2ban
   exemption slot per named console key: the caller's own address replaces the
